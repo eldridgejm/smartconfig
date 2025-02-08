@@ -569,6 +569,12 @@ class _ValueNode(_Node):
 
         """
         if isinstance(self.value, RawString):
+            # check that the expected type is a string (or any)
+            if self.type_ not in ("string", "any"):
+                raise ResolutionError(
+                    "Schema expected something other than a string.", self.keypath
+                )
+
             return self.value
 
         if self._resolved is _PENDING:

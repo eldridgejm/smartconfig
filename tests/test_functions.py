@@ -12,7 +12,7 @@ def test_raw_does_not_parse():
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
-            "bar": {"type": "integer"},
+            "bar": {"type": "string"},
         },
     }
 
@@ -31,7 +31,7 @@ def test_raw_does_not_interpolate():
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
-            "bar": {"type": "integer"},
+            "bar": {"type": "string"},
         },
     }
 
@@ -50,7 +50,7 @@ def test_referencing_a_raw_string_in_normal_string_will_interpolate_once():
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
-            "bar": {"type": "integer"},
+            "bar": {"type": "string"},
             "baz": {"type": "string"},
         },
     }

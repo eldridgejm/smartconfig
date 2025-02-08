@@ -531,6 +531,23 @@ def test_raw_strings_are_not_interpolated():
     # then
     assert result["bar"] == "${this.foo}"
 
+def test_raw_strings_are_still_type_checked():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "string"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {"foo": "this", "bar": RawString("42")}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema)
+
+    assert "Schema expected something other than a string" in str(exc.value)
 
 def test_recursive_strings_are_interpolated_recursively():
     # given
@@ -1115,7 +1132,7 @@ def test_function_call_with_input_and_output_not_resolved():
     # given
     schema = {
         "type": "dict",
-        "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "integer"}},
+        "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "string"}},
     }
 
     dct = {"foo": 4, "bar": {"__myraw__": "${this.foo} + 1"}}
@@ -1140,7 +1157,7 @@ def test_function_call_without_resolving_output_does_not_apply_schema():
     # given
     schema = {
         "type": "dict",
-        "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "integer"}},
+        "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "string"}},
     }
 
     dct = {"foo": 4, "bar": {"__myraw__": "${this.foo} + 1"}}
