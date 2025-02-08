@@ -1,0 +1,1 @@
+{"course_name": "Introduction to Python", "date_of_first_lecture": "2025-01-10", "date_of_first_discussion": "7 days after ${this.first_lecture}", "message": ["Welcome to ${this.course_name}!", "The first lecture is on ${this.first_lecture}.", "The first discussion is on ${this.first_discussion}."]}

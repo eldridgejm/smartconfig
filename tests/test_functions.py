@@ -1,0 +1,467 @@
+from smartconfig import resolve, exceptions
+from smartconfig import functions
+
+from pytest import raises
+
+# raw ==================================================================================
+
+
+def test_raw_does_not_parse():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {"foo": 42, "bar": {"__raw__": "1 + 3"}}
+
+    # when
+    resolved = resolve(dct, schema, functions={"raw": functions.raw})
+
+    # then
+    assert resolved == {"foo": 42, "bar": "1 + 3"}
+
+
+def test_raw_does_not_interpolate():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {"foo": 42, "bar": {"__raw__": "${this.foo} + 3"}}
+
+    # when
+    resolved = resolve(dct, schema, functions={"raw": functions.raw})
+
+    # then
+    assert resolved == {"foo": 42, "bar": "${this.foo} + 3"}
+
+
+def test_referencing_a_raw_string_in_normal_string_will_interpolate_once():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+            "baz": {"type": "string"},
+        },
+    }
+
+    dct = {"foo": 42, "bar": {"__raw__": "${this.foo} + 3"}, "baz": "${this.bar} + 4"}
+
+    # when
+    resolved = resolve(dct, schema, functions={"raw": functions.raw})
+
+    # then
+    assert resolved == {"foo": 42, "bar": "${this.foo} + 3", "baz": "${this.foo} + 3 + 4"}
+
+
+def test_raw_with_a_non_string_raises():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "list", "element_schema": {"type": "integer"}},
+        },
+    }
+
+    dct = {"foo": 42, "bar": {"__raw__": [1, 2, 3, 4]}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(
+            dct, schema, functions={"raw": functions.raw}
+        )
+
+    assert "Input to 'raw' must be a string." in str(exc.value)
+
+
+def test_update_shallow_does_not_perform_a_deep_update():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {
+                        "type": "dict",
+                        "required_keys": {
+                            "c": {"type": "integer"},
+                        },
+                        "optional_keys": {
+                            "d": {"type": "integer"},
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+    dct = {
+        "baz": {
+            "__update_shallow__": [
+                {"a": 1, "b": {"c": 5, "d": 6}},
+                {"a": 3, "b": {"c": 4}},
+            ]
+        }
+    }
+
+    # when
+    resolved = resolve(
+        dct, schema, functions={"update_shallow": functions.update_shallow}
+    )
+
+    # then
+    assert resolved == {
+        "baz": {"a": 3, "b": {"c": 4}},
+    }
+
+
+def test_update_shallow_with_four_dictionaries():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    dct = {
+        "baz": {"__update_shallow__": [{"a": 1, "b": 2}, {"a": 3}, {"a": 5}, {"b": 7}]}
+    }
+
+    # when
+    resolved = resolve(
+        dct, schema, functions={"update_shallow": functions.update_shallow}
+    )
+
+    # then
+    assert resolved == {
+        "baz": {
+            "a": 5,
+            "b": 7,
+        },
+    }
+
+
+def test_update_shallow_raises_if_input_is_not_a_list():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    dct = {"baz": {"__update_shallow__": 4}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"update_shallow": functions.update_shallow})
+
+    assert "Input to 'update_shallow' must be a list of dictionaries." in str(exc.value)
+
+
+def test_update_shallow_raises_if_input_is_not_a_list_of_dicts():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    dct = {"baz": {"__update_shallow__": [{"hi": "there"}, 5]}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"update_shallow": functions.update_shallow})
+
+    assert "Input to 'update_shallow' must be a list of dictionaries." in str(exc.value)
+
+
+# update ==========================================================================
+
+
+def test_update_uses_values_from_the_righmost_map():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    dct = {"baz": {"__update__": [{"a": 1, "b": 2}, {"a": 3}]}}
+
+    # when
+    resolved = resolve(dct, schema, functions={"update": functions.update})
+
+    # then
+    assert resolved == {
+        "baz": {
+            "a": 3,
+            "b": 2,
+        },
+    }
+
+
+def test_update_with_partial_update():
+    # the second dictionary does not have all the keys of the first one at the
+    # second level of nesting
+
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {
+                        "type": "dict",
+                        "required_keys": {
+                            "c": {"type": "integer"},
+                        },
+                        "optional_keys": {
+                            "d": {"type": "integer"},
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+    dct = {
+        "baz": {
+            "__update__": [
+                {"a": 1, "b": {"c": 5, "d": 6}},
+                {"a": 3, "b": {"c": 4}},
+            ]
+        }
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"update": functions.update})
+
+    # then
+    assert resolved == {
+        "baz": {"a": 3, "b": {"c": 4, "d": 6}},
+    }
+
+
+def test_update_with_four_dictionaries():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {
+                        "type": "dict",
+                        "required_keys": {
+                            "c": {"type": "integer"},
+                        },
+                        "optional_keys": {
+                            "d": {"type": "integer"},
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+    dct = {
+        "baz": {
+            "__update__": [
+                {"a": 1, "b": {"c": 5, "d": 6}},
+                {"a": 3, "b": {"c": 4}},
+                {"a": 2, "b": {"d": 7}},
+                {"b": {"c": 9}},
+            ]
+        }
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"update": functions.update})
+
+    # then
+    assert resolved == {
+        "baz": {"a": 2, "b": {"c": 9, "d": 7}},
+    }
+
+
+def test_update_raises_if_input_is_not_a_list():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    dct = {"baz": {"__update__": 4}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"update": functions.update})
+
+    assert "Input to 'update' must be a list of dictionaries." in str(exc.value)
+
+
+def test_update_raises_if_input_is_not_a_list_of_dicts():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    dct = {"baz": {"__update__": [{"hi": "there"}, 5]}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"update": functions.update})
+
+    assert "Input to 'update' must be a list of dictionaries." in str(exc.value)
+
+
+# concatenate ==========================================================================
+
+
+def test_concatenate_with_two_lists():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "list",
+                "element_schema": {"type": "integer"},
+            },
+        },
+    }
+
+    dct = {"baz": {"__concatenate__": [[1, 2], [3, 4]]}}
+
+    # when
+    resolved = resolve(dct, schema, functions={"concatenate": functions.concatenate})
+
+    # then
+    assert resolved == {
+        "baz": [1, 2, 3, 4],
+    }
+
+
+def test_concatenate_with_three_lists():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "list",
+                "element_schema": {"type": "integer"},
+            },
+        },
+    }
+
+    dct = {"baz": {"__concatenate__": [[1, 2], [3, 4], [5, 6]]}}
+
+    # when
+    resolved = resolve(dct, schema, functions={"concatenate": functions.concatenate})
+
+    # then
+    assert resolved == {
+        "baz": [1, 2, 3, 4, 5, 6],
+    }
+
+
+def test_concatenate_raises_if_input_is_not_a_list():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "list",
+                "element_schema": {"type": "integer"},
+            },
+        },
+    }
+
+    dct = {"baz": {"__concatenate__": 4}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"concatenate": functions.concatenate})
+
+    assert "Input to 'concatenate' must be a list of lists." in str(exc.value)
+
+
+def test_concatenate_raises_if_input_is_not_a_list_of_lists():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "list",
+                "element_schema": {"type": "integer"},
+            },
+        },
+    }
+
+    dct = {"baz": {"__concatenate__": [[1, 2], 5]}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"concatenate": functions.concatenate})
+
+    assert "Input to 'concatenate' must be a list of lists." in str(exc.value)
