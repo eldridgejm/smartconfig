@@ -72,7 +72,8 @@ its type.
 
 If a value is a :class:`RawString`, it is not interpolated or parsed. Resolving
 the node results in an instance of ``str`` whose contents are identical to the
-:class:`RawString`.
+:class:`RawString`. If the schema was expecting something other than a string (or
+"any"), an error is raised.
 
 On the other hand, if the value node contains a ``str``, that string is
 interpolated by first recursively resolving any of the nodes referenced in the
