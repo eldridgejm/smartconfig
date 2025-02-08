@@ -363,6 +363,12 @@ class _DictNode(_Node):
         """
         node = cls(resolution_context, parent=parent)
 
+        if schema["type"] == "any":
+            schema = {
+                "type": "dict",
+                "extra_keys_schema": {"type": "any", "nullable": True},
+            }
+
         children = {}
 
         # these private functiuons are used to populate the children of the
@@ -443,6 +449,12 @@ class _ListNode(_Node):
     ) -> "_ListNode":
         """Make an internal list node from a raw list and recurse on the children."""
         node = cls(resolution_context, parent=parent)
+
+        if list_schema["type"] == "any":
+            list_schema = {
+                "type": "list",
+                "element_schema": {"type": "any", "nullable": True},
+            }
 
         child_schema = list_schema["element_schema"]
 
@@ -850,22 +862,10 @@ def _make_node(
             return _FunctionNode.from_configuration(
                 cfg, schema, keypath, resolution_context, parent=parent, 
             )
-
-        # at this point, we know that it isn't a function call
-        if schema["type"] == "any":
-            schema = {
-                "type": "dict",
-                "extra_keys_schema": {"type": "any", "nullable": True},
-            }
         return _DictNode.from_configuration(
             cfg, schema, keypath, resolution_context, parent=parent
         )
     elif isinstance(cfg, list):
-        if schema["type"] == "any":
-            schema = {
-                "type": "list",
-                "element_schema": {"type": "any", "nullable": True},
-            }
         return _ListNode.from_configuration(
             cfg, schema, keypath, resolution_context, parent=parent, 
         )
