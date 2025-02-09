@@ -79,8 +79,6 @@ class _ResolutionContext:
 
     Attributes
     ----------
-    external_variables : ConfigurationDict
-        External variables that can be interpolated into the configuration.
     parsers : Mapping[str, Callable]
         Parsers for different types of values.
     functions : Mapping[str, Function]
@@ -88,13 +86,23 @@ class _ResolutionContext:
 
     """
 
-    external_variables: _types.ConfigurationDict
     parsers: Mapping[str, Callable]
     functions: Mapping[str, "Function"]
 
 
 # denotes that a node is currently being resolved.
 _PENDING = object()
+
+
+class LazyValue:
+    def __init__(self, value):
+        self._value = value
+
+    def __str__(self):
+        return str(self._value.resolve())
+
+    def __getattr__(self, name: str, /) -> Any:
+        return getattr(self._value.resolve(), name)
 
 
 class _ConfigurationTreeNamespace(_types.Namespace):
@@ -119,9 +127,9 @@ class _ConfigurationTreeNamespace(_types.Namespace):
         if isinstance(child, (_DictNode, _ListNode, dict, list)):
             return _ConfigurationTreeNamespace(child)
         elif isinstance(child, (_ValueNode, _FunctionNode)):
-            return child.resolve()
+            return LazyValue(child)
         else:
-            return child
+            raise TypeError(f"Unexpected child type: {type(child)}")
 
     def __getattr__(self, key):
         """Allows accessing a child by attribute. Same behavior as __getitem__."""
@@ -641,13 +649,14 @@ class _ValueNode(_Node):
             s, variable_start_string="${", variable_end_string="}"
         )
 
-        external_variables = self.resolution_context.external_variables
+        if isinstance(self.root, _DictNode):
+            namespace = _ConfigurationTreeNamespace(self.root)
+            template_variables = {k: namespace[k] for k in self.root.children}
+        else:
+            template_variables = {}
 
         try:
-            return template.render(
-                **external_variables,
-                this=_ConfigurationTreeNamespace(self.root),
-            )
+            return template.render(template_variables)
         except jinja2.exceptions.UndefinedError as exc:
             raise ResolutionError(str(exc), self.keypath)
 
@@ -803,12 +812,7 @@ class _FunctionNode(_Node):
 
         args = FunctionArgs(
             input,
-            _ConfigurationTreeNamespace(
-                {
-                    "this": _ConfigurationTreeNamespace(self.root),
-                    **self.resolution_context.external_variables,
-                }
-            ),
+            _ConfigurationTreeNamespace(self.root),
             self.keypath,
         )
 
@@ -953,7 +957,6 @@ def _update_parsers(overrides):
 def resolve(
     raw_cfg: dict,
     schema: _types.Schema,
-    external_variables: Optional[_types.ConfigurationDict] = None,
     override_parsers: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
@@ -965,7 +968,6 @@ def resolve(
 def resolve(
     raw_cfg: list,
     schema: _types.Schema,
-    external_variables: Optional[_types.ConfigurationDict] = None,
     override_parsers: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
@@ -977,7 +979,6 @@ def resolve(
 def resolve(
     raw_cfg: Any,
     schema: _types.Schema,
-    external_variables: Optional[_types.ConfigurationDict] = None,
     override_parsers: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
@@ -988,7 +989,6 @@ def resolve(
 def resolve(
     raw_cfg: _types.Configuration,
     schema: _types.Schema,
-    external_variables: Optional[_types.ConfigurationDict] = None,
     override_parsers: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
@@ -1002,12 +1002,6 @@ def resolve(
         The raw configuration.
     schema
         The schema describing the types in the raw configuration.
-    external_variables
-        A (nested) dictionary of external variables that may be interpolated into
-        the raw configuration. External variables can be referred to by dotted keypaths in
-        the configuration. For example, :code:`${foo.bar.baz}` will reference the value
-        42 in the dictionary :code:`{'foo': {'bar': {'baz': 42}}}`. Cannot contain a key
-        named "this".
     override_parsers
         A dictionary mapping leaf type names to parser functions. The parser functions
         should take the raw value (after interpolation) and convert it to the specified
@@ -1047,11 +1041,6 @@ def resolve(
     a variety of formats. They can be overridden by providing a dictionary of
     parsers to `override_parsers`.
 
-    A dictionary of external variables can be provided; these will be available
-    at interpolation time. A special key, ``this``, is reserved and cannot
-    be used as an external variable. It refers to the root of the resolved
-    configuration.
-
     This function uses the `jinja2` template engine for interpolation. This
     means that many powerful `Jinja2` features can be used. For example, a
     `Jinja2` supports a ternary operator, so dictionaries can contain
@@ -1080,14 +1069,6 @@ def resolve(
     cost.
 
     """
-    if external_variables is None:
-        external_variables = {}
-
-    if "this" in external_variables:
-        raise ValueError(
-            'external_variables cannot contain a "this" key; it is reserved.'
-        )
-
     if schema_validator is not None:
         schema_validator(schema)
 
@@ -1095,7 +1076,8 @@ def resolve(
         functions = {}
 
     parsers = _update_parsers(override_parsers)
-    resolution_context = _ResolutionContext(external_variables, parsers, functions)
+
+    resolution_context = _ResolutionContext(parsers, functions)
 
     root = _make_node(raw_cfg, schema, resolution_context)
 

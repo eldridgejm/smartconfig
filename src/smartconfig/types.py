@@ -1,6 +1,7 @@
 """Types and type aliases."""
 
 import abc
+import collections.abc
 import dataclasses
 from typing import Dict, List, Union, Mapping, Any, Tuple, Callable
 import datetime
@@ -29,7 +30,7 @@ KeyPath = Tuple[str, ...]
 # namespaces ===========================================================================
 
 
-class Namespace(abc.ABC):
+class Namespace:
     """ABC for a namespace object.
 
     A namespace acts like a dictionary that also supports access to the keys as

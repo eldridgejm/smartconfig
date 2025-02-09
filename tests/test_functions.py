@@ -55,13 +55,13 @@ def test_referencing_a_raw_string_in_normal_string_will_interpolate_once():
         },
     }
 
-    dct = {"foo": 42, "bar": {"__raw__": "${this.foo} + 3"}, "baz": "${this.bar} + 4"}
+    dct = {"foo": 42, "bar": {"__raw__": "${foo} + 3"}, "baz": "${bar} + 4"}
 
     # when
     resolved = resolve(dct, schema, functions={"raw": functions.raw})
 
     # then
-    assert resolved == {"foo": 42, "bar": "${this.foo} + 3", "baz": "${this.foo} + 3 + 4"}
+    assert resolved == {"foo": 42, "bar": "${foo} + 3", "baz": "${foo} + 3 + 4"}
 
 
 def test_raw_with_a_non_string_raises():

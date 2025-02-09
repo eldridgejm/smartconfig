@@ -135,13 +135,13 @@ def test_interpolation_of_other_dictionary_entries_same_level():
         },
     }
 
-    dct = {"foo": "this", "bar": "testing ${this.foo}"}
+    dct = {"foo": "hello", "bar": "testing ${foo}"}
 
     # when
     result = resolve(dct, schema)
 
     # then
-    assert result["bar"] == "testing this"
+    assert result["bar"] == "testing hello"
 
 
 def test_interpolation_of_a_high_node_referencing_a_deeper_node():
@@ -157,7 +157,7 @@ def test_interpolation_of_a_high_node_referencing_a_deeper_node():
         },
     }
 
-    dct = {"foo": "testing ${this.bar.baz}", "bar": {"baz": "this"}}
+    dct = {"foo": "testing ${bar.baz}", "bar": {"baz": "this"}}
 
     # when
     result = resolve(dct, schema)
@@ -179,7 +179,7 @@ def test_interpolation_of_a_deep_node_referencing_a_higher_node():
         },
     }
 
-    dct = {"foo": "testing", "bar": {"baz": "${this.foo} this"}}
+    dct = {"foo": "testing", "bar": {"baz": "${foo} this"}}
 
     # when
     result = resolve(dct, schema)
@@ -202,52 +202,13 @@ def test_interpolation_can_reference_list_elements():
         },
     }
 
-    dct = {"foo": "testing ${this.bar.1}", "bar": ["this", "that", "the other"]}
+    dct = {"foo": "testing ${bar.1}", "bar": ["this", "that", "the other"]}
 
     # when
     result = resolve(dct, schema)
 
     # then
     assert result["foo"] == "testing that"
-
-
-def test_interpolation_can_use_external_variables():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {"type": "string"},
-        },
-    }
-
-    dct = {"foo": "testing ${a.b.c}"}
-    external_variables = {"a": {"b": {"c": "this"}}}
-
-    # when
-    result = resolve(dct, schema, external_variables)
-
-    # then
-    assert result["foo"] == "testing this"
-
-
-def test_interpolation_external_variables_are_interpolated_but_not_resolved():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {"type": "integer"},
-            "bar": {"type": "string"},
-        },
-    }
-
-    dct = {"foo": 6, "bar": "${bar_formula}"}
-    external_variables = {"bar_formula": "${this.foo} * 7"}
-
-    # when
-    result = resolve(dct, schema, external_variables)
-
-    # then
-    assert result["bar"] == r"${this.foo} * 7"
 
 
 def test_chain_of_multiple_interpolations():
@@ -263,8 +224,8 @@ def test_chain_of_multiple_interpolations():
 
     dct = {
         "foo": "this",
-        "bar": "testing ${this.foo}",
-        "baz": "now ${this.bar}",
+        "bar": "testing ${foo}",
+        "baz": "now ${bar}",
     }
 
     # when
@@ -288,7 +249,7 @@ def test_interpolation_can_use_jinja_control_statements():
 
     dct = {
         "foo": ["this", "that", "the other"],
-        "bar": "{% for item in this.foo %}item: ${ item } {% endfor %}",
+        "bar": "{% for item in foo %}item: ${ item } {% endfor %}",
     }
 
     # when
@@ -298,7 +259,7 @@ def test_interpolation_can_use_jinja_control_statements():
     assert result["bar"] == "item: this item: that item: the other "
 
 
-def test_raises_if_this_reference_detected():
+def test_raises_if_self_reference_detected():
     # given
     schema = {
         "type": "dict",
@@ -308,7 +269,7 @@ def test_raises_if_this_reference_detected():
     }
 
     dct = {
-        "foo": "${this.foo}",
+        "foo": "${foo}",
     }
 
     # when
@@ -328,9 +289,9 @@ def test_raises_if_cyclical_reference_detected():
     }
 
     dct = {
-        "foo": "${this.baz}",
-        "bar": "${this.foo}",
-        "baz": "${this.bar}",
+        "foo": "${baz}",
+        "bar": "${foo}",
+        "baz": "${bar}",
     }
 
     # when
@@ -350,7 +311,7 @@ def test_can_use_jinja_methods():
 
     dct = {
         "foo": "this",
-        "bar": "testing ${this.foo.upper()}",
+        "bar": "testing ${foo.upper()}",
     }
 
     # when
@@ -361,27 +322,57 @@ def test_can_use_jinja_methods():
     assert result["bar"] == "testing THIS"
 
 
-def test_interpolation_of_keys_with_dots():
+def test_can_use_methods_on_float_values():
     # given
     schema = {
         "type": "dict",
         "required_keys": {
-            "foo.txt": {"type": "string"},
+            "foo": {"type": "float"},
             "bar": {"type": "string"},
         },
     }
 
     dct = {
-        "foo.txt": "this",
-        "bar": "testing ${this['foo.txt']}",
+        "foo": 3.14,
+        "bar": "testing ${foo + 4}",
     }
 
     # when
     result = resolve(dct, schema)
 
     # then
-    assert result["foo.txt"] == "this"
-    assert result["bar"] == "testing this"
+    assert result["foo"] == 3.14
+    assert result["bar"] == "testing 7.14"
+
+
+def test_interpolation_of_keys_with_dots():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "this": {
+                "type": "dict",
+                "required_keys": {
+                    "foo.txt": {"type": "string"},
+                    "bar": {"type": "string"},
+                },
+            }
+        },
+    }
+
+    dct = {
+        "this": {
+            "foo.txt": "this",
+            "bar": "testing ${this['foo.txt']}",
+        }
+    }
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["this"]["foo.txt"] == "this"
+    assert result["this"]["bar"] == "testing this"
 
 
 def test_interpolation_is_not_confused_by_different_jinja_syntax():
@@ -396,7 +387,7 @@ def test_interpolation_is_not_confused_by_different_jinja_syntax():
 
     dct = {
         "foo": "this",
-        "bar": "testing ${this.foo} $[ that ]",
+        "bar": "testing ${foo} $[ that ]",
     }
 
     # when
@@ -433,7 +424,7 @@ def test_interpolation_from_deeply_nested_list():
             "required_artifacts": [
                 "foo",
                 "bar",
-                "${this.publication_schema.optional_artifacts.0}",
+                "${publication_schema.optional_artifacts.0}",
             ],
             "optional_artifacts": ["baz"],
         }
@@ -476,7 +467,7 @@ def test_parsing_occurs_after_interpolation():
         },
     }
 
-    dct = {"foo": "42", "bar": "${this.foo}"}
+    dct = {"foo": "42", "bar": "${foo}"}
 
     # when
     result = resolve(dct, schema)
@@ -513,6 +504,25 @@ def test_parsing_of_list_elements():
     assert result == [10, 25]
 
 
+def test_raw_strings_resolve_to_raw_strings():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "string"},
+            "bar": {"type": "string"},
+        },
+    }
+
+    dct = {"foo": "this", "bar": RawString("${foo}")}
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert isinstance(result["bar"], RawString)
+
+
 def test_raw_strings_are_not_interpolated():
     # given
     schema = {
@@ -523,13 +533,14 @@ def test_raw_strings_are_not_interpolated():
         },
     }
 
-    dct = {"foo": "this", "bar": RawString("${this.foo}")}
+    dct = {"foo": "this", "bar": RawString("${foo}")}
 
     # when
     result = resolve(dct, schema)
 
     # then
-    assert result["bar"] == "${this.foo}"
+    assert result["bar"] == "${foo}"
+
 
 def test_raw_strings_are_still_type_checked():
     # given
@@ -549,6 +560,28 @@ def test_raw_strings_are_still_type_checked():
 
     assert "Schema expected something other than a string" in str(exc.value)
 
+
+def test_recursive_strings_resolve_to_regular_strings():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "string"},
+            "bar": {"type": "string"},
+        },
+    }
+
+    dct = {"foo": "this", "bar": RecursiveString("testing ${foo}")}
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert isinstance(result["bar"], str) and not isinstance(
+        result["bar"], RecursiveString
+    )
+
+
 def test_recursive_strings_are_interpolated_recursively():
     # given
     schema = {
@@ -562,8 +595,8 @@ def test_recursive_strings_are_interpolated_recursively():
 
     dct = {
         "foo": "hello",
-        "bar": RawString("${this.foo} world"),
-        "baz": RecursiveString("I said: ${this.bar}"),
+        "bar": RawString("${foo} world"),
+        "baz": RecursiveString("I said: ${bar}"),
     }
 
     # when
@@ -572,7 +605,7 @@ def test_recursive_strings_are_interpolated_recursively():
     # then
     assert result == {
         "foo": "hello",
-        "bar": "${this.foo} world",
+        "bar": "${foo} world",
         "baz": "I said: hello world",
     }
 
@@ -618,7 +651,7 @@ def test_interpolation_occurs_when_any_is_used():
         "type": "any",
     }
 
-    dct = {"foo": "testing", "bar": "${this.foo} this"}
+    dct = {"foo": "testing", "bar": "${foo} this"}
 
     # when
     result = resolve(dct, schema)
@@ -755,19 +788,6 @@ def test_exception_has_correct_path_with_missing_key_in_nested_dict_within_list(
     assert excinfo.value.keypath == (1, "foo")
 
 
-def test_exception_when_cannot_resolve_external_variable():
-    # given
-    schema = {"type": "dict", "required_keys": {"foo": {"type": "string"}}}
-
-    dct = {"foo": "${ext.bar}"}
-
-    # when
-    with raises(exceptions.ResolutionError) as excinfo:
-        resolve(dct, schema)
-
-    assert excinfo.value.keypath == ("foo",)
-
-
 # preserve_type
 # =============
 
@@ -813,7 +833,7 @@ def test_reference_entire_dict_raises_exception():
 
     dct = {
         "foo": {"x": 1, "y": 2},
-        "bar": "${this.foo}",
+        "bar": "${foo}",
     }
 
     # when
@@ -843,9 +863,9 @@ def test_reference_entire_dict_indirectly_raises_exception():
 
     dct = {
         "foo": {"x": 1, "y": 2},
-        "bar": "${this.foo}",
-        "baz": "${this.bar.y}",
-        "quux": "${this.baz}",
+        "bar": "${foo}",
+        "baz": "${bar.y}",
+        "quux": "${baz}",
     }
 
     # when
@@ -880,9 +900,9 @@ def test_reference_entire_dict_indirectly_reverse_order_raises_exception():
 
     dct = {
         "foo": {"x": 1, "y": 2},
-        "bar": "${this.baz.y}",
-        "baz": "${this.quux}",
-        "quux": "${this.foo}",
+        "bar": "${baz.y}",
+        "baz": "${quux}",
+        "quux": "${foo}",
     }
 
     # when
@@ -911,75 +931,12 @@ def test_reference_entire_list_raises_exception():
 
     dct = {
         "foo": [1, 2],
-        "bar": "${this.foo}",
+        "bar": "${foo}",
     }
 
     # when
     with raises(exceptions.ResolutionError) as exc:
         resolve(dct, schema)
-
-    # then
-    assert "No parser provided for type: 'list'" in str(exc.value)
-
-
-def test_reference_external_variable_with_entire_dict_raises_exception():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {
-                "type": "integer",
-            },
-            "bar": {
-                "type": "dict",
-                "required_keys": {
-                    "baz": {"type": "integer"},
-                    "alpha": {"type": "integer"},
-                },
-            },
-        },
-    }
-
-    dct = {
-        "foo": 42,
-        "bar": "${ext}",
-    }
-
-    external_variables = {"ext": {"baz": 42, "alpha": 43}}
-
-    # when
-    with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, external_variables)
-
-    # then
-    assert "No parser provided for type: 'dict'" in str(exc.value)
-
-
-def test_reference_external_variable_with_entire_list_raises_exception():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {
-                "type": "integer",
-            },
-            "bar": {
-                "type": "list",
-                "element_schema": {"type": "integer"},
-            },
-        },
-    }
-
-    dct = {
-        "foo": 42,
-        "bar": "${ext}",
-    }
-
-    external_variables = {"ext": [1, 2, 3]}
-
-    # when
-    with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, external_variables)
 
     # then
     assert "No parser provided for type: 'list'" in str(exc.value)
@@ -1070,7 +1027,7 @@ def test_function_call_input_is_resolved_by_default_using_the_any_schema():
         },
     }
 
-    dct = {"foo": 6, "bar": {"__add_one_to__": "${this.foo}"}}
+    dct = {"foo": 6, "bar": {"__add_one_to__": "${foo}"}}
 
     # when
     result = resolve(
@@ -1091,7 +1048,7 @@ def test_function_call_other_nodes_can_reference_keys_within_dict_computed_by_fu
         },
     }
 
-    dct = {"foo": "${this.baz.alpha} * 3", "baz": {"__make_numbers__": {}}}
+    dct = {"foo": "${baz.alpha} * 3", "baz": {"__make_numbers__": {}}}
 
     def make_numbers(args):
         return {"alpha": "6 + 4", "beta": 20}
@@ -1110,7 +1067,7 @@ def test_function_call_with_input_not_resolved():
         "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "integer"}},
     }
 
-    dct = {"foo": "4", "bar": {"__myraw__": "${this.foo} + 1"}}
+    dct = {"foo": "4", "bar": {"__myraw__": "${foo} + 1"}}
 
     seen = []
 
@@ -1124,7 +1081,7 @@ def test_function_call_with_input_not_resolved():
     result = resolve(dct, schema, functions={"myraw": function})
 
     # then
-    assert seen == ["${this.foo} + 1"]
+    assert seen == ["${foo} + 1"]
     assert result == {"foo": 4, "bar": 5}
 
 
@@ -1135,7 +1092,7 @@ def test_function_call_with_input_and_output_not_resolved():
         "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "string"}},
     }
 
-    dct = {"foo": 4, "bar": {"__myraw__": "${this.foo} + 1"}}
+    dct = {"foo": 4, "bar": {"__myraw__": "${foo} + 1"}}
 
     seen = []
 
@@ -1149,8 +1106,8 @@ def test_function_call_with_input_and_output_not_resolved():
     result = resolve(dct, schema, functions={"myraw": function})
 
     # then
-    assert seen == ["${this.foo} + 1"]
-    assert result == {"foo": 4, "bar": "${this.foo} + 1"}
+    assert seen == ["${foo} + 1"]
+    assert result == {"foo": 4, "bar": "${foo} + 1"}
 
 
 def test_function_call_without_resolving_output_does_not_apply_schema():
@@ -1160,7 +1117,7 @@ def test_function_call_without_resolving_output_does_not_apply_schema():
         "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "string"}},
     }
 
-    dct = {"foo": 4, "bar": {"__myraw__": "${this.foo} + 1"}}
+    dct = {"foo": 4, "bar": {"__myraw__": "${foo} + 1"}}
 
     seen = []
 
@@ -1174,9 +1131,9 @@ def test_function_call_without_resolving_output_does_not_apply_schema():
     result = resolve(dct, schema, functions={"myraw": function})
 
     # then
-    assert seen == ["${this.foo} + 1"]
+    assert seen == ["${foo} + 1"]
     # the result for "bar" is a string even though the schema expects an integer
-    assert result == {"foo": 4, "bar": "${this.foo} + 1"}
+    assert result == {"foo": 4, "bar": "${foo} + 1"}
 
 
 def test_function_call_is_given_chained_attribute_namespace():
@@ -1200,7 +1157,7 @@ def test_function_call_is_given_chained_attribute_namespace():
             "a": 1,
             "b": 7,
         },
-        "bar": {"__splice__": "this.foo"},
+        "bar": {"__splice__": "foo"},
     }
 
     def splice(args):
@@ -1211,28 +1168,3 @@ def test_function_call_is_given_chained_attribute_namespace():
 
     # then
     assert result["bar"] == {"a": 1, "b": 7}
-
-
-def test_function_call_can_use_external_variables_through_namespace():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {"type": "integer"},
-            "bar": {"type": "integer"},
-        },
-    }
-
-    dct = {"foo": 6, "bar": {"__add_one_to__": "ext.alpha"}}
-    external_variables = {"ext": {"alpha": 10, "beta": 20}}
-
-    def add_one_to(args):
-        return args.namespace._get_keypath(args.input) + 1
-
-    # when
-    result = resolve(
-        dct, schema, external_variables, functions={"add_one_to": add_one_to}
-    )
-
-    # then
-    assert result["bar"] == 11
