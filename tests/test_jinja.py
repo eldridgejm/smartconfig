@@ -37,3 +37,52 @@ def test_jinja_can_provide_function_in_context():
 
     # then
     assert result == "6"
+
+
+def test_jinja_with_custom_context_class():
+
+    def make_context_class(extras):
+        class MyContext(jinja2.runtime.Context):
+
+            def resolve_or_missing(self, key):
+                if key in extras:
+                    return extras[key]
+                else:
+                    result = super().resolve_or_missing(key)
+                    return result
+
+        return MyContext
+
+    # given
+    environment = jinja2.Environment()
+    environment.context_class = make_context_class({"foo": {"bar": "hello"}})
+    template = environment.from_string("{{ foo.bar }}")
+
+    # when
+    result = template.render()
+
+    # then
+    assert result == "hello"
+
+
+def test_jinja_range_function_is_available():
+    # given
+    template = jinja2.Template("{% for i in range(5) %}{{ i }}{% endfor %}")
+
+    # when
+    result = template.render()
+
+    # then
+    assert result == "01234"
+
+
+def test_jinja_prefers_template_variables_to_builtin_functions():
+    # given
+    template = jinja2.Template("{{ range }}")
+    context = {"range": "foo"}
+
+    # when
+    result = template.render(context)
+
+    # then
+    assert result == "foo"

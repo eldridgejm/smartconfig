@@ -94,17 +94,6 @@ class _ResolutionContext:
 _PENDING = object()
 
 
-class LazyValue:
-    def __init__(self, value):
-        self._value = value
-
-    def __str__(self):
-        return str(self._value.resolve())
-
-    def __getattr__(self, name: str, /) -> Any:
-        return getattr(self._value.resolve(), name)
-
-
 class _ConfigurationTreeNamespace(_types.Namespace):
     """A Namespace that allows for keypath access to a configuration tree."""
 
@@ -127,7 +116,7 @@ class _ConfigurationTreeNamespace(_types.Namespace):
         if isinstance(child, (_DictNode, _ListNode, dict, list)):
             return _ConfigurationTreeNamespace(child)
         elif isinstance(child, (_ValueNode, _FunctionNode)):
-            return LazyValue(child)
+            return child.resolve()
         else:
             raise TypeError(f"Unexpected child type: {type(child)}")
 
@@ -645,18 +634,23 @@ class _ValueNode(_Node):
         The interpolated string.
 
         """
-        template = jinja2.Template(
-            s, variable_start_string="${", variable_end_string="}"
+        root = self.root
+
+        class CustomContext(jinja2.runtime.Context):
+            def resolve_or_missing(self, key):
+                result = _ConfigurationTreeNamespace(root)[key]
+                return result
+
+        environment = jinja2.Environment(
+            variable_start_string="${", variable_end_string="}"
         )
 
-        if isinstance(self.root, _DictNode):
-            namespace = _ConfigurationTreeNamespace(self.root)
-            template_variables = {k: namespace[k] for k in self.root.children}
-        else:
-            template_variables = {}
+        environment.context_class = CustomContext
+
+        template = environment.from_string(s)
 
         try:
-            return template.render(template_variables)
+            return template.render()
         except jinja2.exceptions.UndefinedError as exc:
             raise ResolutionError(str(exc), self.keypath)
 

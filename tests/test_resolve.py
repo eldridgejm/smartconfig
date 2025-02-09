@@ -237,28 +237,6 @@ def test_chain_of_multiple_interpolations():
     assert result["baz"] == "now testing this"
 
 
-def test_interpolation_can_use_jinja_control_statements():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {"type": "list", "element_schema": {"type": "string"}},
-            "bar": {"type": "string"},
-        },
-    }
-
-    dct = {
-        "foo": ["this", "that", "the other"],
-        "bar": "{% for item in foo %}item: ${ item } {% endfor %}",
-    }
-
-    # when
-    result = resolve(dct, schema)
-
-    # then
-    assert result["bar"] == "item: this item: that item: the other "
-
-
 def test_raises_if_self_reference_detected():
     # given
     schema = {
@@ -299,6 +277,70 @@ def test_raises_if_cyclical_reference_detected():
         resolve(dct, schema)
 
 
+def test_interpolation_can_use_jinja_to_loop_over_list():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "list", "element_schema": {"type": "string"}},
+            "bar": {"type": "string"},
+        },
+    }
+
+    dct = {
+        "foo": ["this", "that", "the other"],
+        "bar": "{% for item in foo %}item: ${ item } {% endfor %}",
+    }
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["bar"] == "item: this item: that item: the other "
+
+def test_interpolation_can_use_jinja_to_loop_over_dict_keys():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "dict", "extra_keys_schema": {"type": "string"}},
+            "bar": {"type": "string"},
+        },
+    }
+
+    dct = {
+        "foo": {"this": "that", "the": "other"},
+        "bar": "{% for key in foo.keys() %}key: ${ key } {% endfor %}",
+    }
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["bar"] == "key: this key: the "
+
+
+def test_interpolation_can_use_jinja_to_loop_over_dict_keys_implicitly():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "dict", "extra_keys_schema": {"type": "string"}},
+            "bar": {"type": "string"},
+        },
+    }
+
+    dct = {
+        "foo": {"this": "that", "the": "other"},
+        "bar": "{% for key in foo %}key: ${ key } {% endfor %}",
+    }
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["bar"] == "key: this key: the "
+
 def test_can_use_jinja_methods():
     # given
     schema = {
@@ -322,7 +364,7 @@ def test_can_use_jinja_methods():
     assert result["bar"] == "testing THIS"
 
 
-def test_can_use_methods_on_float_values():
+def test_can_use_treat_floats_as_floats():
     # given
     schema = {
         "type": "dict",
@@ -333,7 +375,7 @@ def test_can_use_methods_on_float_values():
     }
 
     dct = {
-        "foo": 3.14,
+        "foo": 3.00,
         "bar": "testing ${foo + 4}",
     }
 
@@ -341,8 +383,8 @@ def test_can_use_methods_on_float_values():
     result = resolve(dct, schema)
 
     # then
-    assert result["foo"] == 3.14
-    assert result["bar"] == "testing 7.14"
+    assert result["foo"] == 3.0
+    assert result["bar"] == "testing 7.0"
 
 
 def test_interpolation_of_keys_with_dots():
