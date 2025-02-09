@@ -148,3 +148,4 @@ Additionally, `smartconfig` provides the following features to developers:
    ./concepts.rst
    ./schemas.rst
    ./resolve.rst
+   ./resolve_in_detail.rst

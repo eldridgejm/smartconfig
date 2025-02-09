@@ -41,10 +41,10 @@ import typing
 
 import jinja2
 
-from .exceptions import Error, ResolutionError
-from ._schemas import validate_schema as _validate_schema
-from .types import FunctionArgs, Function, Namespace, RawString, RecursiveString
 from . import parsers as _parsers, functions as _functions, types as _types
+from ._schemas import validate_schema as _validate_schema
+from .exceptions import Error, ResolutionError
+from .types import FunctionArgs, Function, Namespace, RawString, RecursiveString
 
 
 # defaults =============================================================================
@@ -93,8 +93,7 @@ class _ResolutionContext:
     functions: Mapping[str, "Function"]
 
 
-# denotes that a node is currently being resolved. Used for leaf and reference
-# nodes
+# denotes that a node is currently being resolved.
 _PENDING = object()
 
 
@@ -270,7 +269,7 @@ def _populate_optional_children(
             continue
 
         children[key] = _make_node(
-            value, key_schema, resolution_context, parent, keypath + (key,) 
+            value, key_schema, resolution_context, parent, keypath + (key,)
         )
 
 
@@ -379,19 +378,36 @@ class _DictNode(_Node):
         # example, to fill in default values.
 
         _populate_required_children(
-            children, dct, schema, resolution_context, node, keypath,
+            children,
+            dct,
+            schema,
+            resolution_context,
+            node,
+            keypath,
         )
         _populate_optional_children(
-            children, dct, schema, resolution_context, node, keypath,
+            children,
+            dct,
+            schema,
+            resolution_context,
+            node,
+            keypath,
         )
         _populate_extra_children(
-            children, dct, schema, resolution_context, node, keypath,
+            children,
+            dct,
+            schema,
+            resolution_context,
+            node,
+            keypath,
         )
 
         node.children = children
         return node
 
-    def __getitem__(self, key: str) -> Union[_ConfigurationTreeNamespace, _types.ConfigurationValue]:
+    def __getitem__(
+        self, key: str
+    ) -> Union[_ConfigurationTreeNamespace, _types.ConfigurationValue]:
         """Get a child node by key."""
         return self.children[key]
 
@@ -472,7 +488,9 @@ class _ListNode(_Node):
         node.children = children
         return node
 
-    def __getitem__(self, ix) -> Union[_ConfigurationTreeNamespace, _types.ConfigurationValue]:
+    def __getitem__(
+        self, ix
+    ) -> Union[_ConfigurationTreeNamespace, _types.ConfigurationValue]:
         return self.children[ix]
 
     def resolve(self) -> _types.ConfigurationList:
@@ -866,18 +884,30 @@ def _make_node(
         # check if this is a function call
         if _has_dunder_key(cfg):
             return _FunctionNode.from_configuration(
-                cfg, schema, keypath, resolution_context, parent=parent, 
+                cfg,
+                schema,
+                keypath,
+                resolution_context,
+                parent=parent,
             )
         return _DictNode.from_configuration(
             cfg, schema, keypath, resolution_context, parent=parent
         )
     elif isinstance(cfg, list):
         return _ListNode.from_configuration(
-            cfg, schema, keypath, resolution_context, parent=parent, 
+            cfg,
+            schema,
+            keypath,
+            resolution_context,
+            parent=parent,
         )
     else:
         return _ValueNode.from_configuration(
-            cfg, schema, keypath, resolution_context, parent=parent, 
+            cfg,
+            schema,
+            keypath,
+            resolution_context,
+            parent=parent,
         )
 
 
