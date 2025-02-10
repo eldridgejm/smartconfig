@@ -503,3 +503,40 @@ def test_splice_a_dictionary():
         "baz": {"a": 1, "b": 2},
         "foo": {"a": 1, "b": 2},
     }
+
+
+def test_splice_still_parses():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+            "foo": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "string"},
+                    "b": {"type": "string"},
+                },
+            },
+        },
+    }
+
+    dct = {
+        "baz": {"a": 1, "b": 2},
+        "foo": {"__splice__": "baz"},
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"splice": functions.splice})
+
+    # then
+    assert resolved == {
+        "baz": {"a": 1, "b": 2},
+        "foo": {"a": "1", "b": "2"},
+    }
