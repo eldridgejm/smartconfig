@@ -30,25 +30,7 @@ KeyPath = Tuple[str, ...]
 # namespaces ===========================================================================
 
 
-class Namespace:
-    """ABC for a namespace object.
 
-    A namespace acts like a dictionary that also supports access to the keys as
-    attributes.
-
-    """
-
-    @abc.abstractmethod
-    def __getitem__(self, key: Union[str, int]) -> Union["Namespace", Configuration]:
-        pass
-
-    @abc.abstractmethod
-    def __getattr__(self, key: Union[str, int]) -> Union["Namespace", Configuration]:
-        pass
-
-    @abc.abstractmethod
-    def _get_keypath(self, keypath: Union[KeyPath, str]) -> Configuration:
-        pass
 
 
 # functions ============================================================================
@@ -71,7 +53,7 @@ class FunctionArgs:
     """
 
     input: ConfigurationValue
-    namespace: Namespace
+    namespace: Any
     keypath: KeyPath
 
 

@@ -298,7 +298,7 @@ def test_interpolation_can_use_jinja_to_loop_over_list():
     # then
     assert result["bar"] == "item: this item: that item: the other "
 
-def test_interpolation_can_use_jinja_to_loop_over_dict_keys():
+def test_interpolation_can_use_jinja_to_loop_over_dict_keys_explicitly():
     # given
     schema = {
         "type": "dict",
@@ -310,14 +310,14 @@ def test_interpolation_can_use_jinja_to_loop_over_dict_keys():
 
     dct = {
         "foo": {"this": "that", "the": "other"},
-        "bar": "{% for key in foo.keys() %}key: ${ key } {% endfor %}",
+        "bar": "{% for key in foo.keys() | sort %}key: ${ key } {% endfor %}",
     }
 
     # when
     result = resolve(dct, schema)
 
     # then
-    assert result["bar"] == "key: this key: the "
+    assert result["bar"] == "key: the key: this "
 
 
 def test_interpolation_can_use_jinja_to_loop_over_dict_keys_implicitly():
@@ -332,14 +332,14 @@ def test_interpolation_can_use_jinja_to_loop_over_dict_keys_implicitly():
 
     dct = {
         "foo": {"this": "that", "the": "other"},
-        "bar": "{% for key in foo %}key: ${ key } {% endfor %}",
+        "bar": "{% for key in foo | sort %}key: ${ key } {% endfor %}",
     }
 
     # when
     result = resolve(dct, schema)
 
     # then
-    assert result["bar"] == "key: this key: the "
+    assert result["bar"] == "key: the key: this "
 
 def test_can_use_jinja_methods():
     # given
@@ -1203,7 +1203,7 @@ def test_function_call_is_given_chained_attribute_namespace():
     }
 
     def splice(args):
-        return args.namespace._get_keypath(args.input)
+        return args.namespace.get_keypath(args.input)
 
     # when
     result = resolve(dct, schema, functions={"splice": splice})

@@ -44,7 +44,7 @@ import jinja2
 from . import parsers as _parsers, functions as _functions, types as _types
 from ._schemas import validate_schema as _validate_schema
 from .exceptions import Error, ResolutionError
-from .types import FunctionArgs, Function, Namespace, RawString, RecursiveString
+from .types import FunctionArgs, Function, RawString, RecursiveString
 
 
 # defaults =============================================================================
@@ -94,67 +94,102 @@ class _ResolutionContext:
 _PENDING = object()
 
 
-class _ConfigurationTreeNamespace(_types.Namespace):
-    """A Namespace that allows for keypath access to a configuration tree."""
+class _LazyDict:
+    def __init__(self, dict_node: "_DictNode"):
+        self.dict_node = dict_node
 
-    def __init__(self, container: _types.ConfigurationContainer):
-        self.container = container
+    def __getitem__(self, key) -> Union["_LazyDict", "_LazyList", _types.Configuration]:
+        child = self.dict_node[key]
 
-    def __getitem__(self, key: Union[str, int]) -> Union[Namespace, Any]:
-        """Retrieves a child by key.
+        if isinstance(child, _FunctionNode):
+            child = child.evaluate().resolve()
 
-        If that child is a container, a new _ConfigurationTreeNamespace is returned.
-        However, if the child is a leaf node (either a value or a function),
-        the resolved value is returned.
-
-        """
-        if isinstance(self.container, (list, _ListNode)):
-            child = self.container[int(key)]
-        else:
-            child = self.container[str(key)]
-
-        if isinstance(child, (_DictNode, _ListNode, dict, list)):
-            return _ConfigurationTreeNamespace(child)
-        elif isinstance(child, (_ValueNode, _FunctionNode)):
+        if isinstance(child, _DictNode):
+            return _LazyDict(child)
+        elif isinstance(child, _ListNode):
+            return _LazyList(child)
+        elif isinstance(child, _ValueNode):
             return child.resolve()
-        else:
-            raise TypeError(f"Unexpected child type: {type(child)}")
 
-    def __getattr__(self, key):
-        """Allows accessing a child by attribute. Same behavior as __getitem__."""
-        return self[key]
+    def __len__(self):
+        return len(self.dict_node.children)
 
-    def _get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
-        """Follow a keypath to a part of the nested configuration.
+    def __iter__(self):
+        return iter(self.keys())
 
-        Unlike __getitem__, this method always returns a :type:`Configuration`.
-        This is true even if the keypath does not point to a leaf node, and
-        instead refers to a container. The container is resolved recursively
-        and returned.
+    def keys(self):
+        return self.dict_node.children.keys()
 
-        Parameters
-        ----------
-        keypath : Union[KeyPath, str]
-            The keypath to follow.
+    def values(self):
+        for key in self.keys():
+            yield self[key]
 
-        """
+    def resolve(self) -> _types.ConfigurationDict:
+        return self.dict_node.resolve()
+
+    def get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
         if isinstance(keypath, str):
             keypath = tuple(keypath.split("."))
 
-        if len(keypath) == 0:
-            if isinstance(
-                self.container, (_DictNode, _ListNode, _ValueNode, _FunctionNode)
-            ):
-                return self.container.resolve()
-            else:
-                return self.container
+        if len(keypath) == 1:
+            result = self[keypath[0]]
+            if isinstance(result, (_LazyDict, _LazyList)):
+                return result.resolve()
         else:
-            first, *rest = keypath
-            child = self[first]
-            if isinstance(child, Namespace):
-                return child._get_keypath(tuple(rest))
-            else:
-                return child
+            key, *rest_of_path = keypath
+
+            first = self[key]
+
+            if not isinstance(first, (_LazyDict, _LazyList)):
+                raise KeyError(key)
+
+            return first.get_keypath(tuple(rest_of_path))
+
+
+class _LazyList:
+    def __init__(self, list_node: "_ListNode"):
+        self.list_node = list_node
+
+    def __getitem__(self, ix) -> Union["_LazyDict", "_LazyList", _types.Configuration]:
+        child = self.list_node[ix]
+
+        if isinstance(child, _FunctionNode):
+            child = child.evaluate().resolve()
+
+        if isinstance(child, _DictNode):
+            return _LazyDict(child)
+        elif isinstance(child, _ListNode):
+            return _LazyList(child)
+        elif isinstance(child, _ValueNode):
+            return child.resolve()
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+    def __len__(self):
+        return len(self.list_node.children)
+
+    def resolve(self) -> _types.ConfigurationList:
+        return self.list_node.resolve()
+
+    def get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
+        if isinstance(keypath, str):
+            keypath = tuple(keypath.split("."))
+
+        if len(keypath) == 1:
+            result = self[int(keypath[0])]
+            if isinstance(result, (_LazyDict, _LazyList)):
+                return result.resolve()
+        else:
+            first, *rest_of_path = keypath
+
+            first = self[int(first)]
+
+            if not isinstance(first, (_LazyDict, _LazyList)):
+                raise KeyError(first)
+
+            return first.get_keypath(tuple(rest_of_path))
 
 
 # node types ===========================================================================
@@ -201,6 +236,11 @@ class _Node(abc.ABC):
             else:
                 self._root = self.parent.root
         return self._root
+
+    @abc.abstractmethod
+    def resolve(self) -> _types.Configuration:
+        """Recursively resolve the node into a configuration."""
+        ...
 
 
 # dict nodes ---------------------------------------------------------------------------
@@ -402,9 +442,7 @@ class _DictNode(_Node):
         node.children = children
         return node
 
-    def __getitem__(
-        self, key: str
-    ) -> Union[_ConfigurationTreeNamespace, _types.ConfigurationValue]:
+    def __getitem__(self, key: str) -> _Node:
         """Get a child node by key."""
         return self.children[key]
 
@@ -485,9 +523,7 @@ class _ListNode(_Node):
         node.children = children
         return node
 
-    def __getitem__(
-        self, ix
-    ) -> Union[_ConfigurationTreeNamespace, _types.ConfigurationValue]:
+    def __getitem__(self, ix) -> _Node:
         return self.children[ix]
 
     def resolve(self) -> _types.ConfigurationList:
@@ -634,12 +670,11 @@ class _ValueNode(_Node):
         The interpolated string.
 
         """
-        root = self.root
+        root = _LazyDict(self.root)
 
         class CustomContext(jinja2.runtime.Context):
             def resolve_or_missing(self, key):
-                result = _ConfigurationTreeNamespace(root)[key]
-                return result
+                return root[key]
 
         environment = jinja2.Environment(
             variable_start_string="${", variable_end_string="}"
@@ -806,7 +841,7 @@ class _FunctionNode(_Node):
 
         args = FunctionArgs(
             input,
-            _ConfigurationTreeNamespace(self.root),
+            _LazyDict(self.root),
             self.keypath,
         )
 
