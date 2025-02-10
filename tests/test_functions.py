@@ -78,9 +78,7 @@ def test_raw_with_a_non_string_raises():
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(
-            dct, schema, functions={"raw": functions.raw}
-        )
+        resolve(dct, schema, functions={"raw": functions.raw})
 
     assert "Input to 'raw' must be a string." in str(exc.value)
 
@@ -465,3 +463,43 @@ def test_concatenate_raises_if_input_is_not_a_list_of_lists():
         resolve(dct, schema, functions={"concatenate": functions.concatenate})
 
     assert "Input to 'concatenate' must be a list of lists." in str(exc.value)
+
+
+# splice ===============================================================================
+
+
+def test_splice_a_dictionary():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+            "foo": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    dct = {
+        "baz": {"a": 1, "b": 2},
+        "foo": {"__splice__": "baz"},
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"splice": functions.splice})
+
+    # then
+    assert resolved == {
+        "baz": {"a": 1, "b": 2},
+        "foo": {"a": 1, "b": 2},
+    }
