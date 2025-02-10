@@ -94,6 +94,34 @@ class _ResolutionContext:
 _PENDING = object()
 
 
+def _get_keypath(
+    container: Union["_LazyDict", "_LazyList"],
+    keypath: Union[_types.KeyPath, str],
+    cast_key: Optional[Callable[[str], Any]] = None,
+) -> _types.Configuration:
+    if cast_key is None:
+        cast_key = lambda x: x
+
+    if isinstance(keypath, str):
+        keypath = tuple(keypath.split("."))
+
+    if len(keypath) == 1:
+        result = container[cast_key(keypath[0])]
+        if isinstance(result, (_LazyDict, _LazyList)):
+            return result.resolve()
+        else:
+            return result
+    else:
+        first, *rest_of_path = keypath
+
+        first = container[cast_key(first)]
+
+        if not isinstance(first, (_LazyDict, _LazyList)):
+            raise KeyError(first)
+
+        return first.get_keypath(tuple(rest_of_path))
+
+
 class _LazyDict:
     def __init__(self, dict_node: "_DictNode"):
         self.dict_node = dict_node
@@ -128,22 +156,7 @@ class _LazyDict:
         return self.dict_node.resolve()
 
     def get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
-        if isinstance(keypath, str):
-            keypath = tuple(keypath.split("."))
-
-        if len(keypath) == 1:
-            result = self[keypath[0]]
-            if isinstance(result, (_LazyDict, _LazyList)):
-                return result.resolve()
-        else:
-            key, *rest_of_path = keypath
-
-            first = self[key]
-
-            if not isinstance(first, (_LazyDict, _LazyList)):
-                raise KeyError(key)
-
-            return first.get_keypath(tuple(rest_of_path))
+        return _get_keypath(self, keypath, str)
 
 
 class _LazyList:
@@ -174,22 +187,7 @@ class _LazyList:
         return self.list_node.resolve()
 
     def get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
-        if isinstance(keypath, str):
-            keypath = tuple(keypath.split("."))
-
-        if len(keypath) == 1:
-            result = self[int(keypath[0])]
-            if isinstance(result, (_LazyDict, _LazyList)):
-                return result.resolve()
-        else:
-            first, *rest_of_path = keypath
-
-            first = self[int(first)]
-
-            if not isinstance(first, (_LazyDict, _LazyList)):
-                raise KeyError(first)
-
-            return first.get_keypath(tuple(rest_of_path))
+        return _get_keypath(self, keypath, int)
 
 
 # node types ===========================================================================
@@ -670,17 +668,31 @@ class _ValueNode(_Node):
         The interpolated string.
 
         """
-        root = _LazyDict(self.root)
-
-        class CustomContext(jinja2.runtime.Context):
-            def resolve_or_missing(self, key):
-                return root[key]
-
         environment = jinja2.Environment(
             variable_start_string="${", variable_end_string="}"
         )
 
-        environment.context_class = CustomContext
+        # only if the root is a dictionary do we set up a context for
+        # performing string interpolation
+        if isinstance(self.root, _DictNode):
+            root = _LazyDict(self.root)
+
+            class CustomContext(jinja2.runtime.Context):
+                def resolve_or_missing(self, key):
+                    return root[key]
+
+            environment.context_class = CustomContext
+
+        if isinstance(self.root, (_DictNode, _ListNode)):
+            if isinstance(self.root, _DictNode):
+                root = _LazyDict(self.root)
+            else:
+                root = _LazyList(self.root)
+
+            def get_keypath(keypath):
+                return _get_keypath(root, keypath)
+
+            environment.filters["get_keypath"] = get_keypath
 
         template = environment.from_string(s)
 

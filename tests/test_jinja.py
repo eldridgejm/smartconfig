@@ -86,3 +86,35 @@ def test_jinja_prefers_template_variables_to_builtin_functions():
 
     # then
     assert result == "foo"
+
+
+def test_jinja_custom_filter():
+    # given
+    def reverse(value):
+        return value[::-1]
+
+    environment = jinja2.Environment()
+    environment.filters["reverse"] = reverse
+    template = environment.from_string("{{ 'hello' | reverse }}")
+
+    # when
+    result = template.render()
+
+    # then
+    assert result == "olleh"
+
+
+def test_jinja_tuple_in_string_interpolation_with_custom_filter():
+    # given
+    def reverse(value):
+        return value[::-1]
+
+    environment = jinja2.Environment()
+    environment.filters["reverse"] = reverse
+    template = environment.from_string("{{ (1, 2) | reverse }}")
+
+    # when
+    result = template.render()
+
+    # then
+    assert result == "(2, 1)"

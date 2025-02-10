@@ -298,6 +298,7 @@ def test_interpolation_can_use_jinja_to_loop_over_list():
     # then
     assert result["bar"] == "item: this item: that item: the other "
 
+
 def test_interpolation_can_use_jinja_to_loop_over_dict_keys_explicitly():
     # given
     schema = {
@@ -340,6 +341,7 @@ def test_interpolation_can_use_jinja_to_loop_over_dict_keys_implicitly():
 
     # then
     assert result["bar"] == "key: the key: this "
+
 
 def test_can_use_jinja_methods():
     # given
@@ -1092,7 +1094,7 @@ def test_function_call_other_nodes_can_reference_keys_within_dict_computed_by_fu
 
     dct = {"foo": "${baz.alpha} * 3", "baz": {"__make_numbers__": {}}}
 
-    def make_numbers(args):
+    def make_numbers(_):
         return {"alpha": "6 + 4", "beta": 20}
 
     # when
@@ -1178,7 +1180,7 @@ def test_function_call_without_resolving_output_does_not_apply_schema():
     assert result == {"foo": 4, "bar": "${foo} + 1"}
 
 
-def test_function_call_is_given_chained_attribute_namespace():
+def test_function_call_is_given_root_as_lazy_dict_or_list():
     # given
     schema = {
         "type": "dict",
@@ -1210,3 +1212,109 @@ def test_function_call_is_given_chained_attribute_namespace():
 
     # then
     assert result["bar"] == {"a": 1, "b": 7}
+
+
+def test_get_keypath_filter_with_top_level_dictionary():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {"foo": 42, "bar": "${ 'foo' | get_keypath }"}
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["bar"] == 42
+
+
+def test_get_keypath_filter_with_nested_dictionary():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {
+                "type": "dict",
+                "required_keys": {
+                    "bar": {"type": "integer"},
+                },
+            },
+            "baz": {"type": "integer"},
+        },
+    }
+
+    dct = {"foo": {"bar": 42}, "baz": "${ 'foo.bar' | get_keypath }"}
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["baz"] == 42
+
+
+def test_get_keypath_filter_with_top_level_list():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    lst = [1, 2, 3, "${ (1,) | get_keypath }"]
+
+    # when
+    result = resolve(lst, schema)
+
+    # then
+    assert result == [1, 2, 3, 2]
+
+
+def test_get_keypath_filter_with_nested_list():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {
+                "type": "list",
+                "element_schema": {"type": "integer"},
+            },
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {"foo": [1, 2, 3], "bar": "${ 'foo.1' | get_keypath }"}
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["bar"] == 2
+
+
+def test_get_keypath_filter_with_double_nested_list():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {
+                "type": "list",
+                "element_schema": {
+                    "type": "list",
+                    "element_schema": {"type": "integer"},
+                },
+            },
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {"foo": [[1, 2, 3], [4, 5, 6]], "bar": "${ 'foo.1.1' | get_keypath }"}
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["bar"] == 5
