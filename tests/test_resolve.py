@@ -364,7 +364,7 @@ def test_can_use_jinja_methods():
     assert result["bar"] == "testing THIS"
 
 
-def test_can_use_treat_floats_as_floats():
+def test_can_treat_floats_as_floats():
     # given
     schema = {
         "type": "dict",
