@@ -366,6 +366,25 @@ def test_can_use_jinja_methods():
     assert result["bar"] == "testing THIS"
 
 
+def test_can_use_builtin_jinja_function_range():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "string"}},
+    }
+
+    dct = {
+        "foo": 3,
+        "bar": "{% for i in range(foo) %}${ i }{% endfor %}",
+    }
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["bar"] == "012"
+
+
 def test_can_treat_floats_as_floats():
     # given
     schema = {
@@ -1205,7 +1224,7 @@ def test_function_call_is_given_root_as_lazy_dict_or_list():
     }
 
     def splice(args):
-        return args.namespace.get_keypath(args.input)
+        return args.root.get_keypath(args.input)
 
     # when
     result = resolve(dct, schema, functions={"splice": splice})
@@ -1214,7 +1233,7 @@ def test_function_call_is_given_root_as_lazy_dict_or_list():
     assert result["bar"] == {"a": 1, "b": 7}
 
 
-def test_get_keypath_filter_with_top_level_dictionary():
+def test_function_call_at_root_with_result_producing_references():
     # given
     schema = {
         "type": "dict",
@@ -1224,23 +1243,69 @@ def test_get_keypath_filter_with_top_level_dictionary():
         },
     }
 
-    dct = {"foo": 42, "bar": "${ 'foo' | get_keypath }"}
+    def myfun(arg):
+        return {"foo": 10, "bar": "${foo}"}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve({"__myfun__": {}}, schema, functions={"myfun": myfun})
 
     # then
-    assert result["bar"] == 42
+    assert result == {"foo": 10, "bar": 10}
 
 
-def test_get_keypath_filter_with_nested_dictionary():
+def test_function_call_at_root_producing_key_shadowing_builtin():
+    # the function call produces a `range` key which shadows the builtin `range`
     # given
     schema = {
         "type": "dict",
         "required_keys": {
-            "foo": {
+            "foo": {"type": "integer"},
+            "range": {"type": "integer"},
+        },
+    }
+
+    def myfun(arg):
+        return {"foo": 10, "range": 20}
+
+    # when
+    result = resolve({"__myfun__": {}}, schema, functions={"myfun": myfun})
+
+    # then
+    assert result == {"foo": 10, "range": 20}
+
+
+def test_function_call_at_root_does_not_produce_key_shadowing_builtin():
+    # the function call does not produce range, so smartconfig drops back to the
+    # builtin range
+
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+        },
+    }
+
+    def myfun(arg):
+        return {"foo": "${range(10) | length}"}
+
+    # when
+    result = resolve({"__myfun__": {}}, schema, functions={"myfun": myfun})
+
+    # then
+    assert result == {"foo": 10}
+
+
+def test_get_root_with_dictionary_returned_by_function_node():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {
                 "type": "dict",
                 "required_keys": {
+                    "foo": {"type": "integer"},
                     "bar": {"type": "integer"},
                 },
             },
@@ -1248,23 +1313,49 @@ def test_get_keypath_filter_with_nested_dictionary():
         },
     }
 
-    dct = {"foo": {"bar": 42}, "baz": "${ 'foo.bar' | get_keypath }"}
+    dct = {
+        "foo": 42,
+        "bar": {"__make_dict__": {}},
+        "baz": "${ get_root().bar.foo }",
+    }
+
+    def make_dict(_):
+        return {"foo": 10, "bar": 20}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(dct, schema, functions={"make_dict": make_dict})
 
     # then
-    assert result["baz"] == 42
+    assert result == {"foo": 42, "bar": {"foo": 10, "bar": 20}, "baz": 10}
 
 
-def test_get_keypath_filter_with_top_level_list():
+def test_get_root_with_function_at_root_level_returning_a_list():
     # given
     schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    lst = [1, 2, 3, "${ (1,) | get_keypath }"]
+    dct = {"__make_list__": {}}
+
+    def make_list(_):
+        return [1, 2, 3, "${ get_root().1 }"]
+
+    # when
+    result = resolve(dct, schema, functions={"make_list": make_list})
+
+    # then
+    assert result == [1, 2, 3, 2]
+
+
+def test_get_root_with_top_level_list():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    lst = [1, 2, 3, "${ get_root().1 }"]
 
     # when
     result = resolve(lst, schema)
@@ -1273,48 +1364,20 @@ def test_get_keypath_filter_with_top_level_list():
     assert result == [1, 2, 3, 2]
 
 
-def test_get_keypath_filter_with_nested_list():
+def test_get_root_with_top_level_dict():
     # given
     schema = {
         "type": "dict",
         "required_keys": {
-            "foo": {
-                "type": "list",
-                "element_schema": {"type": "integer"},
-            },
+            "foo": {"type": "integer"},
             "bar": {"type": "integer"},
         },
     }
 
-    dct = {"foo": [1, 2, 3], "bar": "${ 'foo.1' | get_keypath }"}
+    dct = {"foo": 42, "bar": "${ get_root().keys() | length }"}
 
     # when
     result = resolve(dct, schema)
 
     # then
     assert result["bar"] == 2
-
-
-def test_get_keypath_filter_with_double_nested_list():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {
-                "type": "list",
-                "element_schema": {
-                    "type": "list",
-                    "element_schema": {"type": "integer"},
-                },
-            },
-            "bar": {"type": "integer"},
-        },
-    }
-
-    dct = {"foo": [[1, 2, 3], [4, 5, 6]], "bar": "${ 'foo.1.1' | get_keypath }"}
-
-    # when
-    result = resolve(dct, schema)
-
-    # then
-    assert result["bar"] == 5

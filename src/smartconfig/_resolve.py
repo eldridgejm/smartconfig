@@ -3,6 +3,9 @@
 Implementation
 ==============
 
+Configuration Graph
+-------------------
+
 In the documentation, it is described how a configuration can be conceptualized
 as a directed graph, and how resolution is a process of traversing this graph.
 This module works by building a concrete representation of this graph and
@@ -22,6 +25,11 @@ to represent it. This function is called with the whole configuration to create
 the root node, and is also called by the container node classes to create their
 children. _make_node is also responsible for detecting when a dictionary
 represents a function call and creating a _FunctionNode in that case.
+
+Jinja2 Interpolation
+--------------------
+
+We use a custom context class for Jinja2 interpolation.
 
 """
 
@@ -93,9 +101,17 @@ class _ResolutionContext:
 # denotes that a node is currently being resolved.
 _PENDING = object()
 
+# lazy containers ======================================================================
+#
+# These lazy containers are used to represent the unresolved parts of the
+# configuration during resolution. They are passed to Jinja as template
+# variables available during string interpolation. Accessing an element in a
+# lazy container triggers the resolution of that element if it is a function
+# node or a value node. Otherwise, it returns another lazy container.
+
 
 def _get_keypath(
-    container: Union["_LazyDict", "_LazyList"],
+    container: Union["_LazyDict", "_LazyList", "_LazyFunctionCall"],
     keypath: Union[_types.KeyPath, str],
     cast_key: Optional[Callable[[str], Any]] = None,
 ) -> _types.Configuration:
@@ -122,14 +138,16 @@ def _get_keypath(
         return first.get_keypath(tuple(rest_of_path))
 
 
-class _LazyDict:
+class _LazyDict(_types.LazyDict):
+    """Implements LazyDict using a _DictNode as the backing data structure."""
+
     def __init__(self, dict_node: "_DictNode"):
         self.dict_node = dict_node
 
     def __getitem__(self, key) -> Union["_LazyDict", "_LazyList", _types.Configuration]:
         child = self.dict_node[key]
 
-        if isinstance(child, _FunctionNode):
+        if isinstance(child, _FunctionCallNode):
             child = child.evaluate().resolve()
 
         if isinstance(child, _DictNode):
@@ -159,14 +177,19 @@ class _LazyDict:
         return _get_keypath(self, keypath, str)
 
 
-class _LazyList:
+class _LazyList(_types.LazyList):
+    """Implements LazyList using a _ListNode as the backing data structure."""
+
     def __init__(self, list_node: "_ListNode"):
         self.list_node = list_node
 
     def __getitem__(self, ix) -> Union["_LazyDict", "_LazyList", _types.Configuration]:
+        if ix not in range(len(self)):
+            raise IndexError(ix)
+
         child = self.list_node[ix]
 
-        if isinstance(child, _FunctionNode):
+        if isinstance(child, _FunctionCallNode):
             child = child.evaluate().resolve()
 
         if isinstance(child, _DictNode):
@@ -188,6 +211,42 @@ class _LazyList:
 
     def get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
         return _get_keypath(self, keypath, int)
+
+
+class _LazyFunctionCall(_types.LazyFunctionCall):
+    """Implements LazyFunction using a _FunctionNode as the backing data structure."""
+
+    def __init__(self, function_node: "_FunctionCallNode"):
+        self.function_node = function_node
+
+    def resolve(self):
+        return self.function_node.evaluate().resolve()
+
+    def get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
+        node = self.function_node.evaluate()
+        if isinstance(node, _DictNode):
+            return _LazyDict(node).get_keypath(keypath)
+        elif isinstance(node, _ListNode):
+            return _LazyList(node).get_keypath(keypath)
+
+    def __getitem__(self, key) -> Union["_LazyDict", "_LazyList", _types.Configuration]:
+        node = self.function_node.evaluate()
+        if isinstance(node, _DictNode):
+            return _LazyDict(node)[key]
+        elif isinstance(node, _ListNode):
+            return _LazyList(node)[key]
+
+
+def _make_lazy(
+    node: Union["_DictNode", "_ListNode", "_FunctionCallNode"],
+) -> Union[_LazyDict, _LazyList, _LazyFunctionCall]:
+    """Create a lazy container from a node."""
+    if isinstance(node, _DictNode):
+        return _LazyDict(node)
+    elif isinstance(node, _ListNode):
+        return _LazyList(node)
+    elif isinstance(node, _FunctionCallNode):
+        return _LazyFunctionCall(node)
 
 
 # node types ===========================================================================
@@ -448,7 +507,7 @@ class _DictNode(_Node):
         """Recursively resolve the DictNode into a configuration dictionary."""
         # first, we evaluate all function nodes contained in the dictionary
         for key, child_node in self.children.items():
-            if isinstance(child_node, _FunctionNode):
+            if isinstance(child_node, _FunctionCallNode):
                 self.children[key] = child_node.evaluate()
 
         result = {}
@@ -528,7 +587,7 @@ class _ListNode(_Node):
         """Recursively resolve the ListNode into a list."""
         # first, we evaluate all function nodes contained in the list
         for i, child_node in enumerate(self.children):
-            if isinstance(child_node, _FunctionNode):
+            if isinstance(child_node, _FunctionCallNode):
                 self.children[i] = child_node.evaluate()
 
         result = []
@@ -672,32 +731,29 @@ class _ValueNode(_Node):
             variable_start_string="${", variable_end_string="}"
         )
 
-        # only if the root is a dictionary do we set up a context for
-        # performing string interpolation
-        if isinstance(self.root, _DictNode):
-            root = _LazyDict(self.root)
+        template_variables = {}
+
+        if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
+            root = _make_lazy(self.root)
 
             class CustomContext(jinja2.runtime.Context):
                 def resolve_or_missing(self, key):
-                    return root[key]
+                    try:
+                        return root[key]
+                    except (KeyError, IndexError):
+                        return super().resolve_or_missing(key)
 
             environment.context_class = CustomContext
 
-        if isinstance(self.root, (_DictNode, _ListNode)):
-            if isinstance(self.root, _DictNode):
-                root = _LazyDict(self.root)
-            else:
-                root = _LazyList(self.root)
+            def get_root():
+                return root
 
-            def get_keypath(keypath):
-                return _get_keypath(root, keypath)
-
-            environment.filters["get_keypath"] = get_keypath
+            template_variables["get_root"] = get_root
 
         template = environment.from_string(s)
 
         try:
-            return template.render()
+            return template.render(template_variables)
         except jinja2.exceptions.UndefinedError as exc:
             raise ResolutionError(str(exc), self.keypath)
 
@@ -783,7 +839,7 @@ def _has_dunder_key(dct: _types.ConfigurationDict) -> bool:
     return any(_is_dunder(key) for key in dct.keys())
 
 
-class _FunctionNode(_Node):
+class _FunctionCallNode(_Node):
     def __init__(
         self,
         keypath: _types.KeyPath,
@@ -808,7 +864,7 @@ class _FunctionNode(_Node):
         keypath: _types.KeyPath,
         resolution_context: _ResolutionContext,
         parent: Optional[_Node] = None,
-    ) -> "_FunctionNode":
+    ) -> "_FunctionCallNode":
         try:
             function_name = _check_for_function_call(dct)
         except ValueError as exc:
@@ -851,9 +907,14 @@ class _FunctionNode(_Node):
         else:
             input = self.input
 
+        if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
+            root = _make_lazy(self.root)
+        else:
+            root = None
+
         args = FunctionArgs(
             input,
-            _LazyDict(self.root),
+            root,
             self.keypath,
         )
 
@@ -868,7 +929,7 @@ class _FunctionNode(_Node):
             keypath=self.keypath,
         )
 
-    def resolve(self) -> _types.ConfigurationValue:
+    def resolve(self) -> _types.Configuration:
         """Evaluate the function node and return the result."""
         return self.evaluate().resolve()
 
@@ -928,7 +989,7 @@ def _make_node(
     if isinstance(cfg, dict):
         # check if this is a function call
         if _has_dunder_key(cfg):
-            return _FunctionNode.from_configuration(
+            return _FunctionCallNode.from_configuration(
                 cfg,
                 schema,
                 keypath,
@@ -1034,6 +1095,9 @@ def resolve(
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
     functions=None,
+    parsers=None,
+    interpolation_variables=None,
+    interpolation_filters=None,
 ) -> _types.Configuration:
     """Resolve a raw configuration by interpolating and parsing its entries.
 

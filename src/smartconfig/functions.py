@@ -25,7 +25,7 @@ def splice(args: FunctionArgs):
 
     """
     try:
-        return args.namespace.get_keypath(args.input)
+        return args.root.get_keypath(args.input)
     except KeyError:
         raise ResolutionError(f"Keypath '{args.input}' does not exist.", args.keypath)
 
