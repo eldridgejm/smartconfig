@@ -1,35 +1,132 @@
 """Provides the resolve() function for resolving raw configurations.
 
-Implementation
+This section describes the implementation of the resolve() function. For higher-level
+notes, see the documentation.
+
+Approach
+========
+
+In the documentation, it is described how a configuration can be conceptualized as a
+directed "configuration graph", and how resolution is a depth-first search on this
+graph. This module works by building a concrete representation of the configuration
+graph and performing that traversal.
+
+Each node in the graph is represented by one of four node classes: _DictNode, _ListNode,
+_ValueNode, and _FunctionCallNode. Each has a .resolve() method that recursively
+resolves the node and its children. Each node also has a corresponding
+.from_configuration() method that constructs the node from a configuration of the
+appropriate type -- e.g., _DictNode.from_configuration() builds a _DictNode from a
+dictionary, _ListNode.from_configuration() builds a _ListNode from a list, etc.
+
+The creation of the tree is orchestrated by the _make_node() function, whose job is to
+take an arbitrary configuration and determine which node class to use to represent it.
+This function is called with the whole configuration to create the root node, and is
+also called by the container node classes to create their children. _make_node is also
+responsible for detecting when a dictionary represents a function call and creating a
+_FunctionCallNode in that case.
+
+The main function, resolve(), is a thin wrapper around the root node's .resolve()
+method. It constructs the root node using _make_node, calls .resolve() on it, and
+returns the result.
+
+String Interpolation with Jinja2
+================================
+
+String interpolation (like in "${foo.bar}") is delegated to Jinja2. During the
+resolution of a _ValueNode representing a string, the string is passed to Jinja2 for
+interpolation. Other parts of the configuration tree are made available to Jinja2 as
+template variables. Typically, this is done by passing a dictionary to Jinja2's render()
+method. However, we cannot pass the fully-resolved configuration tree at the time of
+interpolation, because it hasn't been fully resolved at that point. Instead, the root of
+the configuration tree is passed as a nested "lazy" collection -- either a _LazyDict,
+_LazyList, or _LazyFunctionCall. When an element of a lazy collection is accessed, the
+resolution process is triggered for that element if it is a function node or a value
+node. Otherwise, another lazy collection is returned.
+
+Worked Example
 ==============
 
-Configuration Graph
--------------------
+Consider the configuration:
 
-In the documentation, it is described how a configuration can be conceptualized
-as a directed graph, and how resolution is a process of traversing this graph.
-This module works by building a concrete representation of this graph and
-performing that traversal.
+    .. code:: python
 
-Each node in the graph is represented by one of four node classes: _DictNode,
-_ListNode, _ValueNode, and _FunctionNode. Each node has a .resolve() method that
-recursively resolves the node and its successors. Each node also has a
-corresponding .from_configuration() method that constructs the node from a
-configuration of the appropriate type (e.g., _DictNode.from_configuration() builds
-a _DictNode from a dictionary, _ListNode.from_configuration() builds a _ListNode
-from a list, etc.).
+        {
+            "foo": "${bar.baz} + 1",
+            "bar": {
+                "baz": 42
+            }
+        }
 
-The creation of the tree is orchestrated by the _make_node() function, whose
-job is to take an arbitrary configuration and determine which node class to use
-to represent it. This function is called with the whole configuration to create
-the root node, and is also called by the container node classes to create their
-children. _make_node is also responsible for detecting when a dictionary
-represents a function call and creating a _FunctionNode in that case.
+With schema:
 
-Jinja2 Interpolation
---------------------
+    .. code:: python
 
-We use a custom context class for Jinja2 interpolation.
+        {
+            "type": "dict",
+            "required_keys": {
+                "foo": {"type": "integer"},
+                "bar": {
+                    "type": "dict",
+                    "required_keys": {
+                        "baz": {"type": "integer"}
+                    }
+                }
+        }
+
+When resolve() is called on this configuration, the following major steps occur:
+
+    1. resolve() calls _make_node() to create the root node, a _DictNode. _make_node()
+       delegates this to _DictNode.from_configuration(). This class method creates the
+       children of the node, calling _make_node() on each child. The process continues
+       recursively, and at the end the root node will contain two children: a _ValueNode
+       representing the "${bar.baz}" string and a _DictNode representing the "bar"
+       dictionary. This _DictNode has one child: a _ValueNode representing the number
+       42.
+
+    2. resolve() calls .resolve() on the root node. Because the root node is a
+       _DictNode, resolving it amounts to calling the .resolve() method on each of its
+       children. Suppose the "foo" child is first.
+
+    3. Because the "foo" child is a _ValueNode representing a string, its .resolve()
+       method begins by interpolating the string using Jinja2. Before interpolation, the
+       Jinja2 environment is set up to allow access to the root of the configuration
+       tree. More precisely, because the root node is a _DictNode, an instance of
+       _LazyDict is created wrapping the root node. A custom Jinja2 context class is
+       made by overriding the resolve_or_missing() method to look up keys in the
+       _LazyDict first, and then fall back to the default behavior of searching the
+       template variables.
+
+    4. Jinja2 begins interpolating the string. It sees the reference to ${bar.baz} and
+       looks up "bar" in the context. The overridden resolve_or_missing() method first
+       attempts to get the "bar" key from the _LazyDict. The _LazyDict recognizes the
+       key as a reference to a child node of type _DictNode, and so it returns a new
+       _LazyDict wrapping the child node. Jinja2 next looks up "baz" in this new
+       _LazyDict. This time, the _LazyDict recognizes the key as a reference to a child
+       _ValueNode, and so it triggers the resolution of the child node by calling
+       its .resolve() method. Interpolation of the string pauses momentarily while the
+       child node is resolved.
+
+    5. When .resolve() is called on the _ValueNode representing the number 42,
+       interpolation is skipped since the contained value is not a string. The schema
+       expects this value to be an integer, so the arithmetic parser is called on the
+       value, and the result (42) is returned.
+
+    6. Jinja resumes interpolating the string, replacing ${bar.baz} with the resolved
+       value of 42. The string is now "42 + 1".
+
+    7. The schema expects the value of "foo" to be an integer, so the arithmetic parser
+       is called on the string "42 + 1", and the result (43) is returned. This is the
+       resolved value of the "foo" key.
+
+    8. Now that "foo" has been resolved, the code backtracks to the _DictNode's
+       .resolve() method, which then attempts to resolve the "bar" child. This is a
+       _DictNode, so its .resolve() method is called. This call attempts to resolve its
+       only child, the _ValueNode representing the number 42. This node was already
+       resolved during the resolution of "foo", and the resolved value is returned.
+
+    9. The _DictNode representing "bar" is now fully resolved, and the _DictNode
+       representing the root of the configuration tree is also fully resolved. The
+       resolved configuration is returned from resolve().
 
 """
 
@@ -78,6 +175,25 @@ DEFAULT_FUNCTIONS = {
 }
 
 
+def default_template_variables_factory(
+    root: Union["_LazyDict", "_LazyList", "_LazyFunctionCall", None],
+):
+    """Create a template variables dictionary for Jinja2 interpolation.
+
+    Parameters
+    ----------
+    root : Union[_LazyDict, _LazyList, _LazyFunctionCall]
+        The root of the configuration tree.
+
+    Returns
+    -------
+    Mapping[str, Any]
+        A dictionary of template variables.
+
+    """
+    return {"get_root": lambda: root}
+
+
 # basic types ==========================================================================
 
 
@@ -98,44 +214,17 @@ class _ResolutionContext:
     functions: Mapping[str, "Function"]
 
 
-# denotes that a node is currently being resolved.
+# sentinel object denoting that a node is currently being resolved
 _PENDING = object()
 
 # lazy containers ======================================================================
 #
-# These lazy containers are used to represent the unresolved parts of the
-# configuration during resolution. They are passed to Jinja as template
-# variables available during string interpolation. Accessing an element in a
-# lazy container triggers the resolution of that element if it is a function
-# node or a value node. Otherwise, it returns another lazy container.
-
-
-def _get_keypath(
-    container: Union["_LazyDict", "_LazyList", "_LazyFunctionCall"],
-    keypath: Union[_types.KeyPath, str],
-    cast_key: Optional[Callable[[str], Any]] = None,
-) -> _types.Configuration:
-    if cast_key is None:
-        cast_key = lambda x: x
-
-    if isinstance(keypath, str):
-        keypath = tuple(keypath.split("."))
-
-    if len(keypath) == 1:
-        result = container[cast_key(keypath[0])]
-        if isinstance(result, (_LazyDict, _LazyList)):
-            return result.resolve()
-        else:
-            return result
-    else:
-        first, *rest_of_path = keypath
-
-        first = container[cast_key(first)]
-
-        if not isinstance(first, (_LazyDict, _LazyList)):
-            raise KeyError(first)
-
-        return first.get_keypath(tuple(rest_of_path))
+# These lazy containers are used to represent the unresolved parts of the configuration
+# during resolution. They are passed to Jinja as template variables available during
+# string interpolation, and they are provided to functions as part of their input so
+# that they can reference other parts of the configuration as well. Accessing an element
+# in a lazy container triggers the resolution of that element if it is a function node
+# or a value node. Otherwise, it returns another lazy container.
 
 
 class _LazyDict(_types.LazyDict):
@@ -237,7 +326,7 @@ class _LazyFunctionCall(_types.LazyFunctionCall):
             return _LazyList(node)[key]
 
 
-def _make_lazy(
+def _make_lazy_container(
     node: Union["_DictNode", "_ListNode", "_FunctionCallNode"],
 ) -> Union[_LazyDict, _LazyList, _LazyFunctionCall]:
     """Create a lazy container from a node."""
@@ -247,6 +336,34 @@ def _make_lazy(
         return _LazyList(node)
     elif isinstance(node, _FunctionCallNode):
         return _LazyFunctionCall(node)
+
+
+def _get_keypath(
+    container: Union["_LazyDict", "_LazyList", "_LazyFunctionCall"],
+    keypath: Union[_types.KeyPath, str],
+    cast_key: Optional[Callable[[str], Any]] = None,
+) -> _types.Configuration:
+    if cast_key is None:
+        cast_key = lambda x: x
+
+    if isinstance(keypath, str):
+        keypath = tuple(keypath.split("."))
+
+    if len(keypath) == 1:
+        result = container[cast_key(keypath[0])]
+        if isinstance(result, (_LazyDict, _LazyList)):
+            return result.resolve()
+        else:
+            return result
+    else:
+        first, *rest_of_path = keypath
+
+        first = container[cast_key(first)]
+
+        if not isinstance(first, (_LazyDict, _LazyList)):
+            raise KeyError(first)
+
+        return first.get_keypath(tuple(rest_of_path))
 
 
 # node types ===========================================================================
@@ -731,11 +848,27 @@ class _ValueNode(_Node):
             variable_start_string="${", variable_end_string="}"
         )
 
-        template_variables = {}
-
         if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
-            root = _make_lazy(self.root)
+            root = _make_lazy_container(self.root)
+        else:
+            root = None
 
+        if root is not None:
+            # we create this custom context to carefully control how Jinja2 resolves
+            # references. The typical way to provide template variables to Jinja2 is to
+            # pass a dictionary-like object to the .render() method. This object is used
+            # by Jinja to create a "context". However, in creating the context iteself,
+            # Jinja immediately accesses the values in the top-level of the dictionary.
+            # This is problematic because the values in the dictionary may be references
+            # to other parts of the configuration. If Jinja2 accesses these values
+            # before the references are resolved, it can create circular dependencies.
+            # To avoid this, we create a custom context class that only resolves
+            # references when they are accessed during interpolation, and not during the
+            # creation of the context. The root of the configuration is stored in a
+            # _LazyDict, _LazyList, or _LazyFunctionCall, which are lazy containers that
+            # resolve their contents only when accessed. If a key is not found in the
+            # lazy container, Jinja2 will fall back to the default behavior of looking
+            # up the key in the template variables.
             class CustomContext(jinja2.runtime.Context):
                 def resolve_or_missing(self, key):
                     try:
@@ -745,12 +878,9 @@ class _ValueNode(_Node):
 
             environment.context_class = CustomContext
 
-            def get_root():
-                return root
-
-            template_variables["get_root"] = get_root
-
         template = environment.from_string(s)
+
+        template_variables = default_template_variables_factory(root)
 
         try:
             return template.render(template_variables)
@@ -908,7 +1038,7 @@ class _FunctionCallNode(_Node):
             input = self.input
 
         if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
-            root = _make_lazy(self.root)
+            root = _make_lazy_container(self.root)
         else:
             root = None
 
@@ -1096,8 +1226,8 @@ def resolve(
     preserve_type: bool = False,
     functions=None,
     parsers=None,
-    interpolation_variables=None,
-    interpolation_filters=None,
+    global_variables=None,
+    filters=None,
 ) -> _types.Configuration:
     """Resolve a raw configuration by interpolating and parsing its entries.
 
@@ -1179,6 +1309,9 @@ def resolve(
 
     if functions is None:
         functions = {}
+
+    if global_variables is None:
+        global_variables = {}
 
     parsers = _update_parsers(override_parsers)
 
