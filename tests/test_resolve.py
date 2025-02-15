@@ -848,7 +848,7 @@ def test_exception_has_correct_path_with_missing_key_in_nested_dict_within_list(
     with raises(exceptions.ResolutionError) as excinfo:
         resolve(lst, schema)
 
-    assert excinfo.value.keypath == (1, "foo")
+    assert excinfo.value.keypath == ("1", "foo")
 
 
 # preserve_type
