@@ -139,7 +139,6 @@ from typing import (
     Dict,
     List,
     Mapping,
-    MutableMapping,
     Optional,
     Union,
 )
@@ -1116,6 +1115,7 @@ class _FunctionCallNode(_Node):
             input,
             root,
             self.keypath,
+            self.resolution_context,
         )
 
         # evaluate the function itself

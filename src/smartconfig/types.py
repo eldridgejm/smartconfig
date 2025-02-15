@@ -206,12 +206,15 @@ class FunctionArgs:
         The root of the configuration tree.
     keypath : KeyPath
         The keypath to the function being evaluated.
+    resolution_context : ResolutionContext
+        The context in which the function is being evaluated.
 
     """
 
     input: Configuration
     root: Union[UnresolvedDict, UnresolvedList, UnresolvedFunctionCall, None]
     keypath: "KeyPath"
+    resolution_context: "ResolutionContext"
 
 
 class Function:
