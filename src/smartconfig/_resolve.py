@@ -1300,12 +1300,16 @@ def _copy_into(dst, src):
             _copy_into(dst[key], src[key])
 
 
-def _convert_callables_to_configuration_functions(
-    functions: dict[str, Union[Callable, _types.Function]],
+def _ensure_function(
+    callable_or_function: Union[
+        Callable[[_types.FunctionArgs], _types.Configuration], _types.Function
+    ],
 ):
-    for name, function in functions.items():
-        if not isinstance(function, _types.Function):
-            functions[name] = _types.Function.new(function)
+    """Converts standard Python functions to _type.Function instances."""
+    if isinstance(callable_or_function, _types.Function):
+        return callable_or_function
+    else:
+        return _types.Function(callable_or_function)
 
 
 # overloads ----------------------------------------------------------------------------
@@ -1442,15 +1446,12 @@ def resolve(
 
     if functions is None:
         functions = {}
+    else:
+        # convert standard Python functions to _types.Function instances
+        functions = {k: _ensure_function(v) for k, v in functions.items()}
 
     if global_variables is None:
         global_variables = {}
-
-    # TODO: allow user to provide regular functions or Function objects as input,
-    # convert the former to the latter for consistency. Also, might want to rename
-    # Function to something like FunctionCall or ConfigurationFunction to avoid
-    # confusing it with a regular Python function.
-    # _convert_callables_to_configuration_functions(functions)
 
     resolution_context = _types.ResolutionContext(parsers, functions)
 

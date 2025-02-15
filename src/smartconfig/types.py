@@ -225,7 +225,9 @@ class Function:
         return self.fn(args)
 
     @classmethod
-    def new(cls, resolve_input=True) -> Callable[[Callable], "Function"]:
+    def new(
+        cls, resolve_input: bool = True
+    ) -> Callable[[Callable[[FunctionArgs], Configuration]], "Function"]:
         """Decorator for creating a new Function object.
 
         Parameters
@@ -235,7 +237,7 @@ class Function:
 
         """
 
-        def decorator(fn) -> "Function":
+        def decorator(fn: Callable[[FunctionArgs], Configuration]) -> "Function":
             return cls(fn, resolve_input)
 
         return decorator
