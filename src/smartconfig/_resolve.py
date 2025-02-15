@@ -139,6 +139,7 @@ from typing import (
     Dict,
     List,
     Mapping,
+    MutableMapping,
     Optional,
     Union,
 )
@@ -1271,7 +1272,9 @@ def default_template_variables_factory(
     """
     return {"get_root": lambda: root}
 
+
 # helpers ------------------------------------------------------------------------------
+
 
 def _is_leaf(x):
     return not isinstance(x, dict) and not isinstance(x, list)
@@ -1297,24 +1300,24 @@ def _copy_into(dst, src):
             _copy_into(dst[key], src[key])
 
 
-def _update_parsers(overrides):
-    """Override some of the default parsers.
-
-    Returns a dictionary of all parsers."""
-    parsers = DEFAULT_PARSERS.copy()
-    if overrides is not None:
-        for type_, parser in overrides.items():
-            parsers[type_] = parser
-    return parsers
+def _convert_callables_to_configuration_functions(
+    functions: dict[str, Union[Callable, _types.Function]],
+):
+    for name, function in functions.items():
+        if not isinstance(function, _types.Function):
+            functions[name] = _types.Function.new(function)
 
 
 # overloads ----------------------------------------------------------------------------
 
+
 @typing.overload
 def resolve(
-    cfg: dict,
+    cfg: _types.ConfigurationDict,
     schema: _types.Schema,
-    override_parsers: Optional[Mapping[str, Callable]] = None,
+    parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
+    functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
+    global_variables: Optional[Mapping[str, Any]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
 ) -> dict:
@@ -1323,9 +1326,11 @@ def resolve(
 
 @typing.overload
 def resolve(
-    cfg: list,
+    cfg: _types.ConfigurationList,
     schema: _types.Schema,
-    override_parsers: Optional[Mapping[str, Callable]] = None,
+    parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
+    functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
+    global_variables: Optional[Mapping[str, Any]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
 ) -> list:
@@ -1334,26 +1339,28 @@ def resolve(
 
 @typing.overload
 def resolve(
-    cfg: Any,
+    cfg: _types.ConfigurationValue,
     schema: _types.Schema,
-    override_parsers: Optional[Mapping[str, Callable]] = None,
+    parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
+    functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
+    global_variables: Optional[Mapping[str, Any]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
 ) -> Any:
     pass
 
+
 # implementation -----------------------------------------------------------------------
+
 
 def resolve(
     cfg: _types.Configuration,
     schema: _types.Schema,
-    override_parsers: Optional[Mapping[str, Callable]] = None,
+    parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
+    functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
+    global_variables: Optional[Mapping[str, Any]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
-    functions=None,
-    parsers=None,
-    global_variables=None,
-    filters=None,
 ) -> _types.Configuration:
     """Resolve a configuration by interpolating and parsing its entries.
 
@@ -1363,8 +1370,8 @@ def resolve(
         The "raw" configuration to resolve.
     schema
         The schema describing the structure of the resolved configuration.
-    override_parsers
-        A dictionary mapping leaf type names to parser functions. The parser functions
+    parsers
+        A dictionary mapping value types to parser functions. The parser functions
         should take the raw value (after interpolation) and convert it to the specified
         type. If this is not provided, the default parsers are used.
     preserve_type : bool (default: False)
@@ -1439,7 +1446,11 @@ def resolve(
     if global_variables is None:
         global_variables = {}
 
-    parsers = _update_parsers(override_parsers)
+    # TODO: allow user to provide regular functions or Function objects as input,
+    # convert the former to the latter for consistency. Also, might want to rename
+    # Function to something like FunctionCall or ConfigurationFunction to avoid
+    # confusing it with a regular Python function.
+    # _convert_callables_to_configuration_functions(functions)
 
     resolution_context = _types.ResolutionContext(parsers, functions)
 

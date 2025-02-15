@@ -225,7 +225,7 @@ class Function:
         return self.fn(args)
 
     @classmethod
-    def new(cls, resolve_input=True):
+    def new(cls, resolve_input=True) -> Callable[[Callable], "Function"]:
         """Decorator for creating a new Function object.
 
         Parameters
@@ -235,7 +235,7 @@ class Function:
 
         """
 
-        def decorator(fn):
+        def decorator(fn) -> "Function":
             return cls(fn, resolve_input)
 
         return decorator
@@ -277,4 +277,4 @@ class ResolutionContext:
     """
 
     parsers: Mapping[str, Callable]
-    functions: Mapping[str, "_types.Function"]
+    functions: Mapping[str, Function]
