@@ -1443,7 +1443,86 @@ def test_function_call_with_infinite_recursion():
         resolve({"foo": {"__add_one__": 10}}, schema, functions={"add_one": add_one})
 
 
-def test_get_root_with_dictionary_returned_by_function_node():
+# global variables =====================================================================
+
+
+def test_global_variables_are_injected():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {"foo": "${ alpha }", "bar": "${ beta }"}
+
+    # when
+    result = resolve(dct, schema, global_variables={"alpha": 10, "beta": 20})
+
+    # then
+    assert result == {"foo": 10, "bar": 20}
+
+
+def test_global_variables_are_given_less_priority_when_names_clash():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {"foo": "${ foo }", "bar": "${ bar }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, global_variables={"foo": 10, "bar": 20})
+
+    assert "Circular reference" in str(exc.value)
+
+
+# inject root ==========================================================================
+
+
+def test_inject_root_with_top_level_list():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    lst = [4, 1, "${ root.0 } + 1"]
+
+    # when
+    result = resolve(lst, schema, inject_root_as="root")
+
+    # then
+    assert result == [4, 1, 5]
+
+
+def test_inject_root_with_top_level_dict():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {"foo": 42, "bar": "${ myroot.keys() | length }"}
+
+    # when
+    result = resolve(dct, schema, inject_root_as="myroot")
+
+    # then
+    assert result["bar"] == 2
+
+
+def test_inject_root_with_dictionary_returned_by_function_node():
     # given
     schema = {
         "type": "dict",
@@ -1463,20 +1542,22 @@ def test_get_root_with_dictionary_returned_by_function_node():
     dct = {
         "foo": 42,
         "bar": {"__make_dict__": {}},
-        "baz": "${ get_root().bar.foo }",
+        "baz": "${ myroot.bar.foo }",
     }
 
     def make_dict(_):
         return {"foo": 10, "bar": 20}
 
     # when
-    result = resolve(dct, schema, functions={"make_dict": make_dict})
+    result = resolve(
+        dct, schema, functions={"make_dict": make_dict}, inject_root_as="myroot"
+    )
 
     # then
     assert result == {"foo": 42, "bar": {"foo": 10, "bar": 20}, "baz": 10}
 
 
-def test_get_root_with_function_at_root_level_returning_a_list():
+def test_inject_root_with_function_at_root_level_returning_a_list():
     # given
     schema = {
         "type": "list",
@@ -1486,45 +1567,80 @@ def test_get_root_with_function_at_root_level_returning_a_list():
     dct = {"__make_list__": {}}
 
     def make_list(_):
-        return [1, 2, 3, "${ get_root().1 }"]
+        return [1, 2, 3, "${ myroot.1 }"]
 
     # when
-    result = resolve(dct, schema, functions={"make_list": make_list})
+    result = resolve(
+        dct, schema, functions={"make_list": make_list}, inject_root_as="myroot"
+    )
 
     # then
     assert result == [1, 2, 3, 2]
 
 
-def test_get_root_with_top_level_list():
-    # given
-    schema = {
-        "type": "list",
-        "element_schema": {"type": "integer"},
-    }
+# filters ==============================================================================
 
-    lst = [1, 2, 3, "${ get_root().1 }"]
-
-    # when
-    result = resolve(lst, schema)
-
-    # then
-    assert result == [1, 2, 3, 2]
-
-
-def test_get_root_with_top_level_dict():
+def test_filter_is_provided_at_interpolation_time():
     # given
     schema = {
         "type": "dict",
         "required_keys": {
-            "foo": {"type": "integer"},
-            "bar": {"type": "integer"},
+            "foo": {"type": "string"},
+            "bar": {"type": "string"},
         },
     }
 
-    dct = {"foo": 42, "bar": "${ get_root().keys() | length }"}
+    dct = {"foo": "this", "bar": "${ foo | myfilter }"}
+
+    def myfilter(value, **kwargs):
+        return value.upper()
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(dct, schema, filters={"myfilter": myfilter})
 
     # then
-    assert result["bar"] == 2
+    assert result["bar"] == "THIS"
+
+
+def test_filter_overrides_builtin_jinja_filters():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "string"},
+            "bar": {"type": "string"},
+        },
+    }
+
+    dct = {"foo": "this", "bar": "${ foo | length }"}
+
+    def length(value, **kwargs):
+        return 42
+
+    # when
+    result = resolve(dct, schema, filters={"length": length})
+
+    # then
+    assert result["bar"] == "42"
+
+
+def test_filter_with_arguments():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "string"},
+            "bar": {"type": "string"},
+        },
+    }
+
+    dct = {"foo": "this", "bar": "${ foo | myfilter('that') }"}
+
+    def myfilter(value, arg1):
+        return value + arg1
+
+    # when
+    result = resolve(dct, schema, filters={"myfilter": myfilter})
+
+    # then
+    assert result["bar"] == "thisthat"

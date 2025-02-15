@@ -278,8 +278,18 @@ class ResolutionContext:
         Parsers for different types of values.
     functions : Mapping[str, Function]
         Functions that can be called from the configuration.
+    global_variables : Mapping[str, Any]
+        Global variables that are available during string interpolation.
+    filters : Mapping[str, Callable]
+        Filters that can be applied during string interpolation.
+    inject_root_as : Optional[str]
+        If not `None`, the root of the configuration tree will be injected into
+        the global variables under this name.
 
     """
 
     parsers: Mapping[str, Callable]
     functions: Mapping[str, Function]
+    global_variables: Mapping[str, Any]
+    filters: Mapping[str, Callable]
+    inject_root_as: Optional[str]

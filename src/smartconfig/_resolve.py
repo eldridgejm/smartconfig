@@ -902,9 +902,16 @@ class _ValueNode(_Node):
 
             environment.context_class = CustomContext
 
+        # register the custom filters
+        environment.filters.update(self.resolution_context.filters)
+
         template = environment.from_string(s)
 
-        template_variables = default_template_variables_factory(root)
+        template_variables = dict(self.resolution_context.global_variables)
+
+        # inject the root of the configuration tree into the template variables
+        if self.resolution_context.inject_root_as is not None and root is not None:
+            template_variables[self.resolution_context.inject_root_as] = root
 
         try:
             result = template.render(template_variables)
@@ -935,7 +942,7 @@ class _ValueNode(_Node):
         try:
             return fn(*args, **kwargs)
         except Error as exc:
-            raise ResolutionError(str(exc), self.keypath)
+            raise ResolutionError(str(exc), self.keypath) from exc
 
 
 # _FunctionCallNode --------------------------------------------------------------------
@@ -1325,6 +1332,8 @@ def resolve(
     parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
     functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
     global_variables: Optional[Mapping[str, Any]] = None,
+    inject_root_as: Optional[str] = None,
+    filters: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
 ) -> dict:
@@ -1338,6 +1347,8 @@ def resolve(
     parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
     functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
     global_variables: Optional[Mapping[str, Any]] = None,
+    inject_root_as: Optional[str] = None,
+    filters: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
 ) -> list:
@@ -1351,6 +1362,8 @@ def resolve(
     parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
     functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
     global_variables: Optional[Mapping[str, Any]] = None,
+    inject_root_as: Optional[str] = None,
+    filters: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
 ) -> Any:
@@ -1366,6 +1379,8 @@ def resolve(
     parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
     functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
     global_variables: Optional[Mapping[str, Any]] = None,
+    inject_root_as: Optional[str] = None,
+    filters: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
 ) -> _types.Configuration:
@@ -1455,8 +1470,15 @@ def resolve(
 
     if global_variables is None:
         global_variables = {}
+    else:
+        global_variables = dict(global_variables)
 
-    resolution_context = _types.ResolutionContext(parsers, functions)
+    if filters is None:
+        filters = {}
+
+    resolution_context = _types.ResolutionContext(
+        parsers, functions, global_variables, filters, inject_root_as
+    )
 
     root = _make_node(cfg, schema, resolution_context)
 
