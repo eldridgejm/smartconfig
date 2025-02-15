@@ -10,9 +10,7 @@ def raw(args: FunctionArgs):
     """Do not resolve the value."""
     # the input must be a string
     if not isinstance(args.input, str):
-        raise ResolutionError(
-            "Input to 'raw' must be a string.", args.keypath
-        )
+        raise ResolutionError("Input to 'raw' must be a string.", args.keypath)
     return RawString(args.input)
 
 

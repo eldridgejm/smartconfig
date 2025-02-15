@@ -1,14 +1,16 @@
-"""Provides the resolve() function for resolving raw configurations.
+"""Provides the resolve() function.
 
-This section describes the implementation of the resolve() function. For higher-level
-notes, see the documentation.
+This module does the heavy-lifting of resolving configurations.
+
+We describe the implementation details of the resolve() function here. For instructions
+on how to use it, see the main documentation.
 
 Approach
 ========
 
-In the documentation, it is described how a configuration can be conceptualized as a
-directed "configuration graph", and how resolution is a depth-first search on this
-graph. This module works by building a concrete representation of the configuration
+In the documentation, it is described how a configuration can be interpreted as a
+directed "configuration graph", and how config resolution is a depth-first search on
+this graph. This module works by building a concrete representation of the configuration
 graph and performing that traversal.
 
 Each node in the graph is represented by one of four node classes: _DictNode, _ListNode,
@@ -19,14 +21,14 @@ appropriate type -- e.g., _DictNode.from_configuration() builds a _DictNode from
 dictionary, _ListNode.from_configuration() builds a _ListNode from a list, etc.
 
 The creation of the tree is orchestrated by the _make_node() function, whose job is to
-take an arbitrary configuration and determine which node class to use to represent it.
-This function is called with the whole configuration to create the root node, and is
-also called by the container node classes to create their children. _make_node is also
+take an arbitrary configuration and determine which node class represents it. This
+function is called with the whole configuration to create the root node, and is also
+called by the container node classes to create their children. _make_node() is also
 responsible for detecting when a dictionary represents a function call and creating a
 _FunctionCallNode in that case.
 
 The main function, resolve(), is a thin wrapper around the root node's .resolve()
-method. It constructs the root node using _make_node, calls .resolve() on it, and
+method. It constructs the root node using _make_node(), calls .resolve() on it, and
 returns the result.
 
 String Interpolation with Jinja2
@@ -38,10 +40,11 @@ interpolation. Other parts of the configuration tree are made available to Jinja
 template variables. Typically, this is done by passing a dictionary to Jinja2's render()
 method. However, we cannot pass the fully-resolved configuration tree at the time of
 interpolation, because it hasn't been fully resolved at that point. Instead, the root of
-the configuration tree is passed as a nested "lazy" collection -- either a _LazyDict,
-_LazyList, or _LazyFunctionCall. When an element of a lazy collection is accessed, the
-resolution process is triggered for that element if it is a function node or a value
-node. Otherwise, another lazy collection is returned.
+the configuration tree is passed as an "unresolved" container -- either an
+_UnresolvedDict, _UnresolvedList, or _UnresolvedFunctionCall. When an element of one of
+these containers is accessed, the resolution process is triggered for that element if it
+is a function node or a value node. Otherwise, another unresolved collection is
+returned.
 
 Worked Example
 ==============
@@ -75,13 +78,13 @@ With schema:
 
 When resolve() is called on this configuration, the following major steps occur:
 
-    1. resolve() calls _make_node() to create the root node, a _DictNode. _make_node()
-       delegates this to _DictNode.from_configuration(). This class method creates the
-       children of the node, calling _make_node() on each child. The process continues
-       recursively, and at the end the root node will contain two children: a _ValueNode
-       representing the "${bar.baz}" string and a _DictNode representing the "bar"
-       dictionary. This _DictNode has one child: a _ValueNode representing the number
-       42.
+    1. resolve() calls _make_node() to create the root node, which in this case a
+       _DictNode. _make_node() delegates this to _DictNode.from_configuration(). This
+       class method creates the children of the node, calling _make_node() on each
+       child. The process continues recursively, and at the end the root node will
+       contain two children: a _ValueNode representing the "${bar.baz}" string and a
+       _DictNode representing the "bar" dictionary. This _DictNode has one child: a
+       _ValueNode representing the number 42.
 
     2. resolve() calls .resolve() on the root node. Because the root node is a
        _DictNode, resolving it amounts to calling the .resolve() method on each of its
@@ -91,20 +94,20 @@ When resolve() is called on this configuration, the following major steps occur:
        method begins by interpolating the string using Jinja2. Before interpolation, the
        Jinja2 environment is set up to allow access to the root of the configuration
        tree. More precisely, because the root node is a _DictNode, an instance of
-       _LazyDict is created wrapping the root node. A custom Jinja2 context class is
-       made by overriding the resolve_or_missing() method to look up keys in the
-       _LazyDict first, and then fall back to the default behavior of searching the
-       template variables.
+       _UnresolvedDict is created wrapping the root node. A custom Jinja2 context class
+       is made by overriding the .resolve_or_missing() method to look up keys in the
+       _UnresolvedDict first, falling back to the default behavior of searching
+       the template variables if the variable is not found.
 
     4. Jinja2 begins interpolating the string. It sees the reference to ${bar.baz} and
-       looks up "bar" in the context. The overridden resolve_or_missing() method first
-       attempts to get the "bar" key from the _LazyDict. The _LazyDict recognizes the
-       key as a reference to a child node of type _DictNode, and so it returns a new
-       _LazyDict wrapping the child node. Jinja2 next looks up "baz" in this new
-       _LazyDict. This time, the _LazyDict recognizes the key as a reference to a child
-       _ValueNode, and so it triggers the resolution of the child node by calling
-       its .resolve() method. Interpolation of the string pauses momentarily while the
-       child node is resolved.
+       looks up "bar" in the context. The overridden .resolve_or_missing() method first
+       attempts to get the "bar" key from the _UnresolvedDict. The _UnresolvedDict
+       recognizes the key as a reference to a child node of type _DictNode, and so it
+       returns a new _UnresolvedDict wrapping the child node. Jinja2 next looks up "baz"
+       in this new _UnresolvedDict. This time, the _UnresolvedDict recognizes the key as
+       a reference to a child _ValueNode, and so it triggers the resolution of the child
+       node by calling its .resolve() method. Interpolation of the string pauses
+       momentarily while the child node is resolved.
 
     5. When .resolve() is called on the _ValueNode representing the number 42,
        interpolation is skipped since the contained value is not a string. The schema
@@ -131,17 +134,16 @@ When resolve() is called on this configuration, the following major steps occur:
 """
 
 from typing import (
+    Any,
+    Callable,
     Dict,
     List,
     Mapping,
     Optional,
     Union,
-    Callable,
-    Any,
 )
 import abc
 import copy
-import dataclasses
 import typing
 
 import jinja2
@@ -149,100 +151,49 @@ import jinja2
 from . import parsers as _parsers, functions as _functions, types as _types
 from ._schemas import validate_schema as _validate_schema
 from .exceptions import Error, ResolutionError
-from .types import FunctionArgs, Function, RawString, RecursiveString
 
 
-# defaults =============================================================================
-
-# the default parsers used by resolve()
-DEFAULT_PARSERS = {
-    "integer": _parsers.arithmetic(int),
-    "float": _parsers.arithmetic(float),
-    "string": str,
-    "boolean": _parsers.logic,
-    "date": _parsers.smartdate,
-    "datetime": _parsers.smartdatetime,
-    "any": lambda x: x,
-}
-
-# the default functions available to resolve()
-DEFAULT_FUNCTIONS = {
-    "raw": _functions.raw,
-    "splice": _functions.splice,
-    "update_shallow": _functions.update_shallow,
-    "update": _functions.update_shallow,
-    "concatenate": _functions.concatenate,
-}
-
-
-def default_template_variables_factory(
-    root: Union["_LazyDict", "_LazyList", "_LazyFunctionCall", None],
-):
-    """Create a template variables dictionary for Jinja2 interpolation.
-
-    Parameters
-    ----------
-    root : Union[_LazyDict, _LazyList, _LazyFunctionCall]
-        The root of the configuration tree.
-
-    Returns
-    -------
-    Mapping[str, Any]
-        A dictionary of template variables.
-
-    """
-    return {"get_root": lambda: root}
-
-
-# basic types ==========================================================================
-
-
-@dataclasses.dataclass
-class _ResolutionContext:
-    """Holds information available at the time that a node is resolved.
-
-    Attributes
-    ----------
-    parsers : Mapping[str, Callable]
-        Parsers for different types of values.
-    functions : Mapping[str, Function]
-        Functions that can be called from the configuration.
-
-    """
-
-    parsers: Mapping[str, Callable]
-    functions: Mapping[str, "Function"]
-
-
-# sentinel object denoting that a node is currently being resolved
-_PENDING = object()
-
-# lazy containers ======================================================================
+# unresolved containers ================================================================
 #
-# These lazy containers are used to represent the unresolved parts of the configuration
-# during resolution. They are passed to Jinja as template variables available during
-# string interpolation, and they are provided to functions as part of their input so
-# that they can reference other parts of the configuration as well. Accessing an element
-# in a lazy container triggers the resolution of that element if it is a function node
-# or a value node. Otherwise, it returns another lazy container.
+# These containers are used to represent the configuration while it is being resolved.
+# They are passed to Jinja as template variables available during string interpolation,
+# and they are provided to functions as part of their input so that they can reference
+# other parts of the configuration as well. Accessing an element in a unresolved
+# container triggers the resolution of that element if it is a function node or a value
+# node. Otherwise, it returns another unresolved container.
+
+# _UnresolvedDict ----------------------------------------------------------------------
 
 
-class _LazyDict(_types.LazyDict):
-    """Implements LazyDict using a _DictNode as the backing data structure."""
+class _UnresolvedDict(_types.UnresolvedDict):
+    """Implements UnresolvedDict using a _DictNode as the backing data structure."""
 
     def __init__(self, dict_node: "_DictNode"):
         self.dict_node = dict_node
 
-    def __getitem__(self, key) -> Union["_LazyDict", "_LazyList", _types.Configuration]:
-        child = self.dict_node[key]
+    def __getitem__(
+        self, key
+    ) -> Union["_UnresolvedDict", "_UnresolvedList", _types.Configuration]:
+        """Access an element in the unresolved dictionary.
+
+        If the element is a _ValueNode, this resolves it. If the element is a _DictNode
+        or _ListNode, this returns another unresolved container. If the element is a
+        _FunctionCallNode, this evaluates the function and returns an unresolved
+        container if the result is a collection, or the resolved value otherwise.
+
+        If the key is not found, a KeyError is raised.
+
+        """
+        child = self.dict_node.children[key]
 
         if isinstance(child, _FunctionCallNode):
-            child = child.evaluate().resolve()
+            # evaluate the function to turn it into a Dict, List, or Value node
+            child = child.evaluate()
 
         if isinstance(child, _DictNode):
-            return _LazyDict(child)
+            return _UnresolvedDict(child)
         elif isinstance(child, _ListNode):
-            return _LazyList(child)
+            return _UnresolvedList(child)
         elif isinstance(child, _ValueNode):
             return child.resolve()
 
@@ -260,31 +211,49 @@ class _LazyDict(_types.LazyDict):
             yield self[key]
 
     def resolve(self) -> _types.ConfigurationDict:
+        """Resolve all values recursively, returning a ConfigurationDict."""
         return self.dict_node.resolve()
 
     def get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
+        """Resolve the value at the given keypath."""
         return _get_keypath(self, keypath, str)
 
 
-class _LazyList(_types.LazyList):
-    """Implements LazyList using a _ListNode as the backing data structure."""
+# _UnresolvedList ----------------------------------------------------------------------
+
+
+class _UnresolvedList(_types.UnresolvedList):
+    """Implements UnresolvedList using a _ListNode as the backing data structure."""
 
     def __init__(self, list_node: "_ListNode"):
         self.list_node = list_node
 
-    def __getitem__(self, ix) -> Union["_LazyDict", "_LazyList", _types.Configuration]:
+    def __getitem__(
+        self, ix
+    ) -> Union["_UnresolvedDict", "_UnresolvedList", _types.Configuration]:
+        """Access an element in the unresolved list.
+
+        If the element is a _ValueNode, this resolves it. If the element is a _DictNode
+        or _ListNode, this returns another unresolved container. If the element is a
+        _FunctionCallNode, this evaluates the function and returns an unresolved
+        container if the result is a collection, or the resolved value otherwise.
+
+        If the index is out of range, an IndexError is raised.
+
+        """
         if ix not in range(len(self)):
             raise IndexError(ix)
 
-        child = self.list_node[ix]
+        child = self.list_node.children[ix]
 
         if isinstance(child, _FunctionCallNode):
-            child = child.evaluate().resolve()
+            # evaluate the function to turn it into a Dict, List, or Value node
+            child = child.evaluate()
 
         if isinstance(child, _DictNode):
-            return _LazyDict(child)
+            return _UnresolvedDict(child)
         elif isinstance(child, _ListNode):
-            return _LazyList(child)
+            return _UnresolvedList(child)
         elif isinstance(child, _ValueNode):
             return child.resolve()
 
@@ -296,71 +265,129 @@ class _LazyList(_types.LazyList):
         return len(self.list_node.children)
 
     def resolve(self) -> _types.ConfigurationList:
+        """Resolve all values recursively, returning a ConfigurationList."""
         return self.list_node.resolve()
 
     def get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
+        """Resolve the value at the given keypath."""
         return _get_keypath(self, keypath, int)
 
 
-class _LazyFunctionCall(_types.LazyFunctionCall):
-    """Implements LazyFunction using a _FunctionNode as the backing data structure."""
+# _UnresolvedFunctionCall --------------------------------------------------------------
+
+
+class _UnresolvedFunctionCall(_types.UnresolvedFunctionCall):
+    """Implements UnresolvedFunctionCall using _FunctionCallNode."""
 
     def __init__(self, function_node: "_FunctionCallNode"):
         self.function_node = function_node
 
-    def resolve(self):
+    def _evaluate_to_unresolved_container(self):
+        """Evaluate the function call and return a unresolved container.
+
+        If the result of the function call is not a collection, a TypeError is raised.
+
+        """
+        node = self.function_node.evaluate()
+        if isinstance(node, _DictNode):
+            return _UnresolvedDict(node)
+        elif isinstance(node, _ListNode):
+            return _UnresolvedList(node)
+        else:
+            raise TypeError(f"Not a collection: {node}")
+
+    def __getitem__(
+        self, key
+    ) -> Union["_UnresolvedDict", "_UnresolvedList", _types.Configuration]:
+        """Attempt to access an element in the result of the unresolved function call.
+
+        This will trigger the evaluation of the function call if it has not already been
+        resolved. If the result is a dictionary or list, the key is looked up in that
+        collection. If the result is not a dictionary or list, a TypeError is raised.
+
+        """
+        return self._evaluate_to_unresolved_container()[key]
+
+    def resolve(self) -> _types.Configuration:
+        """Resolve the function call, returning the result."""
         return self.function_node.evaluate().resolve()
 
     def get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
-        node = self.function_node.evaluate()
-        if isinstance(node, _DictNode):
-            return _LazyDict(node).get_keypath(keypath)
-        elif isinstance(node, _ListNode):
-            return _LazyList(node).get_keypath(keypath)
-
-    def __getitem__(self, key) -> Union["_LazyDict", "_LazyList", _types.Configuration]:
-        node = self.function_node.evaluate()
-        if isinstance(node, _DictNode):
-            return _LazyDict(node)[key]
-        elif isinstance(node, _ListNode):
-            return _LazyList(node)[key]
+        """Resolve the value at the given keypath."""
+        return self._evaluate_to_unresolved_container().get_keypath(keypath)
 
 
-def _make_lazy_container(
+# helpers ------------------------------------------------------------------------------
+
+
+def _make_unresolved_container(
     node: Union["_DictNode", "_ListNode", "_FunctionCallNode"],
-) -> Union[_LazyDict, _LazyList, _LazyFunctionCall]:
-    """Create a lazy container from a node."""
+) -> Union[_UnresolvedDict, _UnresolvedList, _UnresolvedFunctionCall]:
+    """Create a unresolved container from a node."""
     if isinstance(node, _DictNode):
-        return _LazyDict(node)
+        return _UnresolvedDict(node)
     elif isinstance(node, _ListNode):
-        return _LazyList(node)
+        return _UnresolvedList(node)
     elif isinstance(node, _FunctionCallNode):
-        return _LazyFunctionCall(node)
+        return _UnresolvedFunctionCall(node)
 
 
 def _get_keypath(
-    container: Union["_LazyDict", "_LazyList", "_LazyFunctionCall"],
+    unresolved_container: Union[
+        "_UnresolvedDict", "_UnresolvedList", "_UnresolvedFunctionCall"
+    ],
     keypath: Union[_types.KeyPath, str],
     cast_key: Optional[Callable[[str], Any]] = None,
 ) -> _types.Configuration:
+    """Resolve the node at the given keypath.
+
+    This always returns a configuration, even if the keypath is to an internal node of
+    the configuration tree (that is, a _DictNode, _ListNode, or _FunctionCallNode). The
+    node at the keypath is resolved and the result is returned, no matter the node's
+    type.
+
+    Parameters
+    ----------
+    unresolved_container : Union[UnresolvedDict, UnresolvedList, UnresolvedFunctionCall]
+        The (nested) container to search.
+    keypath : Union[KeyPath, str]
+        The keypath to the value to resolve. Can be a string or a tuple of strings.
+    cast_key : Optional[Callable[[str], Any]]
+        A function to cast the key to the appropriate type. For example, int() to
+        convert to an integer. If `None`, the key is not cast.
+
+    Returns
+    -------
+    Configuration
+        The resolved value at the keypath.
+
+    """
+    # default cast key is the identity function
     if cast_key is None:
         cast_key = lambda x: x
 
+    # string keypaths are split into tuples
     if isinstance(keypath, str):
         keypath = tuple(keypath.split("."))
 
     if len(keypath) == 1:
-        result = container[cast_key(keypath[0])]
-        if isinstance(result, (_LazyDict, _LazyList)):
+        # we are at the end of the road. resolve and return whatever node we're at.
+        # if the thing at the keypath is a value node or a function call node, the next
+        # line will resolve it automatically; otherwise, it will be a unresolved
+        # container.
+        result = unresolved_container[cast_key(keypath[0])]
+        if isinstance(result, (_UnresolvedDict, _UnresolvedList)):
             return result.resolve()
         else:
             return result
     else:
         first, *rest_of_path = keypath
 
-        first = container[cast_key(first)]
+        # again, the result of this line will either be an _UnresolvedDict, an
+        # _UnresolvedList, or a configuration. It cannot be an _UnresolvedFunctionCall.
+        first = unresolved_container[cast_key(first)]
 
-        if not isinstance(first, (_LazyDict, _LazyList)):
+        if not isinstance(first, (_UnresolvedDict, _UnresolvedList)):
             raise KeyError(first)
 
         return first.get_keypath(tuple(rest_of_path))
@@ -369,19 +396,20 @@ def _get_keypath(
 # node types ===========================================================================
 #
 # A configuration tree is the internal representation of a configuration. The
-# nodes of tree come in three types:
+# nodes of tree come in four types:
 #
-#   ValueNode: a leaf node in the tree that can be resolved into a non-container value,
+#   _ValueNode: a leaf node in the tree that can be resolved into a non-container value,
 #       such as an integer. Can reference other ValueNodes.
 #
-#   DictNode: an internal node that behaves like a dictionary, mapping keys to child
+#   _DictNode: an internal node that behaves like a dictionary, mapping keys to child
 #       nodes.
 #
-#   ListNode: an internal node that behaves like a list, mapping indices to child
+#   _ListNode: an internal node that behaves like a list, mapping indices to child
 #       nodes.
 #
+#   _FunctionCallNode: a node that represents a function call.
 
-# base node ----------------------------------------------------------------------------
+# _Node Abstract Base Class ------------------------------------------------------------
 
 
 class _Node(abc.ABC):
@@ -417,24 +445,23 @@ class _Node(abc.ABC):
         ...
 
 
-# dict nodes ---------------------------------------------------------------------------
+# _DictNode ----------------------------------------------------------------------------
 
 
 def _populate_required_children(
     children: Dict[str, _Node],
     dct: _types.ConfigurationDict,
     dict_schema: _types.Schema,
-    resolution_context: _ResolutionContext,
+    resolution_context: _types.ResolutionContext,
     parent: _Node,
     keypath: _types.KeyPath,
 ):
-    """Populates the required children of a DictNode.
+    """Populates the required children of a _DictNode.
 
-    This uses the schema to determine which keys are required and then creates
-    the child nodes for those keys. If a required key is missing, a
-    ResolutionError is raised.
+    This uses the schema to determine which keys are required and then creates the child
+    nodes for those keys. If a required key is missing, a ResolutionError is raised.
 
-    Modifications are made to the children dictionary in place.
+    Modifications are made to the node's .children dictionary in place.
 
     """
     required_keys = dict_schema.get("required_keys", {})
@@ -452,18 +479,18 @@ def _populate_optional_children(
     children: Dict[str, _Node],
     dct: _types.ConfigurationDict,
     dict_schema: _types.Schema,
-    resolution_context: _ResolutionContext,
+    resolution_context: _types.ResolutionContext,
     parent: _Node,
     keypath: _types.KeyPath,
 ):
-    """Populates the optional children of a DictNode.
+    """Populates the optional children of a _DictNode.
 
     This uses the schema to determine which keys are optional and then creates
     the child nodes for those keys. If an optional key is missing and a default
     is provided, the default is used. If an optional key is missing and no
     default is provided, the key is simply not added to the children.
 
-    Modifications are made to the children dictionary in place.
+    Modifications are made to the .children dictionary in place.
 
     """
     optional_keys = dict_schema.get("optional_keys", {})
@@ -488,18 +515,18 @@ def _populate_extra_children(
     children: Dict[str, _Node],
     dct: _types.ConfigurationDict,
     dict_schema: _types.Schema,
-    resolution_context: _ResolutionContext,
+    resolution_context: _types.ResolutionContext,
     parent: _Node,
     keypath: _types.KeyPath,
 ):
-    """Populates the extra children of a DictNode.
+    """Populates the extra children of a _DictNode.
 
     This uses the schema to determine how to handle extra keys in the raw
     configuration dictionary. If extra keys are not allowed, a ResolutionError
     is raised. If extra keys are allowed, the schema for the extra keys is used
     to create the child nodes.
 
-    Modifications are made to the children dictionary in place.
+    Modifications are made to the .children dictionary in place.
 
     """
     required_keys = dict_schema.get("required_keys", {})
@@ -526,19 +553,19 @@ class _DictNode(_Node):
 
     Attributes
     ----------
-    resolution_context : _ResolutionContext
+    resolution_context : _types.ResolutionContext
         The context in which the node is being resolved.
-    children : Dict[str, Node]
+    children : Dict[str, _Node]
         A dictionary of child nodes.
-    parent : Optional[Node]
-        The parent of this node. Can be `None`, in which case this is the root
-        of the tree.
+    parent : Optional[_Node]
+        The parent of this node. Can be `None`, in which case this is the root of the
+        tree.
 
     """
 
     def __init__(
         self,
-        resolution_context: _ResolutionContext,
+        resolution_context: _types.ResolutionContext,
         children: Optional[Dict[str, _Node]] = None,
         parent: Optional[_Node] = None,
     ):
@@ -552,14 +579,14 @@ class _DictNode(_Node):
         dct: _types.ConfigurationDict,
         schema: _types.Schema,
         keypath: _types.KeyPath,
-        resolution_context: _ResolutionContext,
+        resolution_context: _types.ResolutionContext,
         parent: Optional[_Node] = None,
     ) -> "_DictNode":
-        """Construct a DictNode from a raw configuration dictionary and its schema.
+        """Construct a _DictNode from a configuration dictionary and its schema.
 
         Parameters
         ----------
-        raw_dct : ConfigurationDict
+        dct : ConfigurationDict
             The raw configuration dictionary.
         schema : Schema
             The schema to enforce on the raw configuration dictionary.
@@ -581,12 +608,12 @@ class _DictNode(_Node):
 
         children = {}
 
-        # these private functiuons are used to populate the children of the
-        # node. they also enforce the schema by checking that all required keys
-        # are present and that no extra keys are present. It is most natural to
-        # do this validation here and not in .resolve() because the process of
-        # populating children already requires us to check if children are missing; for
-        # example, to fill in default values.
+        # these private functions are used to populate the children of the node. they
+        # also enforce the schema by checking that all required keys are present and
+        # that no extra keys are present. It is most natural to do this validation here
+        # and not in .resolve() because the process of populating children already
+        # requires us to check if children are missing; for example, to fill in default
+        # values.
 
         _populate_required_children(
             children,
@@ -616,13 +643,9 @@ class _DictNode(_Node):
         node.children = children
         return node
 
-    def __getitem__(self, key: str) -> _Node:
-        """Get a child node by key."""
-        return self.children[key]
-
     def resolve(self) -> _types.ConfigurationDict:
-        """Recursively resolve the DictNode into a configuration dictionary."""
-        # first, we evaluate all function nodes contained in the dictionary
+        """Recursively resolve the _DictNode into a ConfigurationDict."""
+        # first, we evaluate all function call nodes contained in the dictionary
         for key, child_node in self.children.items():
             if isinstance(child_node, _FunctionCallNode):
                 self.children[key] = child_node.evaluate()
@@ -635,7 +658,7 @@ class _DictNode(_Node):
         return result
 
 
-# list nodes ---------------------------------------------------------------------------
+# _ListNode ----------------------------------------------------------------------------
 
 
 class _ListNode(_Node):
@@ -643,19 +666,19 @@ class _ListNode(_Node):
 
     Attributes
     ----------
-    children : List[Node]
-        A list of the node's children.
-    parent : Optional[Node]
-        The parent of this node. Can be `None`, in which case this is the root
-        of the tree.
     resolution_context : ResolutionContext
         The context in which the node is being resolved.
+    children : List[_Node]
+        A list of the node's children.
+    parent : Optional[_Node]
+        The parent of this node. Can be `None`, in which case this is the root of the
+        tree.
 
     """
 
     def __init__(
         self,
-        resolution_context: _ResolutionContext,
+        resolution_context: _types.ResolutionContext,
         children: Optional[List[_Node]] = None,
         parent: Optional[_Node] = None,
     ):
@@ -669,10 +692,10 @@ class _ListNode(_Node):
         lst: _types.ConfigurationList,
         list_schema: _types.Schema,
         keypath: _types.KeyPath,
-        resolution_context: _ResolutionContext,
+        resolution_context: _types.ResolutionContext,
         parent: Optional[_Node] = None,
     ) -> "_ListNode":
-        """Make an internal list node from a raw list and recurse on the children."""
+        """Recursively make an internal list node from a ConfigurationList."""
         node = cls(resolution_context, parent=parent)
 
         if list_schema["type"] == "any":
@@ -697,11 +720,8 @@ class _ListNode(_Node):
         node.children = children
         return node
 
-    def __getitem__(self, ix) -> _Node:
-        return self.children[ix]
-
     def resolve(self) -> _types.ConfigurationList:
-        """Recursively resolve the ListNode into a list."""
+        """Recursively resolve the ListNode into a ConfigurationList."""
         # first, we evaluate all function nodes contained in the list
         for i, child_node in enumerate(self.children):
             if isinstance(child_node, _FunctionCallNode):
@@ -715,7 +735,7 @@ class _ListNode(_Node):
         return result
 
 
-# value nodes --------------------------------------------------------------------------
+# _ValueNode ---------------------------------------------------------------------------
 
 
 class _ValueNode(_Node):
@@ -723,9 +743,8 @@ class _ValueNode(_Node):
 
     Attributes
     ----------
-    raw : ConfigurationValue
+    value : ConfigurationValue
         The "raw" value of the leaf node as it appeared in the raw configuration.
-        This can be any type.
     type_ : str
         A string describing the expected type of this leaf once resolved. Used
         to determined which parser to use from the resolution context.
@@ -741,12 +760,18 @@ class _ValueNode(_Node):
 
     """
 
+    # sentinel object denoting that a node is currently being resolved
+    _PENDING = object()
+
+    # sentinel object denoting that the resolution of this node has not yet started
+    _UNDISCOVERED = object()
+
     def __init__(
         self,
         value: _types.ConfigurationValue,
         type_,
         keypath: _types.KeyPath,
-        resolution_context: _ResolutionContext,
+        resolution_context: _types.ResolutionContext,
         nullable: bool = False,
         parent: Optional[_Node] = None,
     ):
@@ -757,13 +782,12 @@ class _ValueNode(_Node):
         self.resolution_context = resolution_context
         self.nullable = nullable
 
-        # The resolved value of the leaf node. There are two special values. If
-        # this is None, the resolution process has not yet discovered
-        # the leaf node (this is the default value). If this is _PENDING, a
-        # step in the resolution process has started to resolve the leaf. Otherwise,
-        # this contains the resolved value. Necessary in order to detect circular
-        # references.
-        self._resolved = None
+        # The resolved value of the leaf node. There are two special values. If this is
+        # _UNDISCOVERED, the resolution process has not yet discovered the leaf node
+        # (this is the default value). If this is _PENDING, a step in the resolution
+        # process has started to resolve the leaf. Otherwise, this contains the resolved
+        # value. Necessary in order to detect circular references.
+        self._resolved = _ValueNode._UNDISCOVERED
 
     @classmethod
     def from_configuration(
@@ -771,7 +795,7 @@ class _ValueNode(_Node):
         value: _types.ConfigurationValue,
         schema: _types.Schema,
         keypath: _types.KeyPath,
-        resolution_context: _ResolutionContext,
+        resolution_context: _types.ResolutionContext,
         parent: Optional[_Node] = None,
         nullable: bool = False,
     ) -> "_ValueNode":
@@ -793,32 +817,25 @@ class _ValueNode(_Node):
         The resolved value.
 
         """
-        if isinstance(self.value, RawString):
+        if isinstance(self.value, _types.RawString):
             # check that the expected type is a string (or any)
             if self.type_ not in ("string", "any"):
                 raise ResolutionError(
                     "Schema expected something other than a string.", self.keypath
                 )
-
             return self.value
 
-        if self._resolved is _PENDING:
+        if self._resolved is _ValueNode._PENDING:
             raise ResolutionError("Circular reference", self.keypath)
 
-        if self._resolved is not None:
+        if self._resolved is not _ValueNode._UNDISCOVERED:
             self._resolved = typing.cast(_types.ConfigurationValue, self._resolved)
             return self._resolved
 
-        self._resolved = _PENDING
+        self._resolved = _ValueNode._PENDING
 
-        if isinstance(self.value, RecursiveString):
-            # interpolate until the string no longer changes
-            changed = True
-            s = self.value
-            while changed:
-                old_s = s
-                s = self._safely(self._interpolate, s)
-                changed = s != old_s
+        if isinstance(self.value, _types.RecursiveString):
+            s = self._safely(self._interpolate, self.value, recursive=True)
         elif isinstance(self.value, str):
             s = self._safely(self._interpolate, self.value)
         else:
@@ -831,13 +848,16 @@ class _ValueNode(_Node):
 
         return self._resolved
 
-    def _interpolate(self, s: str) -> str:
+    def _interpolate(self, s: str, recursive=False) -> str:
         """Replace a reference keypath with its resolved value.
 
         Parameters
         ----------
         s : str
             A configuration string with references to other values.
+        recursive : bool
+            If True, this will continue interpolating until the string no longer
+            changes. Default: False.
 
         Returns
         -------
@@ -849,7 +869,7 @@ class _ValueNode(_Node):
         )
 
         if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
-            root = _make_lazy_container(self.root)
+            root = _make_unresolved_container(self.root)
         else:
             root = None
 
@@ -857,18 +877,20 @@ class _ValueNode(_Node):
             # we create this custom context to carefully control how Jinja2 resolves
             # references. The typical way to provide template variables to Jinja2 is to
             # pass a dictionary-like object to the .render() method. This object is used
-            # by Jinja to create a "context". However, in creating the context iteself,
+            # by Jinja to create a "context". However, in creating the context itself,
             # Jinja immediately accesses the values in the top-level of the dictionary.
             # This is problematic because the values in the dictionary may be references
             # to other parts of the configuration. If Jinja2 accesses these values
             # before the references are resolved, it can create circular dependencies.
+            #
             # To avoid this, we create a custom context class that only resolves
             # references when they are accessed during interpolation, and not during the
             # creation of the context. The root of the configuration is stored in a
-            # _LazyDict, _LazyList, or _LazyFunctionCall, which are lazy containers that
-            # resolve their contents only when accessed. If a key is not found in the
-            # lazy container, Jinja2 will fall back to the default behavior of looking
-            # up the key in the template variables.
+            # _UnresolvedDict, _UnresolvedList, or _UnresolvedFunctionCall, which are
+            # "lazy" containers that resolve their contents only when accessed. If a key
+            # is not found in the unresolved container, Jinja2 will fall back to the
+            # default behavior of looking up the key in the template variables.
+
             class CustomContext(jinja2.runtime.Context):
                 def resolve_or_missing(self, key):
                     try:
@@ -883,9 +905,15 @@ class _ValueNode(_Node):
         template_variables = default_template_variables_factory(root)
 
         try:
-            return template.render(template_variables)
+            result = template.render(template_variables)
         except jinja2.exceptions.UndefinedError as exc:
             raise ResolutionError(str(exc), self.keypath)
+
+        if recursive and result != s:
+            # if the string changed, we need to interpolate again
+            return self._interpolate(result, recursive=True)
+        else:
+            return result
 
     def _parse(self, s, type_) -> _types.ConfigurationValue:
         """Parse the configuration string into its final type."""
@@ -900,23 +928,24 @@ class _ValueNode(_Node):
 
         return parser(s)
 
-    def _safely(self, fn, *args):
+    def _safely(self, fn, *args, **kwargs):
         """Apply the function and catch any exceptions, raising a ResolutionError."""
         try:
-            return fn(*args)
+            return fn(*args, **kwargs)
         except Error as exc:
             raise ResolutionError(str(exc), self.keypath)
 
 
-# function nodes -----------------------------------------------------------------------
+# _FunctionCallNode --------------------------------------------------------------------
 
 
-def _is_dunder(key: str) -> bool:
-    return key.startswith("__") and key.endswith("__")
+def _is_dunder(s: str) -> bool:
+    """Checks if a string is of the form "__<something>__"."""
+    return s.startswith("__") and s.endswith("__")
 
 
 def _check_for_function_call(dct: _types.ConfigurationDict) -> Union[str, None]:
-    """Checks if a configuration represents a function call.
+    """Checks if a ConfigurationDict represents a function call.
 
     A function call is a dictionary with a single key of the form
     "__<function_name>__".
@@ -970,11 +999,30 @@ def _has_dunder_key(dct: _types.ConfigurationDict) -> bool:
 
 
 class _FunctionCallNode(_Node):
+    """Represents a function call in the configuration tree.
+
+    Attributes
+    ----------
+    keypath : _types.KeyPath
+        The keypath to this node in the configuration tree.
+    resolution_context : _types.ResolutionContext
+        The context in which the node is being resolved.
+    function : _types.Function
+        The function being called.
+    input : _types.Configuration
+        The input to the function.
+    schema : _types.Schema
+        The schema for the function's output.
+    parent : Optional[_Node]
+        The parent of this node. Can be `None`, in which case this is the root
+
+    """
+
     def __init__(
         self,
         keypath: _types.KeyPath,
-        resolution_context: _ResolutionContext,
-        function: Function,
+        resolution_context: _types.ResolutionContext,
+        function: _types.Function,
         input: _types.Configuration,
         schema: _types.Schema,
         parent: Optional[_Node] = None,
@@ -992,9 +1040,25 @@ class _FunctionCallNode(_Node):
         dct: _types.ConfigurationDict,
         schema: _types.Schema,
         keypath: _types.KeyPath,
-        resolution_context: _ResolutionContext,
+        resolution_context: _types.ResolutionContext,
         parent: Optional[_Node] = None,
     ) -> "_FunctionCallNode":
+        """Construct a _FunctionCallNode from a configuration dictionary and its schema.
+
+        Parameters
+        ----------
+        dct : ConfigurationDict
+            The configuration dictionary representing the function call.
+        schema : Schema
+            The schema for the function's output.
+        keypath : KeyPath
+            The keypath to this node in the configuration tree.
+        resolution_context : ResolutionContext
+            The context in which the node is being resolved.
+        parent : Optional[Node]
+            The parent of this node. Can be `None`.
+
+        """
         try:
             function_name = _check_for_function_call(dct)
         except ValueError as exc:
@@ -1009,8 +1073,8 @@ class _FunctionCallNode(_Node):
         # the function name is the key, the input to the function is its
         # associated value
         function = resolution_context.functions[function_name]
-        if not isinstance(function, Function):
-            function = Function(function)
+        if not isinstance(function, _types.Function):
+            function = _types.Function(function)
 
         input = dct["__" + function_name + "__"]
 
@@ -1023,8 +1087,14 @@ class _FunctionCallNode(_Node):
             parent=parent,
         )
 
-    def evaluate(self) -> _Node:
-        """Evaluate the function node and return the result."""
+    def evaluate(self) -> Union[_DictNode, _ListNode, _ValueNode]:
+        """Evaluate the function, returning a _DictNode, _ListNode, or _ValueNode.
+
+        This operates recursively, so that if the function returns a ConfigurationDict
+        representing another function call, that child function call is also evaluated,
+        and so on.
+
+        """
         if self.function.resolve_input:
             input_node = _make_node(
                 self.input,
@@ -1038,11 +1108,11 @@ class _FunctionCallNode(_Node):
             input = self.input
 
         if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
-            root = _make_lazy_container(self.root)
+            root = _make_unresolved_container(self.root)
         else:
             root = None
 
-        args = FunctionArgs(
+        args = _types.FunctionArgs(
             input,
             root,
             self.keypath,
@@ -1051,7 +1121,7 @@ class _FunctionCallNode(_Node):
         # evaluate the function itself
         output = self.function(args)
 
-        return _make_node(
+        result = _make_node(
             output,
             self.schema,
             self.resolution_context,
@@ -1059,8 +1129,19 @@ class _FunctionCallNode(_Node):
             keypath=self.keypath,
         )
 
+        # the result may be a function call itself, in which case we need to evaluate it
+        if isinstance(result, _FunctionCallNode):
+            # this will evaluate the function call recursively
+            return result.evaluate()
+        else:
+            return result
+
     def resolve(self) -> _types.Configuration:
-        """Evaluate the function node and return the result."""
+        """Evaluate the function node and return the resulting Configuration.
+
+        This amounts to evaluating the function and resolving the resulting node.
+
+        """
         return self.evaluate().resolve()
 
 
@@ -1068,37 +1149,38 @@ class _FunctionCallNode(_Node):
 
 
 def _make_node(
-    cfg,
-    schema,
-    resolution_context: _ResolutionContext,
-    parent=None,
-    keypath=tuple(),
-):
-    """Recursively constructs a configuration tree from a raw configuration.
+    cfg: _types.Configuration,
+    schema: _types.Schema,
+    resolution_context: _types.ResolutionContext,
+    parent: Optional[_Node] = None,
+    keypath: _types.KeyPath = tuple(),
+) -> Union[_DictNode, _ListNode, _ValueNode, _FunctionCallNode]:
+    """Recursively constructs a configuration tree from a configuration.
 
-    The raw configuration can be a dictionary, list, or a non-container type. In any
-    case, the provided schema must match the type of the raw configuration; for example,
-    if the raw configuration is a dictionary, the schema must be a dict schema.
+    The configuration can be a dictionary, list, or a non-container type. In any case,
+    the provided schema must match the type of the configuration; for example, if the
+    configuration is a dictionary, the schema must be a dict schema.
 
-    A reference node is created if the configuration is a string of the form "${...}",
-    _and_ the schema is expecting either a dictionary, a list, or anything. Otherwise,
-    it is better to treat it as a value node (because value nodes allow more advanced
-    parsing and interpolation).
-
+    A function call node is created if the configuration is a dictionary with a key of
+    the form "__<function_name>__". In this case, the schema is used to validate the
+    output of the function.
 
     Parameters
     ----------
-    raw_cfg
+    cfg
         A dictionary, list, or non-container type representing the "raw", unresolved
         configuration.
     schema
         A schema dictionary describing the types of the configuration tree nodes.
     parent
         The parent node of the node being built. Can be `None`.
+    keypath
+        The keypath to this node in the configuration tree.
 
     Returns
     -------
-        The configuration tree.
+    Union[DictNode, ListNode, ValueNode, FunctionCallNode]
+        The root node of the configuration tree.
 
     """
     if cfg is None:
@@ -1113,9 +1195,9 @@ def _make_node(
         else:
             raise ResolutionError("Unexpectedly null.", keypath)
 
-    # construct the configuration tree
-    # the configuration tree is a nested container whose terminal leaf values
-    # are ValueNodes. "Internal" nodes are dictionaries or lists.
+    # construct the configuration tree. the configuration tree is a nested container
+    # whose terminal leaf values are _ValueNodes. "Internal" nodes are dictionaries or
+    # lists.
     if isinstance(cfg, dict):
         # check if this is a function call
         if _has_dunder_key(cfg):
@@ -1149,6 +1231,48 @@ def _make_node(
 
 # resolve() ============================================================================
 
+# defaults -----------------------------------------------------------------------------
+
+# the default parsers used by resolve()
+DEFAULT_PARSERS = {
+    "integer": _parsers.arithmetic(int),
+    "float": _parsers.arithmetic(float),
+    "string": str,
+    "boolean": _parsers.logic,
+    "date": _parsers.smartdate,
+    "datetime": _parsers.smartdatetime,
+    "any": lambda x: x,
+}
+
+# the default functions available to resolve()
+DEFAULT_FUNCTIONS = {
+    "raw": _functions.raw,
+    "splice": _functions.splice,
+    "update_shallow": _functions.update_shallow,
+    "update": _functions.update_shallow,
+    "concatenate": _functions.concatenate,
+}
+
+
+def default_template_variables_factory(
+    root: Union["_UnresolvedDict", "_UnresolvedList", "_UnresolvedFunctionCall", None],
+):
+    """Create a template variables dictionary for Jinja2 interpolation.
+
+    Parameters
+    ----------
+    root : Union[_UnresolvedDict, _UnresolvedList, _UnresolvedFunctionCall]
+        The root of the configuration tree.
+
+    Returns
+    -------
+    Mapping[str, Any]
+        A dictionary of template variables.
+
+    """
+    return {"get_root": lambda: root}
+
+# helpers ------------------------------------------------------------------------------
 
 def _is_leaf(x):
     return not isinstance(x, dict) and not isinstance(x, list)
@@ -1185,6 +1309,8 @@ def _update_parsers(overrides):
     return parsers
 
 
+# overloads ----------------------------------------------------------------------------
+
 @typing.overload
 def resolve(
     raw_cfg: dict,
@@ -1217,6 +1343,7 @@ def resolve(
 ) -> Any:
     pass
 
+# implementation -----------------------------------------------------------------------
 
 def resolve(
     raw_cfg: _types.Configuration,
@@ -1315,7 +1442,7 @@ def resolve(
 
     parsers = _update_parsers(override_parsers)
 
-    resolution_context = _ResolutionContext(parsers, functions)
+    resolution_context = _types.ResolutionContext(parsers, functions)
 
     root = _make_node(raw_cfg, schema, resolution_context)
 

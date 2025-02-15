@@ -4,6 +4,7 @@ import typing
 
 from . import exceptions
 
+
 def _check_keys(provided, required, optional, keypath, allow_default):
     allowed = required | optional
     if allow_default:

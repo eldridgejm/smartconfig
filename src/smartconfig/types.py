@@ -124,11 +124,13 @@ class ValueNode(abc.ABC):
 # lazy containers ======================================================================
 
 
-class LazyDict(abc.ABC):
+class UnresolvedDict(abc.ABC):
     """A dictionary that lazily resolves its values."""
 
     @abc.abstractmethod
-    def __getitem__(self, key: str) -> Union["LazyDict", "LazyList", Configuration]: ...
+    def __getitem__(
+        self, key: str
+    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]: ...
 
     @abc.abstractmethod
     def __len__(self) -> int: ...
@@ -140,7 +142,9 @@ class LazyDict(abc.ABC):
     def keys(self) -> Iterable[str]: ...
 
     @abc.abstractmethod
-    def values(self) -> Iterable[Union["LazyDict", "LazyList", Configuration]]: ...
+    def values(
+        self,
+    ) -> Iterable[Union["UnresolvedDict", "UnresolvedList", Configuration]]: ...
 
     @abc.abstractmethod
     def resolve(self) -> ConfigurationDict: ...
@@ -149,14 +153,18 @@ class LazyDict(abc.ABC):
     def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration: ...
 
 
-class LazyList(abc.ABC):
+class UnresolvedList(abc.ABC):
     """A list that lazily resolves its values."""
 
     @abc.abstractmethod
-    def __getitem__(self, ix) -> Union["LazyDict", "LazyList", Configuration]: ...
+    def __getitem__(
+        self, ix
+    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]: ...
 
     @abc.abstractmethod
-    def __iter__(self) -> Iterable[Union["LazyDict", "LazyList", Configuration]]: ...
+    def __iter__(
+        self,
+    ) -> Iterable[Union["UnresolvedDict", "UnresolvedList", Configuration]]: ...
 
     @abc.abstractmethod
     def __len__(self) -> int: ...
@@ -168,11 +176,13 @@ class LazyList(abc.ABC):
     def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration: ...
 
 
-class LazyFunctionCall(abc.ABC):
-    """A function that lazily resolves its values."""
+class UnresolvedFunctionCall(abc.ABC):
+    """A function call that lazily resolves its values."""
 
     @abc.abstractmethod
-    def __getitem__(self, key: str) -> Union["LazyDict", "LazyList", Configuration]: ...
+    def __getitem__(
+        self, key: str
+    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]: ...
 
     @abc.abstractmethod
     def resolve(self) -> Configuration: ...
@@ -200,7 +210,7 @@ class FunctionArgs:
     """
 
     input: Configuration
-    root: Union[LazyDict, LazyList, LazyFunctionCall, None]
+    root: Union[UnresolvedDict, UnresolvedList, UnresolvedFunctionCall, None]
     keypath: "KeyPath"
 
 
@@ -251,3 +261,20 @@ Schema = Mapping[str, Any]
 # tree. For example, ("foo", "bar", "baz") would represent the path to the value
 # of the key "baz" in the dictionary {"foo": {"bar": {"baz": 42}}}.
 KeyPath = Tuple[str, ...]
+
+
+@dataclasses.dataclass
+class ResolutionContext:
+    """Holds information available at the time that a node is resolved.
+
+    Attributes
+    ----------
+    parsers : Mapping[str, Callable]
+        Parsers for different types of values.
+    functions : Mapping[str, Function]
+        Functions that can be called from the configuration.
+
+    """
+
+    parsers: Mapping[str, Callable]
+    functions: Mapping[str, "_types.Function"]

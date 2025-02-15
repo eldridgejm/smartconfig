@@ -5,6 +5,7 @@ string -- and returns a resolved value with the appropriate type.
 .. testsetup::
 
 """
+
 import ast
 import enum
 import operator as op
@@ -92,7 +93,6 @@ def logic(s):
     """
 
     def _eval(node):
-
         operators = {ast.Or: op.or_, ast.And: op.and_, ast.Not: op.not_}
 
         if isinstance(node, ast.Constant):
@@ -127,7 +127,7 @@ def smartdate(s):
         2. Relative dates of the form :code:`"<n> day(s) (before|after) <ISO date>"`,
            e.g., "3 days before 2021-10-10"
         3. Relative dates of the form :code:`"first
-           <day_of_week>[,<day_of_week>,...,<day_of_week>] (before|after) <ISO date>"`, 
+           <day_of_week>[,<day_of_week>,...,<day_of_week>] (before|after) <ISO date>"`,
            e.g., "first monday, wednesday after 2021-10-10"
 
     Example
@@ -237,7 +237,7 @@ def _parse_and_remove_time(s):
     ------
     ValidationError
         If there is a time string, but it's an invalid time (like 55:00:00).
-        
+
     """
     time_pattern = r" at (\d{2}):(\d{2}):(\d{2})$"
     match = re.search(time_pattern, s, flags=re.IGNORECASE)
@@ -264,7 +264,9 @@ def _parse_timedelta_before_or_after(s):
     s, at_time = _parse_and_remove_time(s)
 
     match = re.match(
-        r"^(\d+) (day|hour)[s]{0,1} (after|before) (.*)?$", s, flags=re.IGNORECASE,
+        r"^(\d+) (day|hour)[s]{0,1} (after|before) (.*)?$",
+        s,
+        flags=re.IGNORECASE,
     )
 
     if not match:

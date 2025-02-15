@@ -1,5 +1,5 @@
-from smartconfig import resolve, exceptions, Function
-from smartconfig.types import RawString, RecursiveString
+from smartconfig import resolve, exceptions
+from smartconfig.types import RawString, RecursiveString, Function
 
 from pytest import raises
 
@@ -1233,6 +1233,34 @@ def test_function_call_is_given_root_as_lazy_dict_or_list():
     assert result["bar"] == {"a": 1, "b": 7}
 
 
+def test_function_call_get_keypath_to_function_call_returning_a_dict():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "alpha": {"type": "integer"},
+            "beta": {
+                "type": "dict",
+                "required_keys": {"gamma": {"type": "integer"}},
+            },
+        },
+    }
+
+    def triple(args):
+        return args.root.get_keypath("beta.gamma") * 3
+
+    def make_beta(_):
+        return {"gamma": 10}
+
+    dct = {"alpha": {"__triple__": {}}, "beta": {"__make_beta__": {}}}
+
+    # when
+    result = resolve(dct, schema, functions={"triple": triple, "make_beta": make_beta})
+
+    # then
+    assert result == {"alpha": 30, "beta": {"gamma": 10}}
+
+
 def test_function_call_at_root_with_result_producing_references():
     # given
     schema = {
@@ -1294,6 +1322,125 @@ def test_function_call_at_root_does_not_produce_key_shadowing_builtin():
 
     # then
     assert result == {"foo": 10}
+
+
+def test_function_call_with_reference_to_result_of_another_function_call_within_dict():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "alpha": {"type": "integer"},
+            "beta": {"type": "integer"},
+        },
+    }
+
+    def double(args):
+        return args.input * 2
+
+    def triple(args):
+        return args.root["beta"] * 3
+
+    dct = {"alpha": {"__triple__": {}}, "beta": {"__double__": 10}}
+
+    # when
+    result = resolve(dct, schema, functions={"double": double, "triple": triple})
+
+    # then
+    assert result == {"alpha": 60, "beta": 20}
+
+
+def test_function_call_with_reference_to_result_of_another_function_call_within_list():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    def double(args):
+        return args.input * 2
+
+    def triple(args):
+        return args.root[1] * 3
+
+    lst = [{"__triple__": {}}, {"__double__": 10}]
+
+    # when
+    result = resolve(lst, schema, functions={"double": double, "triple": triple})
+
+    # then
+    assert result == [60, 20]
+
+
+def test_function_call_that_returns_a_function_call():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+        },
+    }
+
+    def double(args):
+        return args.input * 2
+
+    def add_one(args):
+        return {"__double__": args.input + 1}
+
+    # when
+    result = resolve(
+        {"foo": {"__add_one__": 10}},
+        schema,
+        functions={"double": double, "add_one": add_one},
+    )
+
+    # then
+    assert result == {"foo": 22}
+
+
+def test_function_call_that_returns_a_function_call_that_returns_a_function_call():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+        },
+    }
+
+    def double(args):
+        return args.input * 2
+
+    def add_one(args):
+        return {"__double__": args.input + 1}
+
+    def add_two(args):
+        return {"__add_one__": args.input + 2}
+
+    # when
+    result = resolve(
+        {"foo": {"__add_two__": 10}},
+        schema,
+        functions={"double": double, "add_one": add_one, "add_two": add_two},
+    )
+
+    # then
+    assert result == {"foo": 26}
+
+
+def test_function_call_with_infinite_recursion():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+        },
+    }
+
+    def add_one(args):
+        return {"__add_one__": args.input + 1}
+
+    # when
+    with raises(RecursionError) as exc:
+        resolve({"foo": {"__add_one__": 10}}, schema, functions={"add_one": add_one})
 
 
 def test_get_root_with_dictionary_returned_by_function_node():
