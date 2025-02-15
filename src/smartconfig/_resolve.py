@@ -705,6 +705,9 @@ class _ListNode(_Node):
 
         child_schema = list_schema["element_schema"]
 
+        if isinstance(keypath, str):
+            keypath = tuple(keypath.split("."))
+
         children = []
         for i, lst_value in enumerate(lst):
             r = _make_node(
@@ -712,7 +715,7 @@ class _ListNode(_Node):
                 child_schema,
                 resolution_context,
                 node,
-                keypath + (i,),
+                keypath + (str(i),),
             )
             children.append(r)
 
