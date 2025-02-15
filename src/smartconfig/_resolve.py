@@ -521,10 +521,9 @@ def _populate_extra_children(
 ):
     """Populates the extra children of a _DictNode.
 
-    This uses the schema to determine how to handle extra keys in the raw
-    configuration dictionary. If extra keys are not allowed, a ResolutionError
-    is raised. If extra keys are allowed, the schema for the extra keys is used
-    to create the child nodes.
+    This uses the schema to determine how to handle extra keys in the configuration
+    dictionary. If extra keys are not allowed, a ResolutionError is raised. If extra
+    keys are allowed, the schema for the extra keys is used to create the child nodes.
 
     Modifications are made to the .children dictionary in place.
 
@@ -587,9 +586,9 @@ class _DictNode(_Node):
         Parameters
         ----------
         dct : ConfigurationDict
-            The raw configuration dictionary.
+            The configuration dictionary.
         schema : Schema
-            The schema to enforce on the raw configuration dictionary.
+            The schema to enforce on the configuration dictionary.
         keypath : _types.KeyPath
             The keypath to this node in the configuration tree.
         resolution_context : ResolutionContext
@@ -744,7 +743,7 @@ class _ValueNode(_Node):
     Attributes
     ----------
     value : ConfigurationValue
-        The "raw" value of the leaf node as it appeared in the raw configuration.
+        The "raw" value of the leaf node as it appeared in the configuration.
     type_ : str
         A string describing the expected type of this leaf once resolved. Used
         to determined which parser to use from the resolution context.
@@ -753,7 +752,7 @@ class _ValueNode(_Node):
     resolution_context : ResolutionContext
         The context in which the node is being resolved.
     nullable : Optional[bool]
-        Whether the value can be None or not. If raw is None this is True, it
+        Whether the value can be None or not. If `raw` is None this is True, it
         is not parsed (no matter what type_ is). Default: False.
     parent : Optional[Node]
         The parent of this node. Can be `None`, in which case this is the root.
@@ -799,7 +798,7 @@ class _ValueNode(_Node):
         parent: Optional[_Node] = None,
         nullable: bool = False,
     ) -> "_ValueNode":
-        """Create a leaf node from the raw configuration and schema."""
+        """Create a leaf node from the configuration and schema."""
         return cls(
             value,
             schema["type"],
@@ -1313,7 +1312,7 @@ def _update_parsers(overrides):
 
 @typing.overload
 def resolve(
-    raw_cfg: dict,
+    cfg: dict,
     schema: _types.Schema,
     override_parsers: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
@@ -1324,7 +1323,7 @@ def resolve(
 
 @typing.overload
 def resolve(
-    raw_cfg: list,
+    cfg: list,
     schema: _types.Schema,
     override_parsers: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
@@ -1335,7 +1334,7 @@ def resolve(
 
 @typing.overload
 def resolve(
-    raw_cfg: Any,
+    cfg: Any,
     schema: _types.Schema,
     override_parsers: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
@@ -1346,7 +1345,7 @@ def resolve(
 # implementation -----------------------------------------------------------------------
 
 def resolve(
-    raw_cfg: _types.Configuration,
+    cfg: _types.Configuration,
     schema: _types.Schema,
     override_parsers: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
@@ -1356,21 +1355,21 @@ def resolve(
     global_variables=None,
     filters=None,
 ) -> _types.Configuration:
-    """Resolve a raw configuration by interpolating and parsing its entries.
+    """Resolve a configuration by interpolating and parsing its entries.
 
     Parameters
     ----------
-    raw_cfg
-        The raw configuration.
+    cfg
+        The "raw" configuration to resolve.
     schema
-        The schema describing the types in the raw configuration.
+        The schema describing the structure of the resolved configuration.
     override_parsers
         A dictionary mapping leaf type names to parser functions. The parser functions
         should take the raw value (after interpolation) and convert it to the specified
         type. If this is not provided, the default parsers are used.
     preserve_type : bool (default: False)
         If False, the return value of this function is a plain dictionary. If this is
-        True, however, the return type will be the same as the type of raw_cfg. See
+        True, however, the return type will be the same as the type of cfg. See
         below for details.
 
     Raises
@@ -1384,12 +1383,12 @@ def resolve(
     Notes
     -----
 
-    The raw configuration can be a dictionary, list, or a non-container type;
+    The configuration can be a dictionary, list, or a non-container type;
     resolution will be done recursively. In any case, the provided schema must
-    match the type of the raw configuration; for example, if the raw
+    match the type of the configuration; for example, if the
     configuration is a dictionary, the schema must be a dict schema.
 
-    Default parsers are provided which attempt to convert raw values to the
+    Default parsers are provided which attempt to convert input values to the
     specified types. They are:
 
         - "integer": :func:`smartconfig.parsers.arithmetic` with type `int`
@@ -1404,7 +1403,7 @@ def resolve(
     parsers to `override_parsers`.
 
     This function uses the `jinja2` template engine for interpolation. This
-    means that many powerful `Jinja2` features can be used. For example, a
+    means that many powerful `Jinja2` features can be used. For example,
     `Jinja2` supports a ternary operator, so dictionaries can contain
     expressions like the following:"
 
@@ -1416,7 +1415,7 @@ def resolve(
             'z': '${ this.x if this.x > this.y else this.y }'
         }
 
-    Typically, `raw_cfg` will be a plain Python dictionary. Sometimes, however,
+    Typically, `cfg` will be a plain Python dictionary. Sometimes, however,
     it may be another mapping type that behaves like a `dict`, but has some
     additional functionality. One example is the `ruamel` package which is
     capable of round-tripping yaml, comments and all. To accomplish this,
@@ -1426,7 +1425,7 @@ def resolve(
     True`.
 
     At present, type preservation is done by constructing the resolved output
-    as normal, but then making a deep copy of `raw_cfg` and recursively copying
+    as normal, but then making a deep copy of `cfg` and recursively copying
     each leaf value into this deep copy. Therefore, there is a performance
     cost.
 
@@ -1444,13 +1443,13 @@ def resolve(
 
     resolution_context = _types.ResolutionContext(parsers, functions)
 
-    root = _make_node(raw_cfg, schema, resolution_context)
+    root = _make_node(cfg, schema, resolution_context)
 
     resolved = root.resolve()
 
     if not preserve_type:
         return resolved
     else:
-        output = copy.deepcopy(raw_cfg)
+        output = copy.deepcopy(cfg)
         _copy_into(output, resolved)
         return output
