@@ -1,10 +1,8 @@
-from smartconfig import exceptions, parsers
+from smartconfig import parsers
 
 import datetime
 
-from pytest import raises
-
-# arithmetic
+# arithmetic ===========================================================================
 
 
 def test_integer_arithmetic():
@@ -29,15 +27,14 @@ def test_float_arithmetic():
     assert result == 4.5
 
 
-# logic
+# logic ================================================================================
 
 
 def test_logic():
     assert parsers.logic("True and (False or True)") is True
 
 
-# smartdate
-# ---------
+# smartdate ============================================================================
 
 
 def test_smartdate_from_explicit_date():
@@ -92,8 +89,7 @@ def test_smartdate_first_date_before_simplifies_datetimes_to_dates():
     ) == datetime.date(2021, 9, 13)
 
 
-# smartdatetime
-# -------------
+# smartdatetime ========================================================================
 
 
 def test_smartdatetime_from_explicit_date():

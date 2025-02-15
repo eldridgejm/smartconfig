@@ -2,8 +2,7 @@ from smartconfig import validate_schema, exceptions
 from pytest import raises
 
 
-# all schemata
-# ============
+# all schemata =========================================================================
 
 
 def test_raises_if_type_field_is_omitted():
@@ -13,15 +12,18 @@ def test_raises_if_type_field_is_omitted():
         validate_schema(schema)
 
 
-# dict schemata
-# =============
+# dict schemata ========================================================================
 
 
 def test_dict_schema_smoke():
     schema = {
         "type": "dict",
-        "required_keys": {"foo": {"type": "integer"},},
-        "optional_keys": {"bar": {"type": "integer", "default": 42},},
+        "required_keys": {
+            "foo": {"type": "integer"},
+        },
+        "optional_keys": {
+            "bar": {"type": "integer", "default": 42},
+        },
     }
 
     validate_schema(schema)
@@ -30,7 +32,7 @@ def test_dict_schema_smoke():
 def test_raises_if_unknown_key_is_provided_for_dict_schema():
     schema = {"type": "dict", "foo": 42}
 
-    with raises(exceptions.InvalidSchemaError) as excinfo:
+    with raises(exceptions.InvalidSchemaError):
         validate_schema(schema)
 
 
@@ -40,7 +42,7 @@ def test_raises_if_unknown_key_is_provided_for_required_key_spec():
         "required_keys": {"foo": {"type": "integer", "testing": 42}},
     }
 
-    with raises(exceptions.InvalidSchemaError) as excinfo:
+    with raises(exceptions.InvalidSchemaError):
         validate_schema(schema)
 
 
@@ -73,8 +75,7 @@ def test_raises_if_default_is_provided_for_a_required_key():
     assert excinfo.value.keypath == ("required_keys", "foo", "default")
 
 
-# list schemata
-# =============
+# list schemata ========================================================================
 
 
 def test_list_schema_smoke():
@@ -90,8 +91,7 @@ def test_raises_if_unknown_key_is_provided_for_list_schema():
         validate_schema(schema)
 
 
-# nullable
-# ========
+# nullable =============================================================================
 
 
 def test_allow_defaults_to_be_null():
@@ -103,8 +103,7 @@ def test_allow_defaults_to_be_null():
     validate_schema(schema)
 
 
-# any types
-# =========
+# any types ============================================================================
 
 
 def test_any_type_smoke():

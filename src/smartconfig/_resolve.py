@@ -331,6 +331,8 @@ def _make_unresolved_container(
     elif isinstance(node, _FunctionCallNode):
         return _UnresolvedFunctionCall(node)
 
+def _identity(x):
+    return x
 
 def _get_keypath(
     unresolved_container: Union[
@@ -364,7 +366,7 @@ def _get_keypath(
     """
     # default cast key is the identity function
     if cast_key is None:
-        cast_key = lambda x: x
+        cast_key = _identity
 
     # string keypaths are split into tuples
     if isinstance(keypath, str):
@@ -535,7 +537,7 @@ def _populate_extra_children(
     extra_keys = dct.keys() - expected_keys
 
     if extra_keys and "extra_keys_schema" not in dict_schema:
-        raise ResolutionError(f"Unexpected extra key.", keypath + (extra_keys.pop(),))
+        raise ResolutionError("Unexpected extra key.", keypath + (extra_keys.pop(),))
 
     for key in extra_keys:
         children[key] = _make_node(
