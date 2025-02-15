@@ -212,7 +212,7 @@ class FunctionArgs:
     """
 
     input: Configuration
-    root: Union[UnresolvedDict, UnresolvedList, UnresolvedFunctionCall, None]
+    root: Union[UnresolvedDict, UnresolvedList, UnresolvedFunctionCall]
     keypath: "KeyPath"
     resolution_context: "ResolutionContext"
 

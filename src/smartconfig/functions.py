@@ -1,5 +1,8 @@
+"""Provides the default function that can be called within a configuration."""
+
 from copy import deepcopy
 import itertools
+import typing
 
 from .types import Function, FunctionArgs, RawString
 from .exceptions import ResolutionError
@@ -22,6 +25,8 @@ def splice(args: FunctionArgs):
     variables that were passed along with the resolution context.
 
     """
+    if not isinstance(args.input, str):
+        raise ResolutionError("Input to 'splice' must be a string.", args.keypath)
     try:
         return args.root.get_keypath(args.input)
     except KeyError:
@@ -45,6 +50,15 @@ def update_shallow(args: FunctionArgs):
             "Input to 'update_shallow' must be a list of dictionaries.", args.keypath
         )
 
+    if len(args.input) == 0:
+        raise ResolutionError(
+            "Input to 'update_shallow' must be a non-empty list of dictionaries.",
+            args.keypath,
+        )
+
+    # true since we checked _all_elements_are_instances_of(args.input, dict) above
+    args.input = typing.cast(list[dict], args.input)
+
     first = deepcopy(args.input[0])
     for dct in args.input[1:]:
         first.update(dct)
@@ -64,6 +78,14 @@ def update(args: FunctionArgs):
         raise ResolutionError(
             "Input to 'update' must be a list of dictionaries.", args.keypath
         )
+
+    if len(args.input) == 0:
+        raise ResolutionError(
+            "Input to 'update' must be a non-empty list of dictionaries.", args.keypath
+        )
+
+    # true since we checked _all_elements_are_instances_of(args.input, dict) above
+    args.input = typing.cast(list[dict], args.input)
 
     def _deep_update(dictionaries: list[dict]) -> dict:
         first = deepcopy(dictionaries[0])
@@ -92,7 +114,12 @@ def concatenate(args: FunctionArgs):
             "Input to 'concatenate' must be a list of lists.", args.keypath
         )
 
+    if len(args.input) == 0:
+        raise ResolutionError(
+            "Input to 'concatenate' must be a non-empty list of lists.", args.keypath
+        )
+
+    # true since we checked _all_elements_are_instances_of(args.input, list) above
+    args.input = typing.cast(list[list], args.input)
+
     return list(itertools.chain(*args.input))
-
-
-DEFAULT_FUNCTIONS = {"raw": raw, "splice": splice}

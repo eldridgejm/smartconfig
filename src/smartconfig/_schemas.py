@@ -1,6 +1,4 @@
-"""Validates schemas."""
-
-import typing
+"""Provides validate_schema(), which checks that a schema is valid."""
 
 from . import exceptions
 

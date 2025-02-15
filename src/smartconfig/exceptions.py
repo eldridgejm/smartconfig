@@ -1,3 +1,6 @@
+"""Provides the exceptions used by smartconfig."""
+
+
 class Error(Exception):
     """A general error."""
 

@@ -6,10 +6,11 @@ string -- and returns a resolved value with the appropriate type.
 
 """
 
+from typing import Callable, Union
 import ast
+import datetime as datetimelib
 import enum
 import operator as op
-import datetime as datetimelib
 import re
 
 from . import exceptions
@@ -57,12 +58,15 @@ def arithmetic(type_):
 
         if isinstance(node, ast.Constant):  # <number>
             return node.value
-        elif isinstance(node, ast.BinOp):  # <left> <operator> <right>
+        elif type(node.op) not in operators:
+            raise TypeError(node)
+
+        if isinstance(node, ast.BinOp):  # <left> <operator> <right>
+            assert isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow))
             return operators[type(node.op)](_eval(node.left), _eval(node.right))
         elif isinstance(node, ast.UnaryOp):  # <operator> <operand> e.g., -1
+            assert isinstance(node.op, (ast.BitXor, ast.USub))
             return operators[type(node.op)](_eval(node.operand))
-        else:
-            raise TypeError(node)
 
     def parser(s):
         if isinstance(s, type_):
@@ -97,12 +101,15 @@ def logic(s):
 
         if isinstance(node, ast.Constant):
             return node.value
-        elif isinstance(node, ast.UnaryOp):  # <operator> <operand> e.g., -1
+        elif type(node.op) not in operators:
+            raise TypeError(node)
+
+        if isinstance(node, ast.UnaryOp):  # <operator> <operand> e.g., -1
+            assert isinstance(node.op, ast.Not)
             return operators[type(node.op)](_eval(node.operand))
         elif isinstance(node, ast.BoolOp):
+            assert isinstance(node.op, (ast.Or, ast.And))
             return operators[type(node.op)](*[_eval(v) for v in node.values])
-        else:
-            raise TypeError(node)
 
     if isinstance(s, bool):
         return s

@@ -1015,7 +1015,7 @@ def test_function_call_at_root():
     dct = {"__double__": 10}
 
     # when
-    result = resolve(dct, schema, functions={"double": lambda x: x.input * 2})
+    result = resolve(dct, schema, functions={"double": lambda x: x.input * 2}) # type: ignore
 
     # then
     assert result == 20
@@ -1034,7 +1034,7 @@ def test_function_call_in_dictionary():
     dct = {"foo": 6, "bar": {"__double__": 10}}
 
     # when
-    result = resolve(dct, schema, functions={"double": lambda args: args.input * 2})
+    result = resolve(dct, schema, functions={"double": lambda args: args.input * 2}) # type: ignore
 
     # then
     assert result["bar"] == 20
@@ -1053,7 +1053,7 @@ def test_function_call_in_list():
     dct = {"foo": 6, "bar": [1, {"__double__": 10}, 3]}
 
     # when
-    result = resolve(dct, schema, functions={"double": lambda args: args.input * 2})
+    result = resolve(dct, schema, functions={"double": lambda args: args.input * 2}) # type: ignore
 
     # then
     assert result["bar"] == [1, 20, 3]
@@ -1094,7 +1094,7 @@ def test_function_call_input_is_resolved_by_default_using_the_any_schema():
 
     # when
     result = resolve(
-        dct, schema, functions={"add_one_to": lambda args: int(args.input) + 1}
+            dct, schema, functions={"add_one_to": lambda args: int(args.input) + 1} # type: ignore
     )
 
     # then
@@ -1271,7 +1271,7 @@ def test_function_call_at_root_with_result_producing_references():
         },
     }
 
-    def myfun(arg):
+    def myfun(_):
         return {"foo": 10, "bar": "${foo}"}
 
     # when
@@ -1292,7 +1292,7 @@ def test_function_call_at_root_producing_key_shadowing_builtin():
         },
     }
 
-    def myfun(arg):
+    def myfun(_):
         return {"foo": 10, "range": 20}
 
     # when
@@ -1314,7 +1314,7 @@ def test_function_call_at_root_does_not_produce_key_shadowing_builtin():
         },
     }
 
-    def myfun(arg):
+    def myfun(_):
         return {"foo": "${range(10) | length}"}
 
     # when
@@ -1439,7 +1439,7 @@ def test_function_call_with_infinite_recursion():
         return {"__add_one__": args.input + 1}
 
     # when
-    with raises(RecursionError) as exc:
+    with raises(RecursionError):
         resolve({"foo": {"__add_one__": 10}}, schema, functions={"add_one": add_one})
 
 
@@ -1592,7 +1592,7 @@ def test_filter_is_provided_at_interpolation_time():
 
     dct = {"foo": "this", "bar": "${ foo | myfilter }"}
 
-    def myfilter(value, **kwargs):
+    def myfilter(value):
         return value.upper()
 
     # when
@@ -1614,7 +1614,7 @@ def test_filter_overrides_builtin_jinja_filters():
 
     dct = {"foo": "this", "bar": "${ foo | length }"}
 
-    def length(value, **kwargs):
+    def length(_):
         return 42
 
     # when

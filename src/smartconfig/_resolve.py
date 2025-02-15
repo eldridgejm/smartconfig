@@ -1119,7 +1119,10 @@ class _FunctionCallNode(_Node):
         if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
             root = _make_unresolved_container(self.root)
         else:
-            root = None
+            # root can't be a value node, because we're calling this from a
+            # function node that is either the root of the successor of a root
+            # that is a container node
+            raise RuntimeError("Expected root to be a container node.")
 
         args = _types.FunctionArgs(
             input,
@@ -1330,7 +1333,14 @@ def resolve(
     cfg: _types.ConfigurationDict,
     schema: _types.Schema,
     parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
-    functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
+    functions: Optional[
+        Mapping[
+            str,
+            Union[
+                _types.Function, Callable[[_types.FunctionArgs], _types.Configuration]
+            ],
+        ]
+    ] = None,
     global_variables: Optional[Mapping[str, Any]] = None,
     inject_root_as: Optional[str] = None,
     filters: Optional[Mapping[str, Callable]] = None,
@@ -1345,7 +1355,14 @@ def resolve(
     cfg: _types.ConfigurationList,
     schema: _types.Schema,
     parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
-    functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
+    functions: Optional[
+        Mapping[
+            str,
+            Union[
+                _types.Function, Callable[[_types.FunctionArgs], _types.Configuration]
+            ],
+        ]
+    ] = None,
     global_variables: Optional[Mapping[str, Any]] = None,
     inject_root_as: Optional[str] = None,
     filters: Optional[Mapping[str, Callable]] = None,
@@ -1360,7 +1377,14 @@ def resolve(
     cfg: _types.ConfigurationValue,
     schema: _types.Schema,
     parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
-    functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
+    functions: Optional[
+        Mapping[
+            str,
+            Union[
+                _types.Function, Callable[[_types.FunctionArgs], _types.Configuration]
+            ],
+        ]
+    ] = None,
     global_variables: Optional[Mapping[str, Any]] = None,
     inject_root_as: Optional[str] = None,
     filters: Optional[Mapping[str, Callable]] = None,
@@ -1377,7 +1401,14 @@ def resolve(
     cfg: _types.Configuration,
     schema: _types.Schema,
     parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
-    functions: Optional[Mapping[str, _types.Function]] = DEFAULT_FUNCTIONS,
+    functions: Optional[
+        Mapping[
+            str,
+            Union[
+                _types.Function, Callable[[_types.FunctionArgs], _types.Configuration]
+            ],
+        ]
+    ] = None,
     global_variables: Optional[Mapping[str, Any]] = None,
     inject_root_as: Optional[str] = None,
     filters: Optional[Mapping[str, Callable]] = None,
@@ -1463,10 +1494,10 @@ def resolve(
         schema_validator(schema)
 
     if functions is None:
-        functions = {}
+        converted_functions: Mapping[str, _types.Function] = {}
     else:
         # convert standard Python functions to _types.Function instances
-        functions = {k: _ensure_function(v) for k, v in functions.items()}
+        converted_functions = {k: _ensure_function(v) for k, v in functions.items()}
 
     if global_variables is None:
         global_variables = {}
@@ -1477,7 +1508,7 @@ def resolve(
         filters = {}
 
     resolution_context = _types.ResolutionContext(
-        parsers, functions, global_variables, filters, inject_root_as
+        parsers, converted_functions, global_variables, filters, inject_root_as
     )
 
     root = _make_node(cfg, schema, resolution_context)
