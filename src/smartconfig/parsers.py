@@ -6,7 +6,6 @@ string -- and returns a resolved value with the appropriate type.
 
 """
 
-from typing import Callable, Union
 import ast
 import datetime as datetimelib
 import enum
@@ -250,11 +249,11 @@ def _parse_and_remove_time(s):
     match = re.search(time_pattern, s, flags=re.IGNORECASE)
 
     if match:
-        time_raw = match.groups()
+        hours, minutes, seconds = [int(s) for s in match.groups()]
         try:
-            time = datetimelib.time(*[int(x) for x in time_raw])
+            time = datetimelib.time(hours, minutes, seconds)
         except ValueError:
-            raise exceptions.ParseError(f"Invalid time: {time_raw}.")
+            raise exceptions.ParseError(f"Invalid time: {s}.")
         s = re.sub(time_pattern, "", s, flags=re.IGNORECASE)
     else:
         time = None
