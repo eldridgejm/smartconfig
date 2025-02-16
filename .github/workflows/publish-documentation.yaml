@@ -22,7 +22,7 @@ jobs:
         run: uv python install
 
       - name: Build the docs
-        run: cd docs && make html && make doctest
+        run: cd docs && uv run make html && uv run make doctest
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
