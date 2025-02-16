@@ -108,7 +108,7 @@ function call to a function named "double" which doubles its input:
 
     {
         "x": 10,
-        "y": {"__double__": "${this.x}"}
+        "y": {"__double__": "${x}"}
     }
 
 The result will be:
@@ -162,6 +162,33 @@ This resolves to:
          "x": "${y}",
          "y": 4
     }
+
+recursive
+*********
+
+Designate that the argument is a :class:`RecursiveString` and should be interpolated
+repeatedly until it stops changing. See :ref:`special-strings` below. Implemented by
+:func:`smartconfig.functions.recursive`.
+
+**Example**:
+
+.. code:: python
+
+  {
+        "x": 5,
+        "y": {"__raw__": "${x} + 1"},
+        "z": {"__recursive__": "${y} + 2"}
+  }
+
+This resolves to:
+
+.. code:: python
+
+  {
+        "x": 5,
+        "y": "${x} + 1",
+        "z": 8
+  }
 
 splice
 ******
@@ -349,6 +376,7 @@ dictionary is an invalid function call, it should raise a :class:`ValueError`.
 Function calls can be disabled entirely by setting ``check_for_function_call`` to
 None in the call to :func:`resolve`.
 
+.. _special-strings:
 Raw and Recursive String Values
 -------------------------------
 
@@ -410,7 +438,18 @@ ternary operator, so dictionaries can contain expressions like the following:"
     {
         'x': 10,
         'y': 3,
-        'z': '${ this.x if this.x > this.y else this.y }'
+        'z': '${ x if x > y else y }'
+    }
+
+It is also possible to use more advanced control flow constructs, like
+`for` loops and `if` statements. For example:
+
+.. code-block:: python
+
+    {
+        'x': 10,
+        'y': 3,
+        'z': '{% for i in range(x) %}{{ i }} {% endfor %}'
     }
 
 Jinja2 filters are functions that can be applied during string interpolation. Jinja
@@ -435,3 +474,59 @@ should use :code:`preserve_type = True`. At present, type preservation is done b
 constructing the resolved output as normal, but then making a deep copy of `cfg` and
 recursively copying each leaf value into this deep copy. Therefore, there is a
 performance cost.
+
+Resolution in Detail
+--------------------
+
+How exactly does resolution work? This section provides a detailed explanation
+of the resolution process. It is typically not necessary to understand this
+section in order to use `smartconfig`, but it may be helpful for understanding
+the operation of `smartconfig` in more complex scenarios.
+
+It is helpful to conceptualize a configuration as a graph. Each node in the
+graph represents a piece of the configuration. We can imagine four different
+types of node: dictionary, list, value, and function call. Each edge in the
+graph represents a dependency between nodes.
+
+For example, consider the following configuration:
+
+.. code:: python
+
+   {
+        "course_name": "Introduction to Python",
+        "date_of_first_lecture": "2025-01-10",
+        "date_of_first_discussion": "7 days after ${this.first_lecture}",
+        "message": [
+            "Welcome to ${this.course_name}!",
+            "The first lecture is on ${this.first_lecture}.",
+            "The first discussion is on ${this.first_discussion}."
+        ],
+   }
+
+To build the graph representing this configuration, we start by making a
+tree. For this configuration, the root of the tree represents the outermost
+dictionary. This root has four children: the nodes representing
+``course_name``, ``date_of_first_lecture``, ``date_of_first_discussion``, and
+``message``. The first three of these children are leaf nodes, as they are
+simple values. The ``message`` node represents a list, and it has three
+children: the nodes representing the three strings in the list.
+
+On one hand, the edges in this tree represent inclusion relationships. On the
+other, they also represent dependencies. For example, in order to resolve the
+outermost dictionary, we must first resolve each of its children. As-is, the tree
+does not capture *all* of the dependencies in the configuration; for example, the
+value of ``date_of_first_discussion`` depends on the value of
+``date_of_first_lecture``. We can represent this dependency by adding an edge
+from the node representing ``date_of_first_discussion`` to the node representing
+``date_of_first_lecture``, resulting in a graph.
+
+When a configuration is resolved, a depth-first search is performed on this
+graph, starting at the "root" node of the configuration. When a dictionary or
+list node is encountered, an arbitrary child is recursively resolved before the
+next child is resolved. When a leaf node is encountered, it is resolved by
+first recursively resolving any nodes that it references, and then potentially
+interpolating these resolved values and passing them into a parser to determine
+the final value.
+
+If during resolution a node is encountered that is currently being resolved, a
+circular dependency is detected, and an error is raised.

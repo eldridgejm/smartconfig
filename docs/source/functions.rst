@@ -1,5 +1,5 @@
-Functions
-=========
+Built-in Functions
+==================
 
 .. automodule:: smartconfig.functions
 

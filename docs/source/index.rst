@@ -160,5 +160,4 @@ Additionally, `smartconfig` provides the following features to developers:
    ./parsers.rst
    ./types.rst
    ./recipes.rst
-   ./resolve_in_detail.rst
 

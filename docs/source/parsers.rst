@@ -1,5 +1,5 @@
-Parsers
-=======
+Built-in Parsers
+================
 
 .. automodule:: smartconfig.parsers
 
