@@ -149,9 +149,10 @@ class UnresolvedFunctionCall(abc.ABC):
     Unlike :class:`UnresolvedDict` and :class:`UnresolvedList`, this does not provide a
     :meth:`resolve` method. This is because there is never a need to resolve an
     unresolved function call explicitly -- it will always be resolved implicitly when it
-    is indexed into or when its :meth:`get_keypath` method is called. Calling
-    :meth:`resolve` on an :class:`UnresolvedFunctionCall` would only result in infinite
-    recursion, so it is not provided.
+    is indexed into, accessed as a child of another container, or when its
+    :meth:`get_keypath` method is called. Calling :meth:`resolve` on an
+    :class:`UnresolvedFunctionCall` would only result in infinite recursion, so it is
+    not provided.
 
     """
 
