@@ -4,7 +4,7 @@
 YAML, TOML, and others with "smart" features, such as string interpolation,
 natural language parsing, and type checking.
 
-See the `documentation <https://eldridgejm.github.io/smartconfig/>`_ for more information.
+See the [documentation](https://eldridgejm.github.io/smartconfig/) for more information.
 
 ## Use Cases and Example
 
