@@ -1,6 +1,12 @@
 Resolution
 ==========
 
+.. testsetup:: python
+
+    import smartconfig
+    from smartconfig import types
+    from pprint import pprint as print
+
 A configuration is resolved using the :func:`smartconfig.resolve` function.
 
 .. module:: smartconfig
@@ -117,21 +123,31 @@ form ``__<function_name>__`` (this behavior can be modified; see
 that is passed to the function. For example, the following configuration contains a
 function call to a function named "double" which doubles its input:
 
-.. code-block:: python
+.. testcode:: python
 
-    {
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {"type": "integer"},
+            "y": {"type": "integer"}
+        }
+    }
+
+    config = {
         "x": 10,
         "y": {"__double__": "${x}"}
     }
 
+    result = smartconfig.resolve(
+        config, schema, functions={"double": lambda x: int(x.input) * 2}
+    )
+    print(result)
+
 The result will be:
 
-.. code-block:: python
+.. testoutput:: python
 
-    {
-        "x": 10,
-        "y": 20
-    }
+    {'x': 10, 'y': 20}
 
 The functions available to a configuration are specified by passing a dictionary
 mapping function names to functions to :func:`resolve`. The functions should either be
@@ -162,21 +178,29 @@ parsed. See :ref:`special-strings` below. Implemented by
 
 **Example**:
 
-.. code:: python
+.. testcode:: python
 
-    {
-         "x": {"__raw__": "${y}"}
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {"type": "string"},
+            "y": {"type": "integer"}
+        }
+    }
+
+    config = {
+         "x": {"__raw__": "${y}"},
          "y": 4
     }
+
+    result = smartconfig.resolve(config, schema)
+    print(result)
 
 This resolves to:
 
-.. code:: python
+.. testoutput:: python
 
-    {
-         "x": "${y}",
-         "y": 4
-    }
+    {'x': '${y}', 'y': 4}
 
 .. _recursive-builtin:
 recursive
@@ -188,23 +212,30 @@ repeatedly until it stops changing. See :ref:`special-strings` below. Implemente
 
 **Example**:
 
-.. code:: python
+.. testcode:: python
 
-  {
-        "x": 5,
-        "y": {"__raw__": "${x} + 1"},
-        "z": {"__recursive__": "${y} + 2"}
-  }
+   schema = {
+       "type": "dict",
+       "required_keys": {
+           "x": {"type": "integer"},
+           "y": {"type": "string"},
+           "z": {"type": "integer"}
+       }
+   }
+
+   config = {
+       "x": 5,
+       "y": {"__raw__": "${x} + 1"},
+       "z": {"__recursive__": "${y} + 2"}
+   }
+
+   print(smartconfig.resolve(config, schema))
 
 This resolves to:
 
-.. code:: python
+.. testoutput:: python
 
-  {
-        "x": 5,
-        "y": "${x} + 1",
-        "z": 8
-  }
+    {'x': 5, 'y': '${x} + 1', 'z': 8}
 
 splice
 ******
@@ -214,21 +245,34 @@ keypath to the part to copy. Implemented by :func:`smartconfig.functions.splice`
 
 **Example**:
 
-.. code:: python
+.. testcode:: python
 
-  {
-      "x": {"a": 1, "b": [1 ,2 ,3]},
-      "y": {"__splice__": "x.b"}
-  }
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "list", "element_schema": {"type": "integer"}}
+                }
+            },
+            "y": {"type": "list", "element_schema": {"type": "integer"}}
+        }
+    }
+
+    config = {
+        "x": {"a": 1, "b": [1 ,2 ,3]},
+        "y": {"__splice__": "x.b"}
+    }
+
+    print(smartconfig.resolve(config, schema))
 
 This resolves to:
 
-.. code:: python
+.. testoutput:: python
 
-  {
-      "x": {"a": 1, "b": 2},
-      "y": [1, 2, 3]
-  }
+    {'x': {'a': 1, 'b': [1, 2, 3]}, 'y': [1, 2, 3]}
 
 
 update_shallow
@@ -240,19 +284,32 @@ does not operate recursively. Implemented by :func:`smartconfig.functions.update
 
 **Example**:
 
-.. code:: python
+.. testcode:: python
 
-  {
-      "x": {"__update_shallow__": [{"a": 3, "c": 4}, {"c": 5}]}
-  }
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"}
+                }
+            }
+        }
+    }
+
+    config = {
+        "x": {"__update_shallow__": [{"a": 3, "b": 4}, {"b": 5}]}
+    }
+
+    print(smartconfig.resolve(config, schema))
 
 This resolves to:
 
-.. code:: python
+.. testoutput:: python
 
-  {
-      "x": {"a": 3, "c": 5}
-  }
+    {'x': {'a': 3, 'b': 5}}
 
 
 update
@@ -263,19 +320,37 @@ Like ``update_shallow``, but operates recursively. Implemented by
 
 **Example**:
 
-.. code:: python
+.. testcode:: python
 
-  {
-      "x": {"__update__": [{"a": {"foo": 1}}, {"a": {"bar": 2}}]}
-  }
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {
+                        "type": "dict",
+                        "required_keys": {
+                            "foo": {"type": "integer"},
+                            "bar": {"type": "integer"}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    config = {
+        "x": {"__update__": [{"a": {"foo": 1}}, {"a": {"bar": 2}}]}
+    }
+
+    print(smartconfig.resolve(config, schema))
 
 This resolves to:
 
-.. code:: python
+.. testoutput:: python
 
-  {
-      "x": {"a": {"foo": 1, "bar": 2}}
-  }
+    {'x': {'a': {'bar': 2, 'foo': 1}}}
 
 concatenate
 ***********
@@ -284,19 +359,26 @@ Concatenates a list of lists. Implemented by :func:`smartconfig.functions.concat
 
 **Example**:
 
-.. code:: python
+.. testcode:: python
 
-  {
-      "x": {"__concatenate__": [[1, 2], [3, 4]]}
-  }
+   schema = {
+       "type": "dict",
+       "required_keys": {
+           "x": {"type": "list", "element_schema": {"type": "integer"}}
+       }
+   }
+
+   config = {
+       "x": {"__concatenate__": [[1, 2], [3, 4]]}
+   }
+
+   print(smartconfig.resolve(config, schema))
 
 This resolves to:
 
-.. code:: python
+.. testoutput:: python
 
-  {
-      "x": [1, 2, 3, 4]
-  }
+  {'x': [1, 2, 3, 4]}
 
 To override the default functions or provide your own, copy :data:`DEFAULT_FUNCTIONS`
 and modify it as needed.
@@ -315,10 +397,10 @@ returns a :class:`smartconfig.types.Configuration` representing the result of th
 function call. For example, below is a simple function that takes a string and a number
 and repeats the string that many times:
 
-.. code-block:: python
+.. testcode:: python
 
-    def repeat(args: FunctionArgs) -> Configuration:
-        return args.string * args.repetitions
+    def repeat(args: smartconfig.types.FunctionArgs):
+        return args.input['string'] * args.input['repetitions']
 
     schema = {
         "type": "dict",
@@ -332,14 +414,13 @@ and repeats the string that many times:
     }
 
     result = smartconfig.resolve(dct, schema, functions={"repeat": repeat})
+    print(result)
 
 The result will be:
 
-.. code-block:: python
+.. testoutput:: python
 
-    {
-        "message": "HelloHelloHello"
-    }
+    {'message': 'HelloHelloHello'}
 
 The second way to define a function is to create a :class:`smartconfig.types.Function`
 instances. This is preferable if you need to control whether the function's input is
@@ -348,8 +429,9 @@ class provides a convenience class method for this, called
 :meth:`smartconfig.types.Function.new`. This class method can be used as a decorator.
 For example:
 
-.. code-block:: python
+.. testcode:: python
 
+    from smartconfig.types import Function, FunctionArgs, Configuration, RawString
     @Function.new(resolve_input=False)
     def raw(args: FunctionArgs) -> Configuration:
         return RawString(args.input)
@@ -366,14 +448,13 @@ For example:
     }
 
     result = smartconfig.resolve(dct, schema, functions={"raw": raw})
+    print(result)
 
 The result will be:
 
-.. code-block:: python
+.. testoutput:: python
 
-    {
-        "message": "${x}"
-    }
+    {'message': '${x}'}
 
 Functions are provided with with an object representing the entire unresolved
 configuration via the :attr:`smartconfig.types.FunctionArgs.root` attribute. This
@@ -381,7 +462,9 @@ object can be used to reference other parts of the configuration without causing
 whole configuration to be resolved (which might result in circular references). For
 example:
 
-.. code-block:: python
+.. testcode:: python
+
+    from smartconfig.types import Function, FunctionArgs, Configuration
 
     def compute_bar(args: FunctionArgs) -> Configuration:
          return args.root["foo"]["x"] + 1
@@ -389,7 +472,7 @@ example:
     schema = {
         "type": "dict",
         "required_keys": {
-            "foo": {"type": "dict", "required_keys": {"": {"type": "integer"}}},
+            "foo": {"type": "dict", "required_keys": {"x": {"type": "integer"}}},
             "bar": {"type": "integer"}
         }
     }
@@ -400,15 +483,13 @@ example:
     }
 
     result = smartconfig.resolve(dct, schema, functions={"compute_bar": compute_bar})
+    print(result)
 
 The result will be:
 
-.. code-block:: python
+.. testoutput:: python
 
-    {
-        "foo": {"x": 5},
-        "bar": 6
-    }
+    {'bar': 6, 'foo': {'x': 5}}
 
 For more on how the :attr:`smartconfig.types.FunctionArgs.root` attribute can be used,
 see the documentation for :class:`types.UnresolvedDict`, :class:`types.UnresolvedList`,
@@ -456,7 +537,9 @@ Recursive strings and raw strings are typically used in conjunction to define te
 strings and to evaluate them somewhere else. For example, suppose we have the
 configuration:
 
-.. code::
+.. testcode:: python
+
+    from smartconfig.types import RecursiveString, RawString
 
     schema = {
         "type": "dict",
@@ -473,17 +556,12 @@ configuration:
         "baz": RecursiveString("I said: ${bar}"),
     }
 
-    result = resolve(dct, schema)
+    result = smartconfig.resolve(dct, schema)
+    print(result)
 
-The result will be:
+.. testoutput:: python
 
-.. code::
-
-    assert result == {
-        "foo": "hello",
-        "bar": "${foo} world",
-        "baz": "I said: hello world",
-    }
+    {'bar': '${foo} world', 'baz': 'I said: hello world', 'foo': 'hello'}
 
 
 Jinja2 Features
@@ -493,24 +571,58 @@ Jinja2 Features
 many powerful `Jinja2` features can be used. For example, `Jinja2` supports a
 ternary operator, so dictionaries can contain expressions like the following:"
 
-.. code-block:: python
+.. testcode:: python
 
-    {
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {"type": "integer"},
+            "y": {"type": "integer"},
+            "z": {"type": "integer"}
+        }
+    }
+
+    config = {
         'x': 10,
         'y': 3,
         'z': '${ x if x > y else y }'
     }
 
+    print(smartconfig.resolve(config, schema))
+
+The result will be:
+
+.. testoutput:: python
+
+    {'x': 10, 'y': 3, 'z': 10}
+
 It is also possible to use more advanced control flow constructs, like
 `for` loops and `if` statements. For example:
 
-.. code-block:: python
+.. testcode:: python
 
-    {
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {"type": "integer"},
+            "y": {"type": "integer"},
+            "z": {"type": "string"}
+        }
+    }
+
+    config = {
         'x': 10,
         'y': 3,
-        'z': '{% for i in range(x) %}{{ i }} {% endfor %}'
+        'z': '{% for i in range(x) %}${ i } {% endfor %}'
     }
+
+    print(smartconfig.resolve(config, schema))
+
+The result is:
+
+.. testoutput:: python
+
+    {'x': 10, 'y': 3, 'z': '0 1 2 3 4 5 6 7 8 9 '}
 
 Jinja2 filters are functions that can be applied during string interpolation. Jinja
 provides many built-in filters, but custom filters can also be provided via the

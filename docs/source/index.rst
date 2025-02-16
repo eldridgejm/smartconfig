@@ -43,11 +43,11 @@ format that looks like this:
     config = {
         "course_name": "Introduction to Python",
         "date_of_first_lecture": "2025-01-10",
-        "date_of_first_discussion": "7 days after ${first_lecture}",
+        "date_of_first_discussion": "7 days after ${date_of_first_lecture}",
         "message": [
             "Welcome to ${course_name}!",
-            "The first lecture is on ${first_lecture}.",
-            "The first discussion is on ${first_discussion}."
+            "The first lecture is on ${date_of_first_lecture}.",
+            "The first discussion is on ${date_of_first_discussion}."
         ]
     }
 
@@ -92,8 +92,8 @@ We will see the following output:
 .. testoutput::
 
     {'course_name': 'Introduction to Python',
-     'date_of_first_lecture': datetime.date(2025, 1, 10),
      'date_of_first_discussion': datetime.date(2025, 1, 17),
+     'date_of_first_lecture': datetime.date(2025, 1, 10),
      'message': ['Welcome to Introduction to Python!',
                  'The first lecture is on 2025-01-10.',
                  'The first discussion is on 2025-01-17.']}

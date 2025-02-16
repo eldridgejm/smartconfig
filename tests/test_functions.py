@@ -316,6 +316,27 @@ def test_update_uses_values_from_the_righmost_map():
     }
 
 
+def test_update_is_recursive():
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {
+                "type": "any",
+                "required_keys": {
+                    "a": {"type": "dict", "required_keys": {"foo": {"type": "integer"}}}
+                },
+            }
+        },
+    }
+
+    config = {"x": {"__update__": [{"a": {"foo": 1}}, {"a": {"bar": 2}}]}}
+
+    # when
+    resolved = resolve(config, schema, functions={"update": functions.update})
+
+    assert resolved == {"x": {"a": {"foo": 1, "bar": 2}}}
+
+
 def test_update_with_partial_update():
     # the second dictionary does not have all the keys of the first one at the
     # second level of nesting

@@ -1160,9 +1160,10 @@ DEFAULT_CONVERTERS = {
 # the default functions available to resolve()
 DEFAULT_FUNCTIONS = {
     "raw": _functions.raw,
+    "recursive": _functions.recursive,
     "splice": _functions.splice,
     "update_shallow": _functions.update_shallow,
-    "update": _functions.update_shallow,
+    "update": _functions.update,
     "concatenate": _functions.concatenate,
 }
 

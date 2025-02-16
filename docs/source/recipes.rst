@@ -11,6 +11,29 @@ custom functions.
 For example, let's say the file we want to include is called ``person.json`` and looks
 like this:
 
+.. testsetup:: python
+
+   import smartconfig
+   import tempfile
+   import json
+   import pathlib
+
+   # make a temporary directory
+   dirpath = pathlib.Path(tempfile.mkdtemp())
+
+   # write person.json
+   with open(dirpath / 'person.json', 'w') as f:
+       json.dump({"name": "Barack Obama"}, f)
+
+   # write main.json
+       with open(dirpath / 'main.json', 'w') as f:
+           json.dump({
+               "message": "Hello ${student.name}",
+               "student": {
+               "__include__": "person.json"
+           }
+       }, f)
+
 .. code:: json
 
    {
@@ -32,7 +55,7 @@ The double underscore syntax is used to indicate that this is a function call wi
 ``"person.json"`` as the argument.
 
 
-.. code:: python
+.. testcode:: python
 
     import smartconfig
     import json
@@ -40,18 +63,23 @@ The double underscore syntax is used to indicate that this is a function call wi
     def include(args):
         """Read a JSON file and include it in the configuration."""
         # args.input is assumed to be the name of the file to include
-        with open(args.input) as f:
+        with open(dirpath / args.input) as f:
             return json.load(f)
 
     schema = {
         "type": "dict",
         "required_keys": {
             "message": {"type": "string"},
-            "student": {"type": "string"}
+            "student": {
+                "type": "dict",
+                "required_keys": {
+                    "name": {"type": "string"}
+                }
+            }
         }
     }
 
-    with open('main.json') as f:
+    with open(dirpath / 'main.json') as f:
         config = json.load(f)
 
     result = smartconfig.resolve(
@@ -60,17 +88,75 @@ The double underscore syntax is used to indicate that this is a function call wi
         functions={"include": include}
     )
 
+    print(result)
+
 Then the result will be:
 
-.. code:: python
+.. testoutput:: python
 
-    {
-        "message": "Hello Barack Obama",
-        "student": {
-            "name": "Barack Obama"
+    {'message': 'Hello Barack Obama', 'student': {'name': 'Barack Obama'}}
+
+.. testcleanup:: python
+
+    import shutil
+    shutil.rmtree(dirpath)
+
+
+Recipe 2: Generating configurations with Jinja2
+------------------------------------------------
+
+By providing a custom function that parses a configuration string (JSON, YAML, etc.)
+into a Python object, we can use Jinja2 templates to generate configurations.
+
+In the following example, we provide a custom function called ``read_json`` that parses
+a JSON string into a Python object. We then use Jinja2 templates to generate the JSON
+repreesentation of a list of doubled numbers. When we resolve the configuration, the
+``read_json`` function parses that templated JSON into a Python list.
+
+.. testcode:: python
+
+    import smartconfig
+    import json
+
+    def read_json(args):
+        # args.input is assumed to be a JSON string
+        return json.loads(args.input)
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "numbers": {
+                "type": "list",
+                "element_schema": {"type": "integer"}
+        },
+            "doubled_numbers": {
+                "type": "list",
+                "element_schema": {"type": "integer"}
+            }
         }
     }
 
+    config = {
+        "numbers": [1, 2, 3],
+        "doubled_numbers": {
+            "__read_json__": """
+            [
+                {% for number in numbers %}
+                    ${ number * 2 }${ "," if not loop.last }
+                {% endfor %}
+            ]
+            """
+        }
+    }
 
+    print(smartconfig.resolve(
+        config,
+        schema,
+        functions={"read_json": read_json}
+    ))
 
+The result will be:
 
+.. testoutput:: python
+
+    {'numbers': [1, 2, 3], 'doubled_numbers': [2, 4, 6]}
