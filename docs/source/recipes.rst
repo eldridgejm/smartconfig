@@ -102,8 +102,8 @@ Then the result will be:
     shutil.rmtree(dirpath)
 
 
-Recipe 2: Generating configurations with Jinja2
-------------------------------------------------
+Recipe 2: Generating configurations with templated JSON, YAML, etc.
+-------------------------------------------------------------------
 
 By providing a custom function that parses a configuration string (JSON, YAML, etc.)
 into a Python object, we can use Jinja2 templates to generate configurations.
