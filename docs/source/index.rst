@@ -1,20 +1,21 @@
 smartconfig
 ===========
 
-`smartconfig` is a Python library that extends configuration formats (like
-JSON, YAML, TOML, etc.) with "smart" features, such as string interpolation,
-natural language parsing, and type checking.
+`smartconfig` is a Python library that extends configuration formats like JSON,
+YAML, TOML, and others with "smart" features, such as string interpolation, natural
+language parsing, and type checking.
 
 Use Cases and Example
 ---------------------
 
 Python programs that require user configuration often use simple configuration
-formats such as JSON, YAML, or TOML. These formats are easy to understand, but
-they may not support more advanced features like string interpolation, date
-parsing, or type checking. Another approach is to use a full-fledged
-programming language to define the configuration, such as Python itself.
-However, this approach vastly increases the possible complexity of the
-configuration file, and it requires that users know how to write Python code.
+formats such as JSON, YAML, or TOML. These formats are easier to read and write
+than coding languages, but they may not support more advanced features like
+string interpolation, date parsing, or type checking. Another approach is to
+use a full-fledged programming language to define the configuration, such as
+Python itself. However, this approach vastly increases the possible complexity
+of the configuration file, and it requires that users know how to write Python
+code.
 
 `smartconfig` aims to bridge the gap between these two approaches by providing
 a simple way to extend simple configuration formats with "smart" features. To
@@ -52,12 +53,13 @@ configuration file in JSON format that looks like this:
 
     json.dump(config, open('example.json', 'w'))
 
-Notice the use of the `${...}` syntax to refer to other values in the
-configuration file and the fact that the `date_of_first_discussion` key is
-defined relative to the `date_of_first_lecture` key. Of course, if we try to
+Notice the use of the ``${...}`` syntax to refer to other values in the
+configuration file and the fact that the ``date_of_first_discussion`` key is
+defined relative to the ``date_of_first_lecture`` key. Of course, if we try to
 load this configuration file using Python's `json` module, we will not see
-anything special happen; the references will not be resolved. Now let's use
-`smartconfig` to load the configuration:
+anything special happen; the references will not be resolved.
+
+Now let's use `smartconfig` to load the configuration:
 
 
 .. testcode::
@@ -69,7 +71,7 @@ anything special happen; the references will not be resolved. Now let's use
     with open('example.json') as f:
         config = json.load(f)
 
-    # first we define a schema to let smartconfig know what to expect
+    # first, we write a "schema" defining the structure of the configuration
     schema = {
         "type": "dict",
         "required_keys": {
@@ -80,7 +82,7 @@ anything special happen; the references will not be resolved. Now let's use
         }
     }
 
-    # now we "resolve" the references in the configuration
+    # now we "resolve" the configuration
     result = smartconfig.resolve(config, schema)
     print(result)
 
@@ -95,12 +97,13 @@ We will see the following output:
                  'The first lecture is on 2025-01-10.',
                  'The first discussion is on 2025-01-17.']}
 
-Notice that the `${...}` references have been resolved, and the date of the
+Notice that the ``${...}`` references have been resolved, and the date of the
 first discussion, defined relative to the date of the first lecture in the
-original JSON, has been calculated correctly. This example demonstrates the
-most basic use case of `smartconfig`: extending simple configuration formats.
-But `smartconfig` provides many more features that can be used to create
-powerful and flexible configuration files.
+original JSON, has been calculated correctly.
+
+This example demonstrates the most basic use case of `smartconfig`: extending
+simple configuration formats. But `smartconfig` provides many more features
+that can be used to create powerful and flexible configuration files.
 
 Features
 --------
@@ -108,7 +111,7 @@ Features
 `smartconfig` supports extending configuration formats with the following
 features:
 
-- **String interpolation**: Use `${...}` to refer to other values in the
+- **String interpolation**: Use ``${...}`` to refer to other values in the
   configuration file. This helps avoid duplication and the errors that can
   arise from it.
 - **Natural language parsers**: `smartconfig` includes natural language parsers
@@ -148,4 +151,9 @@ Additionally, `smartconfig` provides the following features to developers:
    ./concepts.rst
    ./schemas.rst
    ./resolve.rst
+   ./functions.rst
+   ./parsers.rst
+   ./types.rst
+   ./recipes.rst
    ./resolve_in_detail.rst
+

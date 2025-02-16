@@ -1,0 +1,25 @@
+Functions
+=========
+
+.. automodule:: smartconfig.functions
+
+
+.. autosummary::
+
+   concatenate
+   raw
+   splice
+   update
+   update_shallow
+
+.. autofunction:: concatenate
+
+.. function:: raw(args: FunctionArgs)
+
+   Makes a raw string that will not be interpolated or parsed.
+
+   ``args.input``
+
+.. autofunction:: splice
+.. autofunction:: update
+.. autofunction:: update_shallow

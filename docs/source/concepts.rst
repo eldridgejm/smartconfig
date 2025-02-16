@@ -1,14 +1,14 @@
 Concepts
-========
+--------
 
 Before getting started with `smartconfig`, it's useful to understand a few key concepts.
 
 The input to `smartconfig` is a **configuration**. A configuration is defined
 recursively as one of the following:
 
-- A *dictionary* whose keys are strings and whose values are again configurations.
-- A *list* of configurations.
-- A *value* (a string, integer, float, boolean, date or datetime, or None).
+- A **dictionary** whose keys are strings and whose values are again configurations.
+- A **list** of configurations.
+- A **value** (a string, integer, float, boolean, date or datetime, or None).
 
 For example, the below is a valid configuration:
 

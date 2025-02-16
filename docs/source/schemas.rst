@@ -2,10 +2,9 @@ Schemas
 =======
 
 The first step in using `smartconfig` is to define a **schema**. A schema is a
-Python dictionary defining the expected structure of a configuration.
-Importantly, `smartconfig` uses the schema to determine what type a value
-should have (integer, date, string, etc.) and therefore which parser should be
-used to read it.
+dictionary defining the expected structure of a configuration. Importantly,
+`smartconfig` uses the schema to determine what type a value should have (integer, date,
+string, etc.) and therefore which parser should be used to read it.
 
 Concretely, a schema is a dictionary that follows the formal grammar below.
 
@@ -67,7 +66,7 @@ name, age, and a list of the classes they are taking. For example:
         "enrolled_in": ["Math 100", "History 101", "Physics 200"]
     }
 
-The schema describing this structure would look like this:
+The schema describing this structure is:
 
 .. code:: python
 
@@ -273,3 +272,10 @@ structure. However, if the "any" schema is used, `smartconfig` will not be able
 to determine the intended type of the values in the configuration, and will
 therefore do no parsing of the values. String interpolation will still be
 performed.
+
+Validating Schemas
+------------------
+
+`smartconfig` provides the following function for validating schemas:
+
+.. autofunction:: smartconfig.validate_schema

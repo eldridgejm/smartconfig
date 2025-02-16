@@ -1,9 +1,10 @@
 """Types and type aliases."""
 
+from typing import Dict, List, Union, Mapping, Any, Tuple, Callable, Iterable, Optional
 import abc
 import dataclasses
-from typing import Dict, List, Union, Mapping, Any, Tuple, Callable, Iterable, Optional
 import datetime
+import functools
 
 # configuration type aliases ===========================================================
 
@@ -140,6 +141,7 @@ class Function:
 
         """
 
+        @functools.wraps(cls)
         def decorator(fn: Callable[[FunctionArgs], Configuration]) -> "Function":
             return cls(fn, resolve_input)
 
