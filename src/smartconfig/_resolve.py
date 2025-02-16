@@ -284,19 +284,21 @@ class _UnresolvedFunctionCall(_types.UnresolvedFunctionCall):
     def __init__(self, function_node: "_FunctionCallNode"):
         self.function_node = function_node
 
-    def _evaluate_to_unresolved_container(self):
+    def _evaluate_to_unresolved_container(
+        self,
+    ) -> Union["_UnresolvedDict", "_UnresolvedList"]:
         """Evaluate the function call and return a unresolved container.
 
         If the result of the function call is not a collection, a TypeError is raised.
 
         """
         node = self.function_node.evaluate()
+        assert not isinstance(node, _ValueNode)
         if isinstance(node, _DictNode):
             return _UnresolvedDict(node)
-        elif isinstance(node, _ListNode):
-            return _UnresolvedList(node)
         else:
-            raise TypeError(f"Not a collection: {node}")
+            # must be a _ListNode
+            return _UnresolvedList(node)
 
     def __getitem__(
         self, key
@@ -309,10 +311,6 @@ class _UnresolvedFunctionCall(_types.UnresolvedFunctionCall):
 
         """
         return self._evaluate_to_unresolved_container()[key]
-
-    def resolve(self) -> _types.Configuration:
-        """Resolve the function call, returning the result."""
-        return self.function_node.evaluate().resolve()
 
     def get_keypath(self, keypath: Union[_types.KeyPath, str]) -> _types.Configuration:
         """Resolve the value at the given keypath."""
@@ -334,16 +332,12 @@ def _make_unresolved_container(
         return _UnresolvedFunctionCall(node)
 
 
-def _identity(x):
-    return x
-
-
 def _get_keypath(
     unresolved_container: Union[
         "_UnresolvedDict", "_UnresolvedList", "_UnresolvedFunctionCall"
     ],
     keypath: Union[_types.KeyPath, str],
-    cast_key: Optional[Callable[[str], Any]] = None,
+    cast_key: Callable[[str], Any],
 ) -> _types.Configuration:
     """Resolve the node at the given keypath.
 
@@ -358,9 +352,9 @@ def _get_keypath(
         The (nested) container to search.
     keypath : Union[KeyPath, str]
         The keypath to the value to resolve. Can be a string or a tuple of strings.
-    cast_key : Optional[Callable[[str], Any]]
+    cast_key : Callable[[str], Any]
         A function to cast the key to the appropriate type. For example, int() to
-        convert to an integer. If `None`, the key is not cast.
+        convert to an integer.
 
     Returns
     -------
@@ -368,10 +362,6 @@ def _get_keypath(
         The resolved value at the keypath.
 
     """
-    # default cast key is the identity function
-    if cast_key is None:
-        cast_key = _identity
-
     # string keypaths are split into tuples
     if isinstance(keypath, str):
         keypath = tuple(keypath.split("."))
@@ -387,16 +377,16 @@ def _get_keypath(
         else:
             return result
     else:
-        first, *rest_of_path = keypath
+        head_key, *rest_of_path = keypath
 
         # again, the result of this line will either be an _UnresolvedDict, an
         # _UnresolvedList, or a configuration. It cannot be an _UnresolvedFunctionCall.
-        first = unresolved_container[cast_key(first)]
+        first_element = unresolved_container[cast_key(head_key)]
 
-        if not isinstance(first, (_UnresolvedDict, _UnresolvedList)):
-            raise KeyError(first)
+        if not isinstance(first_element, (_UnresolvedDict, _UnresolvedList)):
+            raise KeyError(head_key)
 
-        return first.get_keypath(tuple(rest_of_path))
+        return first_element.get_keypath(tuple(rest_of_path))
 
 
 # node types ===========================================================================
@@ -448,7 +438,6 @@ class _Node(abc.ABC):
     @abc.abstractmethod
     def resolve(self) -> _types.Configuration:
         """Recursively resolve the node into a configuration."""
-        ...
 
 
 # _DictNode ----------------------------------------------------------------------------
@@ -711,9 +700,6 @@ class _ListNode(_Node):
 
         child_schema = list_schema["element_schema"]
 
-        if isinstance(keypath, str):
-            keypath = tuple(keypath.split("."))
-
         children = []
         for i, lst_value in enumerate(lst):
             r = _make_node(
@@ -805,7 +791,6 @@ class _ValueNode(_Node):
         keypath: _types.KeyPath,
         resolution_context: _types.ResolutionContext,
         parent: Optional[_Node] = None,
-        nullable: bool = False,
     ) -> "_ValueNode":
         """Create a leaf node from the configuration and schema."""
         if schema["type"] == "any":
@@ -816,7 +801,7 @@ class _ValueNode(_Node):
             schema["type"],
             keypath,
             resolution_context,
-            nullable=nullable,
+            nullable=schema["nullable"] if "nullable" in schema else False,
             parent=parent,
         )
 
@@ -913,6 +898,9 @@ class _ValueNode(_Node):
 
         # register the custom filters
         environment.filters.update(self.resolution_context.filters)
+
+        # make undefined references raise an error
+        environment.undefined = jinja2.StrictUndefined
 
         template = environment.from_string(s)
 
@@ -1013,13 +1001,11 @@ class _FunctionCallNode(_Node):
         else:
             input = self.input
 
-        if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
-            root = _make_unresolved_container(self.root)
-        else:
-            # root can't be a value node, because we're calling this from a
-            # function node that is either the root of the successor of a root
-            # that is a container node
-            raise RuntimeError("Expected root to be a container node.")
+        # root can't be a value node, because we're calling this from a
+        # function node that is either 1) the root, or 2) the successor of a root
+        # that is a container node
+        assert isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode))
+        root = _make_unresolved_container(self.root)
 
         args = _types.FunctionArgs(
             input,
@@ -1244,13 +1230,15 @@ def _copy_into(dst, src):
     """Recursively copy the leaf values from src to dst.
 
     Used when preserve_type = True in resolve()
+
     """
+    assert isinstance(dst, (dict, list))
+
     if isinstance(dst, dict):
         keys = dst.keys()
-    elif isinstance(dst, list):
-        keys = range(len(dst))
     else:
-        raise ValueError("The destination must be a dictionary or list.")
+        # dst must be a list
+        keys = range(len(dst))
 
     for key in keys:
         x = src[key]
@@ -1301,7 +1289,7 @@ def resolve(
         _types.FunctionCallChecker
     ] = _check_for_dunder_function_call,
 ) -> dict:
-    pass
+    """Overloaded resolve() for ConfigurationDict."""
 
 
 @typing.overload
@@ -1326,7 +1314,7 @@ def resolve(
         _types.FunctionCallChecker
     ] = _check_for_dunder_function_call,
 ) -> list:
-    pass
+    """Overloaded resolve() for ConfigurationList."""
 
 
 @typing.overload
@@ -1351,7 +1339,7 @@ def resolve(
         _types.FunctionCallChecker
     ] = _check_for_dunder_function_call,
 ) -> Any:
-    pass
+    """Overloaded resolve() for ConfigurationValue."""
 
 
 # implementation -----------------------------------------------------------------------

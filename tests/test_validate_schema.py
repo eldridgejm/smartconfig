@@ -75,6 +75,27 @@ def test_raises_if_default_is_provided_for_a_required_key():
     assert excinfo.value.keypath == ("required_keys", "foo", "default")
 
 
+def test_raises_if_there_are_missing_keys():
+    schema = {"type": "list"}
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert "Missing key." in str(exc.value)
+
+
+# value schemata =======================================================================
+
+
+def test_raises_if_the_type_is_unexpected():
+    schema = {"type": "int", "nullable": True}
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert "Invalid type: int." in str(exc.value)
+
+
 # list schemata ========================================================================
 
 

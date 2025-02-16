@@ -1,5 +1,12 @@
 from smartconfig import resolve, exceptions
-from smartconfig.types import RawString, RecursiveString, Function
+from smartconfig.types import (
+    RawString,
+    RecursiveString,
+    Function,
+    UnresolvedDict,
+    UnresolvedList,
+    UnresolvedFunctionCall,
+)
 
 from pytest import raises
 
@@ -88,6 +95,25 @@ def test_allows_missing_keys_if_required_is_false():
     assert "foo" not in result
 
 
+def test_list_of_dicts():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "dict",
+            "required_keys": {"foo": {"type": "integer"}},
+        },
+    }
+
+    dct = [{"foo": 42}, {"foo": 10}]
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result == [{"foo": 42}, {"foo": 10}]
+
+
 # non-dictionary roots =================================================================
 
 
@@ -104,19 +130,19 @@ def test_lists_are_permitted_as_root_node():
     assert result == [1, 2, 3]
 
 
-def test_leafs_are_permitted_as_root_node():
+def test_values_are_permitted_as_root_node():
     # given
     schema = {
         "type": "integer",
     }
 
-    x = 42
+    x = "1 + 2"
 
     # when
     result = resolve(x, schema)
 
     # then
-    assert result == 42
+    assert result == 3
 
 
 # interpolation ========================================================================
@@ -935,6 +961,22 @@ def test_any_can_be_None_without_being_nullable():
 # good exceptions ======================================================================
 
 
+def test_exception_raised_when_referencing_an_undefined_key():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {"foo": {"type": "string"}},
+    }
+
+    dct = {"foo": "${bar}"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema)
+
+    assert "'bar' is undefined" in str(exc.value)
+
+
 def test_exception_has_correct_path_with_missing_key_in_nested_dict():
     # given
     schema = {
@@ -997,16 +1039,23 @@ def test_preserve_type():
     # given
     schema = {
         "type": "dict",
-        "required_keys": {"foo": {"type": "integer"}},
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {
+                "type": "dict",
+                "required_keys": {"something": {"type": "integer"}},
+            },
+            "baz": {"type": "list", "element_schema": {"type": "integer"}},
+        },
     }
 
-    dct = UserDict({"foo": "42"})
+    dct = UserDict({"foo": 10, "bar": {"something": 20}, "baz": [1, 2, 3]})
 
     # when
     result = resolve(dct, schema, preserve_type=True)
 
     # then
-    assert result.something == 80  # type: ignore
+    assert result == dct
 
 
 # functions ============================================================================
@@ -1541,6 +1590,23 @@ def test_function_with_disabled_check_for_function_call():
     assert "!!add_one" in str(exc.value)
 
 
+def test_functions_is_none_means_no_functions():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve({"bar": 5, "foo": {"__splice__": 10}}, schema, functions=None)
+
+    assert "Unknown function" in str(exc.value)
+
+
 # global variables =====================================================================
 
 
@@ -1743,3 +1809,176 @@ def test_filter_with_arguments():
 
     # then
     assert result["bar"] == "thisthat"
+
+
+# unresolved containers ================================================================
+
+
+def test_unresolved_dict_values():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "dict", "extra_keys_schema": {"type": "string"}},
+            "bar": {"type": "string"},
+        },
+    }
+
+    dct = {
+        "foo": {"one": "a", "two": "b"},
+        "bar": "{% for s in foo.values() | sort %}${ s } {% endfor %}",
+    }
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["bar"] == "a b "
+
+
+def test_unresolved_list_returns_unresolved_dict():
+    # given
+    schema = {
+        "required_keys": {
+            "foo": {
+                "type": "list",
+                "element_schema": {
+                    "type": "dict",
+                    "required_keys": {"foo": {"type": "string"}},
+                },
+            },
+            "bar": {"type": "string"},
+        },
+        "type": "dict",
+    }
+
+    def checker(args):
+        assert isinstance(args.root["foo"][0], UnresolvedDict)
+        return "ok"
+
+    dct = {"foo": [{"foo": "a"}, {"foo": "b"}], "bar": {"__checker__": {}}}
+
+    # when
+    resolve(dct, schema, functions={"checker": checker})
+
+
+def test_unresolved_list_returns_unresolved_list():
+    # given
+    schema = {
+        "required_keys": {
+            "foo": {
+                "type": "list",
+                "element_schema": {
+                    "type": "list",
+                    "element_schema": {"type": "string"},
+                },
+            },
+            "bar": {"type": "string"},
+        },
+        "type": "dict",
+    }
+
+    def checker(args):
+        assert isinstance(args.root["foo"][0], UnresolvedList)
+        return "ok"
+
+    dct = {"foo": [["hi"], ["a", "b"]], "bar": {"__checker__": {}}}
+
+    # when
+    resolve(dct, schema, functions={"checker": checker})
+
+
+def test_unresolved_list_resolve():
+    # given
+    schema = {
+        "required_keys": {
+            "foo": {
+                "type": "list",
+                "element_schema": {
+                    "type": "list",
+                    "element_schema": {"type": "string"},
+                },
+            },
+            "bar": {"type": "string"},
+        },
+        "type": "dict",
+    }
+
+    def checker(args):
+        assert args.root["foo"].resolve() == [["hi"], ["a", "b"]]
+        return "ok"
+
+    dct = {"foo": [["hi"], ["a", "b"]], "bar": {"__checker__": {}}}
+
+    # when
+    resolve(dct, schema, functions={"checker": checker})
+
+
+def test_unresolved_list_get_keypath():
+    # given
+    schema = {
+        "required_keys": {
+            "foo": {
+                "type": "list",
+                "element_schema": {
+                    "type": "list",
+                    "element_schema": {"type": "string"},
+                },
+            },
+            "bar": {"type": "string"},
+        },
+        "type": "dict",
+    }
+
+    def checker(args):
+        assert args.root["foo"].get_keypath("1") == ["a", "b"]
+        return "ok"
+
+    dct = {"foo": [["hi"], ["a", "b"]], "bar": {"__checker__": {}}}
+
+    # when
+    resolve(dct, schema, functions={"checker": checker})
+
+
+def test_unresolved_function_get_keypath():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "alpha": {"type": "integer"},
+            "beta": {"type": "integer"},
+        },
+    }
+
+    def outer(args):
+        return {"alpha": 1, "beta": {"__inner__": {}}}
+
+    def inner(args):
+        assert isinstance(args.root, UnresolvedFunctionCall)
+        return args.root.get_keypath("alpha") + 1
+
+    dct = {"__outer__": {}}
+
+    # when
+    resolve(dct, schema, functions={"outer": outer, "inner": inner})
+
+
+def test_unresolved_dict_get_keypath_deeper_than_container_raises_keyerror():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "any"},
+            "bar": {"type": "any"},
+        },
+    }
+
+    def inner(args):
+        assert isinstance(args.root, UnresolvedDict)
+        with raises(KeyError):
+            args.root.get_keypath("foo.a.bar")
+
+    dct = {"foo": {"a": 1, "b": 2}, "bar": {"__inner__": {}}}
+
+    # when
+    resolve(dct, schema, functions={"inner": inner})

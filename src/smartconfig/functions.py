@@ -33,12 +33,19 @@ def splice(args: FunctionArgs):
     variables that were passed along with the resolution context.
 
     """
-    if not isinstance(args.input, str):
-        raise ResolutionError("Input to 'splice' must be a string.", args.keypath)
+    if not isinstance(args.input, str) and not (
+        isinstance(args.input, int) and not isinstance(args.input, bool)
+    ):
+        raise ResolutionError(
+            "Input to 'splice' must be a string or int.", args.keypath
+        )
+
+    keypath = str(args.input)
+
     try:
-        return args.root.get_keypath(args.input)
-    except KeyError:
-        raise ResolutionError(f"Keypath '{args.input}' does not exist.", args.keypath)
+        return args.root.get_keypath(keypath)
+    except Exception:
+        raise ResolutionError(f"Keypath '{keypath}' does not exist.", args.keypath)
 
 
 def _all_elements_are_instances_of(container, type_):

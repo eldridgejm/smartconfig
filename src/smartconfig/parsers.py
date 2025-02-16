@@ -99,7 +99,7 @@ def logic(s: str) -> bool:
         if isinstance(node, ast.Constant):
             return node.value
         elif type(node.op) not in operators:
-            raise TypeError(node)
+            raise exceptions.ParseError(f"Cannot parse: '{s}'. Unknown operator.")
 
         if isinstance(node, ast.UnaryOp):  # <operator> <operand> e.g., -1
             assert isinstance(node.op, ast.Not)
@@ -175,6 +175,7 @@ def _parse_and_remove_time(s: str) -> tuple[str, Optional[datetimelib.time]]:
             time = datetimelib.time(hours, minutes, seconds)
         except ValueError:
             raise exceptions.ParseError(f"Invalid time: {s}.")
+
         s = re.sub(time_pattern, "", s, flags=re.IGNORECASE)
     else:
         time = None
@@ -322,12 +323,6 @@ def smartdate(s: str) -> datetimelib.date:
     datetime.date(2021, 9, 13)
 
     """
-    if isinstance(s, datetimelib.datetime):
-        return s.date()
-
-    if isinstance(s, datetimelib.date):
-        return s
-
     try:
         return datetimelib.datetime.fromisoformat(s).date()
     except ValueError:

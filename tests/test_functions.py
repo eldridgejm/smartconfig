@@ -258,6 +258,32 @@ def test_update_shallow_raises_if_input_is_not_a_list_of_dicts():
     assert "Input to 'update_shallow' must be a list of dictionaries." in str(exc.value)
 
 
+def test_update_shallow_raises_if_input_is_empty():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    dct = {"baz": {"__update_shallow__": []}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"update_shallow": functions.update_shallow})
+
+    assert "Input to 'update_shallow' must be a non-empty list of dictionaries." in str(
+        exc.value
+    )
+
+
 # update ==========================================================================
 
 
@@ -425,6 +451,32 @@ def test_update_raises_if_input_is_not_a_list_of_dicts():
     assert "Input to 'update' must be a list of dictionaries." in str(exc.value)
 
 
+def test_update_raises_if_input_is_empty():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    dct = {"baz": {"__update__": []}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"update": functions.update})
+
+    assert "Input to 'update' must be a non-empty list of dictionaries." in str(
+        exc.value
+    )
+
+
 # concatenate ==========================================================================
 
 
@@ -516,6 +568,27 @@ def test_concatenate_raises_if_input_is_not_a_list_of_lists():
     assert "Input to 'concatenate' must be a list of lists." in str(exc.value)
 
 
+def test_concatenate_raises_if_input_is_empty():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "list",
+                "element_schema": {"type": "integer"},
+            },
+        },
+    }
+
+    dct = {"baz": {"__concatenate__": []}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"concatenate": functions.concatenate})
+
+    assert "Input to 'concatenate' must be a non-empty list of lists." in str(exc.value)
+
+
 # splice ===============================================================================
 
 
@@ -591,3 +664,75 @@ def test_splice_still_parses():
         "baz": {"a": 1, "b": 2},
         "foo": {"a": "1", "b": "2"},
     }
+
+
+def test_splice_raises_if_key_does_not_exist():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "baz": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+            "foo": {
+                "type": "dict",
+                "required_keys": {
+                    "a": {"type": "integer"},
+                    "b": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    dct = {
+        "baz": {"a": 1, "b": 2},
+        "foo": {"__splice__": "quux"},
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"splice": functions.splice})
+
+    assert "Keypath 'quux' does not exist." in str(exc.value)
+
+
+def test_splice_argument_can_be_an_integer_index_of_list():
+    # given a schema for a list of lists
+    schema = {"type": "list", "element_schema": {"type": "string"}}
+
+    dct = [
+        "one",
+        {"__splice__": 0},
+        "three",
+    ]
+
+    # when
+    resolved = resolve(dct, schema, functions={"splice": functions.splice})
+
+    # then
+    assert resolved == [
+        "one",
+        "one",
+        "three",
+    ]
+
+
+def test_splice_raises_if_key_is_not_a_valid_keypath():
+    # given a schema for a list of lists
+    schema = {"type": "list", "element_schema": {"type": "string"}}
+
+    dct = [
+        "one",
+        {"__splice__": True},
+        "three",
+    ]
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"splice": functions.splice})
+
+    assert "Input to 'splice' must be a string or int." in str(exc.value)

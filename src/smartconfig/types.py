@@ -142,6 +142,13 @@ class UnresolvedFunctionCall(abc.ABC):
 
     This is an abstract base class and is not meant to be instantiated directly.
 
+    Unlike :class:`UnresolvedDict` and :class:`UnresolvedList`, this does not provide a
+    :meth:`resolve` method. This is because there is never a need to resolve an
+    unresolved function call explicitly -- it will always be resolved implicitly when it
+    is indexed into or when its :meth:`get_keypath` method is called. Calling
+    :meth:`resolve` on an :class:`UnresolvedFunctionCall` would only result in infinite
+    recursion, so it is not provided.
+
     """
 
     @abc.abstractmethod
@@ -157,10 +164,6 @@ class UnresolvedFunctionCall(abc.ABC):
         :meth:`UnresolvedList.__getitem__`, depending on the type of the result.
 
         """
-
-    @abc.abstractmethod
-    def resolve(self) -> Configuration:
-        """Recursively resolves the function call."""
 
     @abc.abstractmethod
     def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration:
