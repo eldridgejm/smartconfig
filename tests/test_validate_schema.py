@@ -108,7 +108,6 @@ def test_allow_defaults_to_be_null():
 
 def test_any_type_smoke():
     schema = {"type": "any", "nullable": True}
-
     validate_schema(schema)
 
 

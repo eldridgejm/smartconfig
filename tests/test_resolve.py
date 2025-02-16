@@ -677,16 +677,16 @@ def test_raises_if_no_parser_provided_for_type():
     # given
     schema = {
         "type": "dict",
-        "required_keys": {"foo": {"type": "unknown"}},
+        "required_keys": {"foo": {"type": "integer"}},
     }
 
     dct = {"foo": "42"}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
+        resolve(dct, schema, parsers={})
 
-    assert "No parser provided for type: 'unknown'" in str(exc.value)
+    assert "No parser provided" in str(exc.value)
 
 
 # "any" type
@@ -793,6 +793,22 @@ def test_error_is_raised_if_None_is_provided_but_value_is_not_nullable():
     # when
     with raises(exceptions.ResolutionError):
         resolve(dct, schema)
+
+
+def test_any_can_be_None_without_being_nullable():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {"foo": {"type": "any"}},
+    }
+
+    dct = {"foo": None}
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["foo"] is None
 
 
 # good exceptions
@@ -1015,7 +1031,7 @@ def test_function_call_at_root():
     dct = {"__double__": 10}
 
     # when
-    result = resolve(dct, schema, functions={"double": lambda x: x.input * 2}) # type: ignore
+    result = resolve(dct, schema, functions={"double": lambda x: x.input * 2})  # type: ignore
 
     # then
     assert result == 20
@@ -1034,7 +1050,7 @@ def test_function_call_in_dictionary():
     dct = {"foo": 6, "bar": {"__double__": 10}}
 
     # when
-    result = resolve(dct, schema, functions={"double": lambda args: args.input * 2}) # type: ignore
+    result = resolve(dct, schema, functions={"double": lambda args: args.input * 2})  # type: ignore
 
     # then
     assert result["bar"] == 20
@@ -1053,7 +1069,7 @@ def test_function_call_in_list():
     dct = {"foo": 6, "bar": [1, {"__double__": 10}, 3]}
 
     # when
-    result = resolve(dct, schema, functions={"double": lambda args: args.input * 2}) # type: ignore
+    result = resolve(dct, schema, functions={"double": lambda args: args.input * 2})  # type: ignore
 
     # then
     assert result["bar"] == [1, 20, 3]
@@ -1094,7 +1110,9 @@ def test_function_call_input_is_resolved_by_default_using_the_any_schema():
 
     # when
     result = resolve(
-            dct, schema, functions={"add_one_to": lambda args: int(args.input) + 1} # type: ignore
+        dct,
+        schema,
+        functions={"add_one_to": lambda args: int(args.input) + 1},  # type: ignore
     )
 
     # then
@@ -1579,6 +1597,7 @@ def test_inject_root_with_function_at_root_level_returning_a_list():
 
 
 # filters ==============================================================================
+
 
 def test_filter_is_provided_at_interpolation_time():
     # given

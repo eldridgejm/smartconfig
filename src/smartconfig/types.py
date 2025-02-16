@@ -18,111 +18,11 @@ ConfigurationList = List[Union[ConfigurationContainer, ConfigurationValue]]
 ConfigurationDict = Dict[str, Union[ConfigurationContainer, ConfigurationValue]]
 Configuration = Union[ConfigurationContainer, ConfigurationValue]
 
-# configuration tree nodes =============================================================
+# unresolved containers ================================================================
 
-
-class Node(abc.ABC):
-    """Abstract base class for all nodes in a configuration tree.
-
-    Attributes
-    ----------
-    parent : Optional[Node]
-        The parent of this node. Can be `None`, in which case this is the root
-        of the tree.
-
-    """
-
-    def __init__(self, parent: Optional["Node"] = None):
-        self.parent = parent
-
-        # cache the root of the tree
-        self._root = None
-
-    @property
-    def root(self) -> "Node":
-        """The root of the configuration tree."""
-        if self._root is None:
-            if self.parent is None:
-                self._root = self
-            else:
-                self._root = self.parent.root
-        return self._root
-
-    @abc.abstractmethod
-    def resolve(self) -> Configuration:
-        """Recursively resolve the node into a configuration."""
-        ...
-
-
-class DictNode(abc.ABC):
-    """A dictionary that lazily resolves its values."""
-
-    @abc.abstractmethod
-    def __getitem__(self, key: str) -> Union["DictNode", "ListNode", Configuration]: ...
-
-    @abc.abstractmethod
-    def __len__(self) -> int: ...
-
-    @abc.abstractmethod
-    def __iter__(self) -> Iterable[str]: ...
-
-    @abc.abstractmethod
-    def keys(self) -> Iterable[str]: ...
-
-    @abc.abstractmethod
-    def values(self) -> Iterable[Union["DictNode", "ListNode", Configuration]]: ...
-
-    @abc.abstractmethod
-    def resolve(self) -> ConfigurationDict: ...
-
-    @abc.abstractmethod
-    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration: ...
-
-
-class ListNode(abc.ABC):
-    """A list that lazily resolves its values."""
-
-    @abc.abstractmethod
-    def __getitem__(self, ix) -> Union["DictNode", "ListNode", Configuration]: ...
-
-    @abc.abstractmethod
-    def __iter__(self) -> Iterable[Union["DictNode", "ListNode", Configuration]]: ...
-
-    @abc.abstractmethod
-    def __len__(self) -> int: ...
-
-    @abc.abstractmethod
-    def resolve(self) -> ConfigurationList: ...
-
-    @abc.abstractmethod
-    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration: ...
-
-
-class FunctionNode(abc.ABC):
-    """A function that lazily resolves its values."""
-
-    @abc.abstractmethod
-    def __getitem__(self, key: str) -> Union["DictNode", "ListNode", Configuration]: ...
-
-    @abc.abstractmethod
-    def resolve(self) -> Configuration: ...
-
-    @abc.abstractmethod
-    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration: ...
-
-
-class ValueNode(abc.ABC):
-    """A value that lazily resolves its values."""
-
-    @abc.abstractmethod
-    def resolve(self) -> Configuration: ...
-
-    @abc.abstractmethod
-    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration: ...
-
-
-# lazy containers ======================================================================
-
+# these unresolved container types are provided to user-defined functions so that they
+# may reference other parts of the configuration tree and trigger their resolution if
+# necessary, without exposing the user to the details of how resolution is performed
 
 class UnresolvedDict(abc.ABC):
     """A dictionary that lazily resolves its values."""
@@ -250,11 +150,11 @@ class Function:
 
 
 class RawString(str):
-    """A string that should not be resolved."""
+    """A string that should not be interpolated / parsed."""
 
 
 class RecursiveString(str):
-    """A string that should be resolved recursively."""
+    """A string that should be interpolated and parsed recursively."""
 
 
 # misc. type aliases ===================================================================

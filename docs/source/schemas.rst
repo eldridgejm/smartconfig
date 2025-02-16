@@ -33,7 +33,8 @@ Concretely, a schema is a dictionary that follows the formal grammar below.
     }
 
     <ANY_SCHEMA> = {
-        "type": "any"
+        "type": "any",
+        "nullable": (True | False)
     }
 
     <SCHEMA_WITH_DEFAULT> = (

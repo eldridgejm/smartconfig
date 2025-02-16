@@ -806,6 +806,9 @@ class _ValueNode(_Node):
         nullable: bool = False,
     ) -> "_ValueNode":
         """Create a leaf node from the configuration and schema."""
+        if schema["type"] == "any":
+            schema = {"type": "any", "nullable": True}
+
         return cls(
             value,
             schema["type"],
@@ -1201,7 +1204,9 @@ def _make_node(
 
     """
     if cfg is None:
-        if "nullable" in schema and schema["nullable"]:
+        if ("nullable" in schema and schema["nullable"]) or (
+            "type" in schema and schema["type"] == "any"
+        ):
             return _ValueNode.from_configuration(
                 None,
                 {"type": "any"},
@@ -1315,6 +1320,7 @@ def _ensure_function(
 # these overloads are provided so that type checkers can predict that the return
 # type of resolve() is the same as the input type. This is useful for IDEs and
 # static type checkers.
+
 
 @typing.overload
 def resolve(

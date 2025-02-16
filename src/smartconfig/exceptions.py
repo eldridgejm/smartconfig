@@ -1,5 +1,6 @@
 """Provides the exceptions used by smartconfig."""
 
+# exceptions ===========================================================================
 
 class Error(Exception):
     """A general error."""
@@ -33,5 +34,14 @@ class ParseError(Error):
     """Could not parse the configuration value."""
 
 
+# helpers ==============================================================================
+
 def _join_dotted(keypath):
-    return ".".join(str(x) for x in keypath)
+    """Joins a keypath into a dotted string.
+
+    If it is already a string, it is returned as-is.
+    """
+    if isinstance(keypath, str):
+        return keypath
+    else:
+        return ".".join(str(x) for x in keypath)

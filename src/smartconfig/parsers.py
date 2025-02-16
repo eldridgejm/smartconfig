@@ -1,11 +1,11 @@
-"""
+"""Provides the default parsers used by resolve().
+
 A parser is a function that accepts a raw value -- often, but not necessarily a
 string -- and returns a resolved value with the appropriate type.
 
-.. testsetup::
-
 """
 
+from typing import Optional
 import ast
 import datetime as datetimelib
 import enum
@@ -17,8 +17,7 @@ from . import exceptions
 # the AST code in this module is based on:
 # https://stackoverflow.com/questions/2371436/evaluating-a-mathematical-expression-in-a-string
 
-# arithmetic
-# ----------
+# arithmetic ===========================================================================
 
 
 def arithmetic(type_):
@@ -79,11 +78,10 @@ def arithmetic(type_):
     return parser
 
 
-# logical
-# -------
+# logical ==============================================================================
 
 
-def logic(s):
+def logic(s: str) -> bool:
     """Parses boolean logic expressions.
 
     Example
@@ -110,109 +108,27 @@ def logic(s):
             assert isinstance(node.op, (ast.Or, ast.And))
             return operators[type(node.op)](*[_eval(v) for v in node.values])
 
-    if isinstance(s, bool):
-        return s
-
     return bool(_eval(ast.parse(s, mode="eval").body))
 
 
-# dates / datetimes
-# -----------------
+# dates / datetimes ====================================================================
 
 
 class _DateMatchError(Exception):
-    """Raised if a parse fails because the string does not match."""
+    """Raised if a parse fails because the string does not match.
 
-
-def smartdate(s):
-    """Parses natural language relative dates into date objects.
-
-    Input strings can be in one of three forms:
-
-        1. Dates in ISO format, e.g.: "2021-10-01".
-        2. Relative dates of the form :code:`"<n> day(s) (before|after) <ISO date>"`,
-           e.g., "3 days before 2021-10-10"
-        3. Relative dates of the form :code:`"first
-           <day_of_week>[,<day_of_week>,...,<day_of_week>] (before|after) <ISO date>"`,
-           e.g., "first monday, wednesday after 2021-10-10"
-
-    Example
-    -------
-
-    >>> from smartconfig.parsers import smartdate
-    >>> smartdate('2021-10-01')
-    datetime.date(2021, 10, 1)
-    >>> smartdate('1 day after 2021-10-01')
-    datetime.date(2021, 10, 2)
-    >>> smartdate('3 days before 2021-10-05')
-    datetime.date(2021, 10, 2)
-    >>> smartdate('first monday after 2021-09-10')
-    datetime.date(2021, 9, 13)
+    This is used in control flow: parsers are tried one after another until one
+    succeeds. If a parser fails because the string does not match, this is
+    raised so that the process can move on to the next parser.
 
     """
-    if isinstance(s, datetimelib.datetime):
-        return s.date()
-
-    if isinstance(s, datetimelib.date):
-        return s
-
-    try:
-        return datetimelib.datetime.fromisoformat(s).date()
-    except ValueError:
-        # the date was not in ISO format
-        pass
-
-    try:
-        return _parse_timedelta_before_or_after(s).date()
-    except _DateMatchError:
-        pass
-
-    try:
-        return _parse_first_available_day(s).date()
-    except _DateMatchError:
-        pass
-
-    raise exceptions.ParseError(f"Cannot parse into date: '{s}'.")
 
 
-def smartdatetime(s):
-    """Parses natural language relative dates into datetime objects.
-
-    The forms of the input are the same as for :func:`smartdate`, except ISO times
-    are permitted. For instance: :code:`3 days after 2021-10-05 23:59:00`.
-
-    """
-    if isinstance(s, datetimelib.datetime):
-        return s
-
-    if isinstance(s, datetimelib.date):
-        return datetimelib.datetime(s.year, s.month, s.day, 0, 0, 0)
-
-    try:
-        return datetimelib.datetime.fromisoformat(s)
-    except ValueError:
-        # the date was not in ISO format
-        pass
-
-    try:
-        return _parse_datetime_from_explicit(s)
-    except _DateMatchError:
-        pass
-
-    try:
-        return _parse_timedelta_before_or_after(s)
-    except _DateMatchError:
-        pass
-
-    try:
-        return _parse_first_available_day(s)
-    except _DateMatchError:
-        pass
-
-    raise exceptions.ParseError(f"Cannot parse into datetime: '{s}'.")
+# helpers ------------------------------------------------------------------------------
 
 
-def _parse_datetime_from_explicit(s):
+def _parse_datetime_from_explicit(s: str) -> datetimelib.datetime:
+    """Parses a datetime from a string of the form "YYYY-MM-DD HH:MM:SS"."""
     s, at_time = _parse_and_remove_time(s)
     try:
         parsed = datetimelib.datetime.fromisoformat(s)
@@ -225,23 +141,28 @@ def _parse_datetime_from_explicit(s):
     return parsed
 
 
-def _parse_and_remove_time(s):
+def _parse_and_remove_time(s: str) -> tuple[str, Optional[datetimelib.time]]:
     """Looks for a time at the end of the smart date string.
-    A time is of the form " at 23:59:00"
+
+    A time is of the form "at 23:59:00"
+
     Parameters
     ----------
     s : str
         The smart date string
+
     Returns
     -------
     str
         The input, ``s``, but without a time at the end (if there was one in the first
         place).
+
     Union[datetime.time, None]
         The time, if there was one; otherwise this is ``None``.
+
     Raises
     ------
-    ValidationError
+    ParseError
         If there is a time string, but it's an invalid time (like 55:00:00).
 
     """
@@ -261,8 +182,8 @@ def _parse_and_remove_time(s):
     return s, time
 
 
-def _parse_timedelta_before_or_after(s):
-    """Helper that parses a string of the form "<n> days (before|after) <date(time)> [at HH:MM:SS]".
+def _parse_timedelta_before_or_after(s: str) -> datetimelib.datetime:
+    """Parses a string of the form "<n> days (before|after) <date(time)> [at HH:MM:SS]".
 
     This will always return a datetime object.
 
@@ -311,7 +232,7 @@ class _DaysOfTheWeek(enum.IntEnum):
     SUNDAY = 6
 
 
-def _get_day_of_the_week(s):
+def _get_day_of_the_week(s: str) -> _DaysOfTheWeek:
     """Take a day of the week string, like "Monday", and turn it into a _DaysOfTheWeek.
 
     Parameters
@@ -337,7 +258,7 @@ def _get_day_of_the_week(s):
         raise _DateMatchError(f"Invalid day of week: {s}")
 
 
-def _parse_first_available_day(s):
+def _parse_first_available_day(s: str) -> datetimelib.datetime:
     """Parse a string of the form "first monday before 2021-10-01 [at HH:MM:SS]".
 
     Always returns a datetime object.
@@ -370,3 +291,96 @@ def _parse_first_available_day(s):
         cursor_date = datetimelib.datetime.combine(cursor_date, at_time)
 
     return cursor_date
+
+
+# parser implementations ---------------------------------------------------------------
+
+
+def smartdate(s: str) -> datetimelib.date:
+    """Parses natural language relative dates into date objects.
+
+    Input strings can be in one of three forms:
+
+        1. Dates in ISO format, e.g.: "2021-10-01".
+        2. Relative dates of the form :code:`"<n> day(s) (before|after) <ISO date>"`,
+           e.g., "3 days before 2021-10-10"
+        3. Relative dates of the form :code:`"first
+           <day_of_week>[,<day_of_week>,...,<day_of_week>] (before|after) <ISO date>"`,
+           e.g., "first monday, wednesday after 2021-10-10"
+
+    Example
+    -------
+
+    >>> from smartconfig.parsers import smartdate
+    >>> smartdate('2021-10-01')
+    datetime.date(2021, 10, 1)
+    >>> smartdate('1 day after 2021-10-01')
+    datetime.date(2021, 10, 2)
+    >>> smartdate('3 days before 2021-10-05')
+    datetime.date(2021, 10, 2)
+    >>> smartdate('first monday after 2021-09-10')
+    datetime.date(2021, 9, 13)
+
+    """
+    if isinstance(s, datetimelib.datetime):
+        return s.date()
+
+    if isinstance(s, datetimelib.date):
+        return s
+
+    try:
+        return datetimelib.datetime.fromisoformat(s).date()
+    except ValueError:
+        # the date was not in ISO format
+        pass
+
+    try:
+        return _parse_timedelta_before_or_after(s).date()
+    except _DateMatchError:
+        # the string does not match the pattern, move on
+        pass
+
+    try:
+        return _parse_first_available_day(s).date()
+    except _DateMatchError:
+        # the string does not match the pattern, move on
+        pass
+
+    raise exceptions.ParseError(f"Cannot parse into date: '{s}'.")
+
+
+def smartdatetime(s: str) -> datetimelib.datetime:
+    """Parses natural language relative dates into datetime objects.
+
+    The forms of the input are the same as for :func:`smartdate`, except ISO times
+    are permitted. For instance: :code:`3 days after 2021-10-05 23:59:00`.
+
+    """
+    if isinstance(s, datetimelib.datetime):
+        return s
+
+    if isinstance(s, datetimelib.date):
+        return datetimelib.datetime(s.year, s.month, s.day, 0, 0, 0)
+
+    try:
+        return datetimelib.datetime.fromisoformat(s)
+    except ValueError:
+        # the date was not in ISO format
+        pass
+
+    try:
+        return _parse_datetime_from_explicit(s)
+    except _DateMatchError:
+        pass
+
+    try:
+        return _parse_timedelta_before_or_after(s)
+    except _DateMatchError:
+        pass
+
+    try:
+        return _parse_first_available_day(s)
+    except _DateMatchError:
+        pass
+
+    raise exceptions.ParseError(f"Cannot parse into datetime: '{s}'.")

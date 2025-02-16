@@ -1,4 +1,4 @@
-"""Provides the default function that can be called within a configuration."""
+"""Provides the default functions that can be called within a configuration."""
 
 from copy import deepcopy
 import itertools
