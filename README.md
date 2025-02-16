@@ -16,11 +16,11 @@ Python programs that require user configuration often use simple configuration f
 {
     "course_name": "Introduction to Python",
     "date_of_first_lecture": "2025-01-10",
-    "date_of_first_discussion": "7 days after ${first_lecture}",
+    "date_of_first_discussion": "7 days after ${date_of_first_lecture}",
     "message": [
         "Welcome to ${course_name}!",
-        "The first lecture is on ${first_lecture}.",
-        "The first discussion is on ${first_discussion}."
+        "The first lecture is on ${date_of_first_lecture}.",
+        "The first discussion is on ${date_of_first_discussion}."
     ]
 }
 ```
