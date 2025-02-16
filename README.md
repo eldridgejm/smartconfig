@@ -4,7 +4,7 @@
 YAML, TOML, and others with "smart" features, such as string interpolation,
 natural language parsing, and type checking.
 
-# Use Cases and Example
+## Use Cases and Example
 
 Python programs that require user configuration often use simple configuration formats such as JSON, YAML, or TOML. These formats are easier to read and write than coding languages, but they may not support more advanced features like string interpolation, date parsing, or type checking. Another approach is to use a full-fledged programming language to define the configuration, such as Python itself. However, this approach vastly increases the possible complexity of the configuration file, and it requires that users know how to write Python code.
 
@@ -26,8 +26,6 @@ Python programs that require user configuration often use simple configuration f
 Notice the use of the `${...}` syntax to refer to other values in the configuration file and the fact that the `date_of_first_discussion` key is defined relative to the `date_of_first_lecture` key; neither of these are features in standard JSON parsers. Of course, if we try to load this configuration file using Python's `json` module, we will not see anything special happen; the references will not be resolved.
 
 Now let's use `smartconfig` to "resolve" the configuration:
-
-### Resolving the Configuration
 
 ```python
 import smartconfig
@@ -72,7 +70,7 @@ Notice that the `${...}` references have been resolved, and the date of the firs
 
 This example demonstrates the most basic use case of `smartconfig`: extending simple configuration formats. But `smartconfig` provides many more features that can be used to create powerful and flexible configuration files.
 
-# Features
+## Features
 
 `smartconfig` supports extending configuration formats with the following features:
 
