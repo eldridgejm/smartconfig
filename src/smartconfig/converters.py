@@ -149,9 +149,9 @@ def logic(value: Any) -> bool:
 class _DateMatchError(Exception):
     """Raised if a parse fails because the string does not match.
 
-    This is used in control flow: converters are tried one after another until one
-    succeeds. If a converter fails because the string does not match, this is
-    raised so that the process can move on to the next converter.
+    This is used in control flow: parsers are tried one after another until one
+    succeeds. If a parser fails because the string does not match, this is raised so
+    that the process can move on to the next parser.
 
     """
 
