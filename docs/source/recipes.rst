@@ -1,6 +1,10 @@
 Recipes
 =======
 
+.. testsetup:: python
+
+   from pprint import pprint as print
+
 Recipe 1: Include another file
 ------------------------------
 
@@ -159,4 +163,89 @@ The result will be:
 
 .. testoutput:: python
 
-    {'numbers': [1, 2, 3], 'doubled_numbers': [2, 4, 6]}
+    {'doubled_numbers': [2, 4, 6], 'numbers': [1, 2, 3]}
+
+
+Recipe 3: Suggested conventions for including external variables
+----------------------------------------------------------------
+
+Sometimes you may want to allow a configuration to access "external variables" that have
+been defined elsewhere. For example, your project may include a configuration file at
+its root and many configuration files in subdirectories. You may want the subdirectory
+configurations to be able to refer to variables defined in the root configuration file
+so that they do not need to be duplicated.
+
+One way to do this is with the ``global_variables`` argument to :func:`smartconfig.resolve`,
+however, this is to be avoided. This is because the top-level keys of the configuration
+and the keys of the global variables are merged together into the same namespace, which
+can lead to key collisions and unexpected behavior. Rather, the ``global_variables``
+argument should be used for things like global functions that should be available during
+resolution, and whose names are known not to collide with any built-in Jinja2 functions.
+
+Instead, it is better to combine the configuration with the external variables into one
+dictionary that becomes the new root configuration. The suggested convention is to use a
+"this" key to refer to the configuration currently being processed, and an "vars" key to
+refer to the external variables. Under this convention, internal references that were once
+``${key}`` become ``${this.key}``, and external references that were once ``${key}``
+become ``${vars.key}``, making it more explicit where the value is coming from.
+
+As an example of this, consider the following configuration:
+
+.. testcode:: python
+
+    config = {
+        "course_name": "Introduction to Python",
+        "date_of_first_lecture": "${ vars.date_of_first_lecture }",
+        "date_of_first_discussion": "7 days after ${this.date_of_first_lecture}",
+        "message": [
+            "Welcome to ${this.course_name}!",
+            "The first lecture is on ${this.date_of_first_lecture}.",
+            "The first discussion is on ${this.date_of_first_discussion}."
+        ]
+    }
+
+    external_variables = {
+        "date_of_first_lecture": "2025-01-10"
+    }
+
+    root = {
+        "this": config,
+        "vars": external_variables
+    }
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "this": {
+                "type": "dict",
+                "required_keys": {
+                    "course_name": {"type": "string"},
+                    "date_of_first_lecture": {"type": "date"},
+                    "date_of_first_discussion": {"type": "date"},
+                    "message": {"type": "list", "element_schema": {"type": "string"}}
+                }
+            },
+            "vars": {
+                "type": "dict",
+                "extra_keys_schema": {
+                    "type": "any",
+                }
+            }
+        }
+    }
+
+    print(smartconfig.resolve(root, schema))
+
+The result will be:
+
+.. testoutput:: python
+
+    {'this': {'course_name': 'Introduction to Python',
+              'date_of_first_discussion': datetime.date(2025, 1, 17),
+              'date_of_first_lecture': datetime.date(2025, 1, 10),
+              'message': ['Welcome to Introduction to Python!',
+                          'The first lecture is on 2025-01-10.',
+                          'The first discussion is on 2025-01-17.']},
+     'vars': {'date_of_first_lecture': '2025-01-10'}}
+
+Note that under this convention, the external variables are also resolved.
