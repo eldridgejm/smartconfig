@@ -871,6 +871,19 @@ def test_interpolation_occurs_when_any_is_used():
     assert result["bar"] == "testing this"
 
 
+def test_converts_integers_to_strings_when_schema_calls_for_it():
+    # given
+    schema = {"type": "string"}
+
+    config = 42
+
+    # when
+    result = resolve(config, schema)
+
+    # then
+    assert result == "42"
+
+
 # nullable =============================================================================
 
 
