@@ -40,10 +40,8 @@ def test_jinja_can_provide_function_in_context():
 
 
 def test_jinja_with_custom_context_class():
-
     def make_context_class(extras):
         class MyContext(jinja2.runtime.Context):
-
             def resolve_or_missing(self, key):
                 if key in extras:
                     return extras[key]

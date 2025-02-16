@@ -2,6 +2,7 @@
 
 # exceptions ===========================================================================
 
+
 class Error(Exception):
     """A general error."""
 
@@ -35,6 +36,7 @@ class ParseError(Error):
 
 
 # helpers ==============================================================================
+
 
 def _join_dotted(keypath):
     """Joins a keypath into a dotted string.
