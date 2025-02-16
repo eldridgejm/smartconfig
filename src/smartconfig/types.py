@@ -52,6 +52,12 @@ class UnresolvedDict(abc.ABC):
         :class:`UnresolvedDict` or :class:`UnresolvedList`, respectively. If it
         evaluates to a value, it will again be resolved before being returned.
 
+        The reason for resolving values before returning them (instead of returning a
+        hypothetical "UnresolvedValue" type) is so that :class:`UnresolvedDict` behaves
+        like a normal dictionary in most situations where a specific value is retrieved.
+        In particular, we can pass :class:`UnresolvedDict` into Jinja2 to provide
+        template variables, and Jinja2 will correctly perform string interpolation.
+
         """
 
     @abc.abstractmethod
@@ -111,6 +117,10 @@ class UnresolvedList(abc.ABC):
         :class:`UnresolvedDict` or :class:`UnresolvedList`, respectively. If it
         evaluates to a value, it will again be resolved before being returned.
 
+        The reason for resolving values before returning them (instead of returning a
+        hypothetical "UnresolvedValue" type) is so that :class:`UnresolvedList` behaves
+        like a normal list in most situations where a specific value is retrieved.
+
         """
 
     @abc.abstractmethod
@@ -146,13 +156,19 @@ class UnresolvedFunctionCall(abc.ABC):
 
     This is an abstract base class and is not meant to be instantiated directly.
 
-    Unlike :class:`UnresolvedDict` and :class:`UnresolvedList`, this does not provide a
-    :meth:`resolve` method. This is because there is never a need to resolve an
-    unresolved function call explicitly -- it will always be resolved implicitly when it
-    is indexed into, accessed as a child of another container, or when its
-    :meth:`get_keypath` method is called. Calling :meth:`resolve` on an
-    :class:`UnresolvedFunctionCall` would only result in infinite recursion, so it is
-    not provided.
+    Users rarely interact with :class:`UnresolvedFunctionCall` instances directly, and
+    only when the very root of the configuration is a function call. In most cases, the
+    function call will be contained within an :class:`UnresolvedDict` or
+    :class:`UnresolvedList`, and accessing the function call through those containers
+    will trigger its evaluation into a value or another unresolved container.
+
+    Because of this, :class:`UnresolvedFunctionCall` does not provide a :meth:`resolve`
+    method. There is never a need to resolve an unresolved function call explicitly --
+    it will always be resolved implicitly when it is indexed into, accessed as a child
+    of another container, or when its :meth:`get_keypath` method is called. Since the
+    user will only see an :class:`UnresolvedFunctionCall` instance when the call is the
+    root of the configuration, calling a ``.resolve()`` on it would result in infinite
+    recursion.
 
     """
 
@@ -178,6 +194,34 @@ class UnresolvedFunctionCall(abc.ABC):
         at the keypath. It then resolves that part of the configuration and returns it.
 
         May raise a `TypeError` if the result of the function call is not a container.
+
+        The main (and maybe only) use case for this method is in configurations with
+        "nested" functions calls, where the outer function is the root of the
+        configuration, and it returns a container that contains another function call.
+        If that inner function call needs to obtain a value at a keypath, this method
+        might be needed. For example:
+
+        .. code:: python
+
+            config = {
+                "__outer__": {
+                    "foo": {
+                        "x": 1,
+                        "y": 2,
+                    },
+                    "bar": {"__inner__": {}}
+                }
+            }
+
+        If the inner function call needs to get the value of ``"foo.x"``, it can use
+        ``.get_keypath("foo.x")`` on the root of the configuration, which will be a
+        :class:`UnresolvedFunctionCall` instance.
+
+        In other situations, the :class:`UnresolvedFunctionCall` will be implicitly
+        resolved into a value or another unresolved container when it is accessed
+        through :meth:`UnresolvedDict.__getitem__` or
+        :meth:`UnresolvedList.__getitem__`. So this method exists only to support the
+        edge case of nested function calls.
 
         """
 
