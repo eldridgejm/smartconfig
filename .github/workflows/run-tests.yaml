@@ -1,0 +1,39 @@
+# A GitHub actions workflow that runs the tests with pytest
+name: Run tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: '0.5.27'
+
+    - name: Set up Python
+      run: uv python install
+
+    - name: Run the tests
+      run: uv run pytest
+
+    - name: Build coverage file
+      run: |
+        pytest --junitxml=pytest.xml --cov-report=term-missing:skip-covered --cov=app tests/ | tee pytest-coverage.txt
+
+    - name: Pytest coverage comment
+      uses: MishaKav/pytest-coverage-comment@main
+      with:
+        pytest-coverage-path: ./pytest-coverage.txt
+        junitxml-path: ./pytest.xml
