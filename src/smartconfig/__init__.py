@@ -1,17 +1,17 @@
 from . import exceptions
 from . import functions
-from . import parsers
+from . import converters
 from . import types
-from ._resolve import resolve, DEFAULT_FUNCTIONS, DEFAULT_PARSERS
+from ._resolve import resolve, DEFAULT_FUNCTIONS, DEFAULT_CONVERTERS
 from ._schemas import validate_schema
 
 __all__ = [
     "exceptions",
-    "parsers",
+    "converters",
     "functions",
     "types",
     "resolve",
     "validate_schema",
     "DEFAULT_FUNCTIONS",
-    "DEFAULT_PARSERS",
+    "DEFAULT_CONVERTERS",
 ]

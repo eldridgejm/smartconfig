@@ -306,7 +306,7 @@ class Function:
 
 
 class RawString(str):
-    """If this appears in a configuration, it will not be interpolated or parsed.
+    """If this appears in a configuration, it will not be interpolated or converted.
 
     A subclass of :class:`str`.
 
@@ -343,8 +343,8 @@ class ResolutionContext:
 
     Attributes
     ----------
-    parsers : Mapping[str, Callable]
-        Parsers for different types of values.
+    converters : Mapping[str, Callable]
+        Converters for different types of values.
     functions : Mapping[str, Function]
         Functions that can be called from the configuration.
     global_variables : Mapping[str, Any]
@@ -363,7 +363,7 @@ class ResolutionContext:
 
     """
 
-    parsers: Mapping[str, Callable]
+    converters: Mapping[str, Callable]
     functions: Mapping[str, Function]
     global_variables: Mapping[str, Any]
     filters: Mapping[str, Callable]

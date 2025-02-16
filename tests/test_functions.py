@@ -6,7 +6,7 @@ from pytest import raises
 # raw ==================================================================================
 
 
-def test_raw_does_not_parse():
+def test_raw_does_not_convert():
     # given
     schema = {
         "type": "dict",
@@ -629,7 +629,7 @@ def test_splice_a_dictionary():
     }
 
 
-def test_splice_still_parses():
+def test_splice_still_converts():
     # given
     schema = {
         "type": "dict",

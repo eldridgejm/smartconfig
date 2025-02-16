@@ -113,13 +113,13 @@ When resolve() is called on this configuration, the following major steps occur:
 
     5. When .resolve() is called on the _ValueNode representing the number 42,
        interpolation is skipped since the contained value is not a string. The schema
-       expects this value to be an integer, so the arithmetic parser is called on the
+       expects this value to be an integer, so the arithmetic converter is called on the
        value, and the result (42) is returned.
 
     6. Jinja resumes interpolating the string, replacing ${bar.baz} with the resolved
        value of 42. The string is now "42 + 1".
 
-    7. The schema expects the value of "foo" to be an integer, so the arithmetic parser
+    7. The schema expects the value of "foo" to be an integer, so the arithmetic converter
        is called on the string "42 + 1", and the result (43) is returned. This is the
        resolved value of the "foo" key.
 
@@ -150,7 +150,7 @@ import typing
 
 import jinja2
 
-from . import parsers as _parsers, functions as _functions, types as _types
+from . import converters as _converters, functions as _functions, types as _types
 from ._schemas import validate_schema as _validate_schema
 from .exceptions import Error, ResolutionError
 
@@ -741,14 +741,14 @@ class _ValueNode(_Node):
         The "raw" value of the leaf node as it appeared in the configuration.
     type_ : str
         A string describing the expected type of this leaf once resolved. Used
-        to determined which parser to use from the resolution context.
+        to determined which converter to use from the resolution context.
     keypath : _types.KeyPath
         The keypath to this node in the configuration tree.
     resolution_context : ResolutionContext
         The context in which the node is being resolved.
     nullable : Optional[bool]
         Whether the value can be None or not. If `raw` is None this is True, it
-        is not parsed (no matter what type_ is). Default: False.
+        is not converted (no matter what type_ is). Default: False.
     parent : Optional[Node]
         The parent of this node. Can be `None`, in which case this is the root.
 
@@ -840,7 +840,7 @@ class _ValueNode(_Node):
         if self.nullable and self.value is None:
             self._resolved = None
         else:
-            self._resolved = self._safely(self._parse, s, self.type_)
+            self._resolved = self._safely(self._convert, s, self.type_)
 
         return self._resolved
 
@@ -921,18 +921,18 @@ class _ValueNode(_Node):
         else:
             return result
 
-    def _parse(self, s, type_) -> _types.ConfigurationValue:
-        """Parse the configuration string into its final type."""
-        parsers = self.resolution_context.parsers
+    def _convert(self, s, type_) -> _types.ConfigurationValue:
+        """convert the configuration string into its final type."""
+        converters = self.resolution_context.converters
 
         try:
-            parser = parsers[type_]
+            converter = converters[type_]
         except KeyError:
             raise ResolutionError(
-                f"No parser provided for type: '{type_}'.", self.keypath
+                f"No converter provided for type: '{type_}'.", self.keypath
             )
 
-        return parser(s)
+        return converter(s)
 
     def _safely(self, fn, *args, **kwargs):
         """Apply the function and catch any exceptions, raising a ResolutionError."""
@@ -1147,14 +1147,14 @@ def _make_node(
 
 # defaults -----------------------------------------------------------------------------
 
-# the default parsers used by resolve()
-DEFAULT_PARSERS = {
-    "integer": _parsers.arithmetic(int),
-    "float": _parsers.arithmetic(float),
+# the default converters used by resolve()
+DEFAULT_CONVERTERS = {
+    "integer": _converters.arithmetic(int),
+    "float": _converters.arithmetic(float),
     "string": str,
-    "boolean": _parsers.logic,
-    "date": _parsers.smartdate,
-    "datetime": _parsers.smartdatetime,
+    "boolean": _converters.logic,
+    "date": _converters.smartdate,
+    "datetime": _converters.smartdatetime,
     "any": lambda x: x,
 }
 
@@ -1271,7 +1271,7 @@ def _ensure_function(
 def resolve(
     cfg: _types.ConfigurationDict,
     schema: _types.Schema,
-    parsers: Mapping[str, Callable] = ...,
+    converters: Mapping[str, Callable] = ...,
     functions: Optional[
         Mapping[
             str,
@@ -1294,7 +1294,7 @@ def resolve(
 def resolve(
     cfg: _types.ConfigurationList,
     schema: _types.Schema,
-    parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
+    converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
     functions: Optional[
         Mapping[
             str,
@@ -1319,7 +1319,7 @@ def resolve(
 def resolve(
     cfg: _types.ConfigurationValue,
     schema: _types.Schema,
-    parsers: Mapping[str, Callable] = ...,
+    converters: Mapping[str, Callable] = ...,
     functions: Optional[
         Mapping[
             str,
@@ -1344,7 +1344,7 @@ def resolve(
 def resolve(
     cfg: _types.Configuration,
     schema: _types.Schema,
-    parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
+    converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
     functions: Optional[
         Mapping[
             str,
@@ -1370,10 +1370,10 @@ def resolve(
         The "raw" configuration to resolve.
     schema : Schema
         The schema describing the structure of the resolved configuration.
-    parsers : Mapping[str, Callable]
-        A dictionary mapping value types to parser functions. The parser functions
+    converters : Mapping[str, Callable]
+        A dictionary mapping value types to converter functions. The converter functions
         should take the raw value (after interpolation) and convert it to the specified
-        type. If this is not provided, the default parsers are used.
+        type. If this is not provided, the default converters are used.
     functions
         A mapping of function names to functions. The functions should either be basic
         Python functions accepting an instance of FunctionArgs as input and returning
@@ -1437,7 +1437,7 @@ def resolve(
             return None
 
     resolution_context = _types.ResolutionContext(
-        parsers,
+        converters,
         converted_functions,
         global_variables,
         filters,

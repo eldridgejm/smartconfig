@@ -33,8 +33,8 @@ class ResolutionError(Error):
         return f'Cannot resolve keypath: "{dotted}": {self.reason}'
 
 
-class ParseError(Error):
-    """Could not parse the configuration value."""
+class ConversionError(Error):
+    """Could not convert the configuration value."""
 
 
 # helpers ==============================================================================

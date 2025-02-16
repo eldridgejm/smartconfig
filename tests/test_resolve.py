@@ -548,7 +548,7 @@ def test_interpolate_entire_dict_raises_exception():
     with raises(exceptions.ResolutionError) as exc:
         resolve(dct, schema)
 
-    assert "No parser provided for type: 'dict'" in str(exc.value)
+    assert "No converter provided for type: 'dict'" in str(exc.value)
 
 
 def test_interpolate_entire_dict_indirectly_raises_exception():
@@ -580,7 +580,7 @@ def test_interpolate_entire_dict_indirectly_raises_exception():
     with raises(exceptions.ResolutionError) as exc:
         resolve(dct, schema)
 
-    assert "No parser provided for type: 'dict'" in str(exc.value)
+    assert "No converter provided for type: 'dict'" in str(exc.value)
 
 
 def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
@@ -618,7 +618,7 @@ def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
         resolve(dct, schema)
 
     # then
-    assert "No parser provided for type: 'dict'" in str(exc.value)
+    assert "No converter provided for type: 'dict'" in str(exc.value)
 
 
 def test_interpolate_entire_list_raises_exception():
@@ -647,13 +647,13 @@ def test_interpolate_entire_list_raises_exception():
         resolve(dct, schema)
 
     # then
-    assert "No parser provided for type: 'list'" in str(exc.value)
+    assert "No converter provided for type: 'list'" in str(exc.value)
 
 
-# parsing ==============================================================================
+# converting ==============================================================================
 
 
-def test_leafs_are_parsed_into_expected_types():
+def test_leafs_are_converted_into_expected_types():
     # given
     schema = {
         "type": "dict",
@@ -669,7 +669,7 @@ def test_leafs_are_parsed_into_expected_types():
     assert result["foo"] == 42
 
 
-def test_parsing_occurs_after_interpolation():
+def test_converting_occurs_after_interpolation():
     # given
     schema = {
         "type": "dict",
@@ -689,7 +689,7 @@ def test_parsing_occurs_after_interpolation():
     assert result["bar"] == 42
 
 
-def test_parsing_of_extra_dictionary_keys():
+def test_converting_of_extra_dictionary_keys():
     # given
     schema = {"type": "dict", "extra_keys_schema": {"type": "integer"}}
 
@@ -703,7 +703,7 @@ def test_parsing_of_extra_dictionary_keys():
     assert result["bar"] == 10
 
 
-def test_parsing_of_list_elements():
+def test_converting_of_list_elements():
     # given
     schema = {"type": "list", "element_schema": {"type": "integer"}}
 
@@ -822,7 +822,7 @@ def test_recursive_strings_are_interpolated_recursively():
     }
 
 
-def test_raises_if_no_parser_provided_for_type():
+def test_raises_if_no_converter_provided_for_type():
     # given
     schema = {
         "type": "dict",
@@ -833,9 +833,9 @@ def test_raises_if_no_parser_provided_for_type():
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, parsers={})
+        resolve(dct, schema, converters={})
 
-    assert "No parser provided" in str(exc.value)
+    assert "No converter provided" in str(exc.value)
 
 
 # "any" type ===========================================================================
