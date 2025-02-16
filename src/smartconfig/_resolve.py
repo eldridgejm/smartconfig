@@ -18,7 +18,9 @@ _ValueNode, and _FunctionCallNode. Each has a .resolve() method that recursively
 resolves the node and its children. Each node also has a corresponding
 .from_configuration() method that constructs the node from a configuration of the
 appropriate type -- e.g., _DictNode.from_configuration() builds a _DictNode from a
-dictionary, _ListNode.from_configuration() builds a _ListNode from a list, etc.
+dictionary, _ListNode.from_configuration() builds a _ListNode from a list, etc. The
+exception is a _FunctionCallNode, which has no .from_configuration() method because it
+is easy enough to create using its constructor.
 
 The creation of the tree is orchestrated by the _make_node() function, whose job is to
 take an arbitrary configuration and determine which node class represents it. This
@@ -955,65 +957,6 @@ class _ValueNode(_Node):
 # _FunctionCallNode --------------------------------------------------------------------
 
 
-def _is_dunder(s: str) -> bool:
-    """Checks if a string is of the form "__<something>__"."""
-    return s.startswith("__") and s.endswith("__")
-
-
-def _check_for_function_call(dct: _types.ConfigurationDict) -> Union[str, None]:
-    """Checks if a ConfigurationDict represents a function call.
-
-    A function call is a dictionary with a single key of the form
-    "__<function_name>__".
-
-    Parameters
-    ----------
-    dct : ConfigurationDict
-        The dictionary to check.
-
-    Returns
-    -------
-    Union[str, None]
-        The name of the function if the dictionary represents a function call,
-        `None` otherwise.
-
-    Raises
-    ------
-    ValueError
-        If the dictionary has a key of the form "__<function_name>__" but there
-        are other keys present, making this an invalid function call.
-
-    """
-
-    is_potential_function_call = any(_is_dunder(key) for key in dct.keys())
-
-    if is_potential_function_call:
-        if len(dct) != 1:
-            raise ValueError("Invalid function call.")
-        else:
-            key = next(iter(dct.keys()))
-            return key[2:-2]
-    else:
-        return None
-
-
-def _has_dunder_key(dct: _types.ConfigurationDict) -> bool:
-    """Checks if a configuration dictionary has a key of the form "__<function_name>__".
-
-    Parameters
-    ----------
-    dct : ConfigurationDict
-        The dictionary to check.
-
-    Returns
-    -------
-    bool
-        True if the dictionary has a key of the form "__<function_name>__", False otherwise.
-
-    """
-    return any(_is_dunder(key) for key in dct.keys())
-
-
 class _FunctionCallNode(_Node):
     """Represents a function call in the configuration tree.
 
@@ -1049,59 +992,6 @@ class _FunctionCallNode(_Node):
         self.schema = schema
         self.function = function
         self.input = input
-
-    @classmethod
-    def from_configuration(
-        cls,
-        dct: _types.ConfigurationDict,
-        schema: _types.Schema,
-        keypath: _types.KeyPath,
-        resolution_context: _types.ResolutionContext,
-        parent: Optional[_Node] = None,
-    ) -> "_FunctionCallNode":
-        """Construct a _FunctionCallNode from a configuration dictionary and its schema.
-
-        Parameters
-        ----------
-        dct : ConfigurationDict
-            The configuration dictionary representing the function call.
-        schema : Schema
-            The schema for the function's output.
-        keypath : KeyPath
-            The keypath to this node in the configuration tree.
-        resolution_context : ResolutionContext
-            The context in which the node is being resolved.
-        parent : Optional[Node]
-            The parent of this node. Can be `None`.
-
-        """
-        try:
-            function_name = _check_for_function_call(dct)
-        except ValueError as exc:
-            raise ResolutionError(str(exc), keypath)
-
-        if function_name is None:
-            raise ResolutionError("Invalid function call.", keypath)
-
-        if function_name not in resolution_context.functions:
-            raise ResolutionError(f"Unknown function: {function_name}", keypath)
-
-        # the function name is the key, the input to the function is its
-        # associated value
-        function = resolution_context.functions[function_name]
-        if not isinstance(function, _types.Function):
-            function = _types.Function(function)
-
-        input = dct["__" + function_name + "__"]
-
-        return cls(
-            keypath,
-            resolution_context,
-            function,
-            input,
-            schema,
-            parent=parent,
-        )
 
     def evaluate(self) -> Union[_DictNode, _ListNode, _ValueNode]:
         """Evaluate the function, returning a _DictNode, _ListNode, or _ValueNode.
@@ -1192,6 +1082,14 @@ def _make_node(
         configuration.
     schema
         A schema dictionary describing the types of the configuration tree nodes.
+    resolution_context
+        The context in which the configuration is being resolved.
+    check_for_function_call
+        A function that checks if a ConfigurationDict represents a function call. It
+        is given the configuration and the available functions. If it is a function
+        call, it returns a 2-tuple of the function and the input to the function. If
+        not, it returns None. If it is an invalid function call, it should raise
+        a ValueError.
     parent
         The parent node of the node being built. Can be `None`.
     keypath
@@ -1222,17 +1120,25 @@ def _make_node(
     # lists.
     if isinstance(cfg, dict):
         # check if this is a function call
-        if _has_dunder_key(cfg):
-            return _FunctionCallNode.from_configuration(
-                cfg,
-                schema,
+        try:
+            result = resolution_context.check_for_function_call(
+                cfg, resolution_context.functions
+            )
+        except ValueError as exc:
+            raise ResolutionError(f"Invalid function call: {exc}", keypath)
+
+        if result is not None:
+            return _FunctionCallNode(
                 keypath,
                 resolution_context,
+                *result,
+                schema,
                 parent=parent,
             )
-        return _DictNode.from_configuration(
-            cfg, schema, keypath, resolution_context, parent=parent
-        )
+        else:
+            return _DictNode.from_configuration(
+                cfg, schema, keypath, resolution_context, parent=parent
+            )
     elif isinstance(cfg, list):
         return _ListNode.from_configuration(
             cfg,
@@ -1274,6 +1180,57 @@ DEFAULT_FUNCTIONS = {
     "update": _functions.update_shallow,
     "concatenate": _functions.concatenate,
 }
+
+
+def _check_for_dunder_function_call(
+    dct: _types.ConfigurationDict, functions: Mapping[str, _types.Function]
+) -> Union[tuple[_types.Function, _types.Configuration], None]:
+    """Checks if a ConfigurationDict represents a function call.
+
+    In this case, a function call is a dictionary with a single key of the form
+    "__<function_name>__".
+
+    Parameters
+    ----------
+    dct : ConfigurationDict
+        The dictionary to check.
+    functions: Mapping[str, Function]
+        The functions available.
+
+    Returns
+    -------
+    Union[tuple[Function, Configuration], None]
+        If this is a valid function call, a 2-tuple is returned with the function and
+        the input to the function. Otherwise, None is returned.
+
+    Raises
+    ------
+    ValueError
+        If the dictionary has a key of the form "__<function_name>__" but there
+        are other keys present, making this an invalid function call, or if the
+        function being called is not known.
+
+    """
+
+    def _is_dunder(s: str) -> bool:
+        """Checks if a string is of the form "__<something>__"."""
+        return s.startswith("__") and s.endswith("__")
+
+    is_potential_function_call = any(_is_dunder(key) for key in dct.keys())
+
+    if is_potential_function_call:
+        if len(dct) != 1:
+            raise ValueError("Invalid function call.")
+        else:
+            key = next(iter(dct.keys()))
+            function_name = key[2:-2]
+    else:
+        return None
+
+    if function_name not in functions:
+        raise ValueError(f"Unknown function: {function_name}")
+
+    return functions[function_name], dct[key]
 
 
 # helpers ------------------------------------------------------------------------------
@@ -1334,12 +1291,15 @@ def resolve(
                 _types.Function, Callable[[_types.FunctionArgs], _types.Configuration]
             ],
         ]
-    ] = None,
+    ] = DEFAULT_FUNCTIONS,
     global_variables: Optional[Mapping[str, Any]] = None,
     inject_root_as: Optional[str] = None,
     filters: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
+    check_for_function_call: Optional[  # type:ignore[assignment]
+        _types.FunctionCallChecker
+    ] = _check_for_dunder_function_call,
 ) -> dict:
     pass
 
@@ -1356,12 +1316,15 @@ def resolve(
                 _types.Function, Callable[[_types.FunctionArgs], _types.Configuration]
             ],
         ]
-    ] = None,
+    ] = DEFAULT_FUNCTIONS,
     global_variables: Optional[Mapping[str, Any]] = None,
     inject_root_as: Optional[str] = None,
     filters: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
+    check_for_function_call: Optional[  # type:ignore[assignment]
+        _types.FunctionCallChecker
+    ] = _check_for_dunder_function_call,
 ) -> list:
     pass
 
@@ -1378,12 +1341,15 @@ def resolve(
                 _types.Function, Callable[[_types.FunctionArgs], _types.Configuration]
             ],
         ]
-    ] = None,
+    ] = DEFAULT_FUNCTIONS,
     global_variables: Optional[Mapping[str, Any]] = None,
     inject_root_as: Optional[str] = None,
     filters: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
+    check_for_function_call: Optional[  # type:ignore[assignment]
+        _types.FunctionCallChecker
+    ] = _check_for_dunder_function_call,
 ) -> Any:
     pass
 
@@ -1408,6 +1374,9 @@ def resolve(
     filters: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
+    check_for_function_call: Optional[  # type:ignore[assignment]
+        _types.FunctionCallChecker
+    ] = _check_for_dunder_function_call,
 ) -> _types.Configuration:
     """Resolve a configuration by interpolating and parsing its entries.
 
@@ -1443,6 +1412,14 @@ def resolve(
         If False, the return value of this function is a plain Python dictionary or
         list. If this is True, however, the return type will be the same as the type of
         cfg. See below for details.
+    check_for_function_call : FunctionCallChecker
+        A function that checks if a ConfigurationDict represents a function call. It
+        is given the configuration and the available functions. If it is a function
+        call, it returns a 2-tuple of the function and the input to the function. If
+        not, it returns None. If it is an invalid function call, it should raise
+        a ValueError. If this is not provided, a default implementation is used that
+        assumes function calls are dictionaries with a single key of the form
+        "__<function_name>__". If set to None, function calls are effectively disabled.
 
     Raises
     ------
@@ -1451,72 +1428,6 @@ def resolve(
     ResolutionError
         If the configuration does not match the schema, if there is a circular
         reference, or there is some other issue with the configuration itself.
-
-    Notes
-    -----
-
-    The configuration can be a dictionary, list, or a non-container type; resolution
-    will be done recursively. In any case, the provided schema must match the type of
-    the configuration; for example, if the configuration is a dictionary, the schema
-    must be a dict schema.
-
-    Default parsers are provided which attempt to convert input values to the specified
-    types. They are:
-
-        - "integer": :func:`smartconfig.parsers.arithmetic` with type `int`
-        - "float": :func:`smartconfig.parsers.arithmetic` with type `float`
-        - "string": n/a.
-        - "boolean": :func:`smartconfig.parsers.logic`
-        - "date": :func:`smartconfig.parsers.smartdate`
-        - "datetime": :func:`smartconfig.parsers.smartdatetime`
-
-    These parsers provide "smart" behavior, allowing values to be expressed in a variety
-    of formats. They can be overridden by providing a dictionary of parsers to
-    `override_parsers`.
-
-    Default functions are provided that allow for basic manipulation of the
-    configuration. They are:
-
-        - "raw": :func:`smartconfig.functions.raw`
-        - "splice": :func:`smartconfig.functions.splice`
-        - "update_shallow": :func:`smartconfig.functions.update_shallow`
-        - "update": :func:`smartconfig.functions.update`
-        - "concatenate": :func:`smartconfig.functions.concatenate`
-
-    This function uses the `jinja2` template engine for interpolation. This means that
-    many powerful `Jinja2` features can be used. For example, `Jinja2` supports a
-    ternary operator, so dictionaries can contain expressions like the following:"
-
-    .. code-block:: python
-
-        {
-            'x': 10,
-            'y': 3,
-            'z': '${ this.x if this.x > this.y else this.y }'
-        }
-
-    Jinja2 filters are functions that can be applied during string interpolation. Jinja
-    provides many built-in filters, but custom filters can also be provided via the
-    `filters` keyword argument.
-
-    Global variables can be provided to Jinja2 templates through the `global_variables`
-    keyword argument. If a global variable's name clashes with a key in the
-    configuration, the value from the configuration takes precedence. Typically, this
-    manifests as a circular reference.
-
-    Type Preservation
-    -----------------
-
-    Typically, `cfg` will be a plain Python dictionary. Sometimes, however, it may be
-    another mapping type that behaves like a `dict`, but has some additional
-    functionality. One example is the `ruamel` package which is capable of
-    round-tripping yaml, comments and all. To accomplish this, ruamel produces a
-    dict-like object which stores the comments internally. If we resolve this dict-like
-    object with :code:`preserve_type = False`, then we'll lose these comments;
-    therefore, we should use :code:`preserve_type = True`. At present, type preservation
-    is done by constructing the resolved output as normal, but then making a deep copy
-    of `cfg` and recursively copying each leaf value into this deep copy. Therefore,
-    there is a performance cost.
 
     """
     if schema_validator is not None:
@@ -1536,8 +1447,18 @@ def resolve(
     if filters is None:
         filters = {}
 
+    if check_for_function_call is None:
+        # do not check for function calls
+        def check_for_function_call(*_):
+            return None
+
     resolution_context = _types.ResolutionContext(
-        parsers, converted_functions, global_variables, filters, inject_root_as
+        parsers,
+        converted_functions,
+        global_variables,
+        filters,
+        inject_root_as,
+        check_for_function_call,
     )
 
     root = _make_node(cfg, schema, resolution_context)

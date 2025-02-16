@@ -4,8 +4,7 @@ from smartconfig.types import RawString, RecursiveString, Function
 from pytest import raises
 
 
-# dictionaries
-# ============
+# basic ================================================================================
 
 
 def test_raises_if_required_keys_are_missing():
@@ -89,8 +88,7 @@ def test_allows_missing_keys_if_required_is_false():
     assert "foo" not in result
 
 
-# non-dictionary roots
-# ====================
+# non-dictionary roots =================================================================
 
 
 def test_lists_are_permitted_as_root_node():
@@ -121,8 +119,7 @@ def test_leafs_are_permitted_as_root_node():
     assert result == 42
 
 
-# interpolation
-# =============
+# interpolation ========================================================================
 
 
 def test_interpolation_of_other_dictionary_entries_same_level():
@@ -500,8 +497,134 @@ def test_interpolation_from_deeply_nested_list():
     assert result["publication_schema"]["required_artifacts"][2] == "baz"
 
 
-# parsing
-# =======
+def test_interpolate_entire_dict_raises_exception():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
+            "bar": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
+        },
+    }
+
+    dct = {
+        "foo": {"x": 1, "y": 2},
+        "bar": "${foo}",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema)
+
+    assert "No parser provided for type: 'dict'" in str(exc.value)
+
+
+def test_interpolate_entire_dict_indirectly_raises_exception():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
+            "bar": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
+            "baz": {"type": "integer"},
+            "quux": {"type": "integer"},
+        },
+    }
+
+    dct = {
+        "foo": {"x": 1, "y": 2},
+        "bar": "${foo}",
+        "baz": "${bar.y}",
+        "quux": "${baz}",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema)
+
+    assert "No parser provided for type: 'dict'" in str(exc.value)
+
+
+def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
+            "bar": {
+                "type": "integer",
+            },
+            "baz": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
+            "quux": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
+        },
+    }
+
+    dct = {
+        "foo": {"x": 1, "y": 2},
+        "bar": "${baz.y}",
+        "baz": "${quux}",
+        "quux": "${foo}",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema)
+
+    # then
+    assert "No parser provided for type: 'dict'" in str(exc.value)
+
+
+def test_interpolate_entire_list_raises_exception():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {
+                "type": "list",
+                "element_schema": {"type": "integer"},
+            },
+            "bar": {
+                "type": "list",
+                "element_schema": {"type": "integer"},
+            },
+        },
+    }
+
+    dct = {
+        "foo": [1, 2],
+        "bar": "${foo}",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema)
+
+    # then
+    assert "No parser provided for type: 'list'" in str(exc.value)
+
+
+# parsing ==============================================================================
 
 
 def test_leafs_are_parsed_into_expected_types():
@@ -689,8 +812,7 @@ def test_raises_if_no_parser_provided_for_type():
     assert "No parser provided" in str(exc.value)
 
 
-# "any" type
-# ==========
+# "any" type ===========================================================================
 
 
 def test_all_types_preserved_when_any_is_used():
@@ -723,8 +845,7 @@ def test_interpolation_occurs_when_any_is_used():
     assert result["bar"] == "testing this"
 
 
-# nullable
-# ========
+# nullable =============================================================================
 
 
 def test_dictionary_can_be_nullable():
@@ -811,8 +932,7 @@ def test_any_can_be_None_without_being_nullable():
     assert result["foo"] is None
 
 
-# good exceptions
-# ===============
+# good exceptions ======================================================================
 
 
 def test_exception_has_correct_path_with_missing_key_in_nested_dict():
@@ -867,8 +987,7 @@ def test_exception_has_correct_path_with_missing_key_in_nested_dict_within_list(
     assert excinfo.value.keypath == ("1", "foo")
 
 
-# preserve_type
-# =============
+# preserve_type ========================================================================
 
 
 def test_preserve_type():
@@ -890,139 +1009,7 @@ def test_preserve_type():
     assert result.something == 80  # type: ignore
 
 
-# container references
-# ====================
-
-
-def test_reference_entire_dict_raises_exception():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {
-                "type": "dict",
-                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
-            },
-            "bar": {
-                "type": "dict",
-                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
-            },
-        },
-    }
-
-    dct = {
-        "foo": {"x": 1, "y": 2},
-        "bar": "${foo}",
-    }
-
-    # when
-    with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
-
-    assert "No parser provided for type: 'dict'" in str(exc.value)
-
-
-def test_reference_entire_dict_indirectly_raises_exception():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {
-                "type": "dict",
-                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
-            },
-            "bar": {
-                "type": "dict",
-                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
-            },
-            "baz": {"type": "integer"},
-            "quux": {"type": "integer"},
-        },
-    }
-
-    dct = {
-        "foo": {"x": 1, "y": 2},
-        "bar": "${foo}",
-        "baz": "${bar.y}",
-        "quux": "${baz}",
-    }
-
-    # when
-    with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
-
-    assert "No parser provided for type: 'dict'" in str(exc.value)
-
-
-def test_reference_entire_dict_indirectly_reverse_order_raises_exception():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {
-                "type": "dict",
-                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
-            },
-            "bar": {
-                "type": "integer",
-            },
-            "baz": {
-                "type": "dict",
-                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
-            },
-            "quux": {
-                "type": "dict",
-                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
-            },
-        },
-    }
-
-    dct = {
-        "foo": {"x": 1, "y": 2},
-        "bar": "${baz.y}",
-        "baz": "${quux}",
-        "quux": "${foo}",
-    }
-
-    # when
-    with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
-
-    # then
-    assert "No parser provided for type: 'dict'" in str(exc.value)
-
-
-def test_reference_entire_list_raises_exception():
-    # given
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {
-                "type": "list",
-                "element_schema": {"type": "integer"},
-            },
-            "bar": {
-                "type": "list",
-                "element_schema": {"type": "integer"},
-            },
-        },
-    }
-
-    dct = {
-        "foo": [1, 2],
-        "bar": "${foo}",
-    }
-
-    # when
-    with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
-
-    # then
-    assert "No parser provided for type: 'list'" in str(exc.value)
-
-
-# functions
-# =========
+# functions ============================================================================
 
 
 def test_function_call_at_root():
@@ -1215,6 +1202,42 @@ def test_function_call_without_resolving_output_does_not_apply_schema():
     assert seen == ["${foo} + 1"]
     # the result for "bar" is a string even though the schema expects an integer
     assert result == {"foo": 4, "bar": "${foo} + 1"}
+
+
+def test_function_call_resolve_raises_if_function_call_is_malformed():
+    # with the default behavior, a function call is expected to be a dictionary
+    # with one key of the form __<name>__ where <name> is the name of the function.
+    # if there's another key in that dictionary, it is considered a malformed
+    # function call and we should raise a ResolutionError
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "integer"}},
+    }
+
+    dct = {"foo": 4, "bar": {"__myraw__": "${foo} + 1", "baz": "hello"}}
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"mraw": lambda x: x.input})
+
+    # then
+    assert "Invalid function call" in str(exc.value)
+
+
+def test_function_call_with_unknown_function():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "integer"}},
+    }
+
+    dct = {"foo": 4, "bar": {"__myraw__": "${foo} + 1"}}
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={})
+
+    # then
+    assert "Unknown function" in str(exc.value)
 
 
 def test_function_call_is_given_root_as_lazy_dict_or_list():
@@ -1459,6 +1482,63 @@ def test_function_call_with_infinite_recursion():
     # when
     with raises(RecursionError):
         resolve({"foo": {"__add_one__": 10}}, schema, functions={"add_one": add_one})
+
+
+def test_function_with_custom_call_syntax():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    def add_one(args):
+        return args.input + 1
+
+    def check_for_function_call(dct, functions):
+        for key in dct.keys():
+            if key.startswith("!!"):
+                function_name = key[2:]
+                input = dct[key]
+                return functions[function_name], input
+
+    # when
+    result = resolve(
+        {"bar": 5, "foo": {"!!add_one": 10}},
+        schema,
+        functions={"add_one": add_one},
+        check_for_function_call=check_for_function_call,
+    )
+
+    # then
+    assert result == {"bar": 5, "foo": 11}
+
+
+def test_function_with_disabled_check_for_function_call():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    def add_one(args):
+        return args.input + 1
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(
+            {"bar": 5, "foo": {"!!add_one": 10}},
+            schema,
+            functions={"add_one": add_one},
+            check_for_function_call=None,
+        )
+
+    assert "!!add_one" in str(exc.value)
 
 
 # global variables =====================================================================

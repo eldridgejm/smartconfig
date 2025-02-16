@@ -25,6 +25,7 @@ Configuration = Union[ConfigurationContainer, ConfigurationValue]
 # may reference other parts of the configuration tree and trigger their resolution if
 # necessary, without exposing the user to the details of how resolution is performed
 
+
 class UnresolvedDict(abc.ABC):
     """A dictionary that lazily resolves its values."""
 
@@ -169,6 +170,11 @@ Schema = Mapping[str, Any]
 # of the key "baz" in the dictionary {"foo": {"bar": {"baz": 42}}}.
 KeyPath = Tuple[str, ...]
 
+FunctionCallChecker = Callable[
+    [ConfigurationDict, Mapping[str, Function]],
+    Union[tuple[Function, Configuration], None],
+]
+
 
 @dataclasses.dataclass
 class ResolutionContext:
@@ -187,6 +193,12 @@ class ResolutionContext:
     inject_root_as : Optional[str]
         If not `None`, the root of the configuration tree will be injected into
         the global variables under this name.
+    check_for_function_call : FunctionCallChecker
+        A function that checks if a ConfigurationDict represents a function call. It
+        is given the configuration and the available functions. If it is a function
+        call, it returns a 2-tuple of the function and the input to the function. If
+        not, it returns None. If it is an invalid function call, it should raise
+        a ValueError.
 
     """
 
@@ -195,3 +207,4 @@ class ResolutionContext:
     global_variables: Mapping[str, Any]
     filters: Mapping[str, Callable]
     inject_root_as: Optional[str]
+    check_for_function_call: FunctionCallChecker
