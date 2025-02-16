@@ -4,6 +4,8 @@
 YAML, TOML, and others with "smart" features, such as string interpolation,
 natural language parsing, and type checking.
 
+See the `documentation <https://eldridgejm.github.io/smartconfig/>`_ for more information.
+
 ## Use Cases and Example
 
 Python programs that require user configuration often use simple configuration formats such as JSON, YAML, or TOML. These formats are easier to read and write than coding languages, but they may not support more advanced features like string interpolation, date parsing, or type checking. Another approach is to use a full-fledged programming language to define the configuration, such as Python itself. However, this approach vastly increases the possible complexity of the configuration file, and it requires that users know how to write Python code.
