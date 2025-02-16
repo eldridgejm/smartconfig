@@ -8,6 +8,7 @@ Built-in Functions
 
    concatenate
    raw
+   recursive
    splice
    update
    update_shallow
@@ -20,6 +21,7 @@ Built-in Functions
 
    ``args.input``
 
+.. autofunction:: recursive
 .. autofunction:: splice
 .. autofunction:: update
 .. autofunction:: update_shallow
