@@ -151,7 +151,6 @@ import typing
 import jinja2
 
 from . import converters as _converters, functions as _functions, types as _types
-from ._schemas import validate_schema as _validate_schema
 from .exceptions import Error, ResolutionError
 
 
@@ -831,16 +830,16 @@ class _ValueNode(_Node):
         self._resolved = _ValueNode._PENDING
 
         if isinstance(self.value, _types.RecursiveString):
-            s = self._safely(self._interpolate, self.value, recursive=True)
+            value = self._safely(self._interpolate, self.value, recursive=True)
         elif isinstance(self.value, str):
-            s = self._safely(self._interpolate, self.value)
+            value = self._safely(self._interpolate, self.value)
         else:
-            s = self.value
+            value = self.value
 
         if self.nullable and self.value is None:
             self._resolved = None
         else:
-            self._resolved = self._safely(self._convert, s, self.type_)
+            self._resolved = self._safely(self._convert, value, self.type_)
 
         return self._resolved
 
@@ -921,8 +920,8 @@ class _ValueNode(_Node):
         else:
             return result
 
-    def _convert(self, s, type_) -> _types.ConfigurationValue:
-        """convert the configuration string into its final type."""
+    def _convert(self, value, type_) -> _types.ConfigurationValue:
+        """convert the configuration value into its final type."""
         converters = self.resolution_context.converters
 
         try:
@@ -932,7 +931,7 @@ class _ValueNode(_Node):
                 f"No converter provided for type: '{type_}'.", self.keypath
             )
 
-        return converter(s)
+        return converter(value)
 
     def _safely(self, fn, *args, **kwargs):
         """Apply the function and catch any exceptions, raising a ResolutionError."""
@@ -1283,7 +1282,6 @@ def resolve(
     global_variables: Optional[Mapping[str, Any]] = ...,
     inject_root_as: Optional[str] = ...,
     filters: Optional[Mapping[str, Callable]] = ...,
-    schema_validator: Callable[[_types.Schema], None] = ...,
     preserve_type: bool = ...,
     check_for_function_call: Optional[_types.FunctionCallChecker] = ...,
 ) -> dict:
@@ -1306,7 +1304,6 @@ def resolve(
     global_variables: Optional[Mapping[str, Any]] = None,
     inject_root_as: Optional[str] = None,
     filters: Optional[Mapping[str, Callable]] = None,
-    schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
     check_for_function_call: Optional[
         _types.FunctionCallChecker
@@ -1331,7 +1328,6 @@ def resolve(
     global_variables: Optional[Mapping[str, Any]] = ...,
     inject_root_as: Optional[str] = ...,
     filters: Optional[Mapping[str, Callable]] = ...,
-    schema_validator: Callable[[_types.Schema], None] = ...,
     preserve_type: bool = ...,
     check_for_function_call: Optional[_types.FunctionCallChecker] = ...,
 ) -> Any:
@@ -1356,7 +1352,6 @@ def resolve(
     global_variables: Optional[Mapping[str, Any]] = None,
     inject_root_as: Optional[str] = None,
     filters: Optional[Mapping[str, Callable]] = None,
-    schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
     check_for_function_call: Optional[  # type:ignore[assignment]
         _types.FunctionCallChecker
@@ -1366,44 +1361,48 @@ def resolve(
 
     Parameters
     ----------
-    cfg : Configuration
+    cfg : :class:`types.Configuration`
         The "raw" configuration to resolve.
-    schema : Schema
+    schema : :class:`types.Schema`
         The schema describing the structure of the resolved configuration.
     converters : Mapping[str, Callable]
         A dictionary mapping value types to converter functions. The converter functions
         should take the raw value (after interpolation) and convert it to the specified
-        type. If this is not provided, the default converters are used.
-    functions
+        type. If this is not provided, the default converters in :data:`DEFAULT_CONVERTERS` are used.
+    functions : Mapping[str, Union[Callable, :class:`types.Function`]]
         A mapping of function names to functions. The functions should either be basic
-        Python functions accepting an instance of FunctionArgs as input and returning
-        a Configuration, or they should be _types.Function instances. If this is not
-        provided, the default functions are used.
+        Python functions accepting an instance of :class:`types.FunctionArgs` as input
+        and returning a :class:`types.Configuration`, or they should be
+        :class:`smartconfig.types.Function` instances. If this is not provided, the
+        default functions in :data:`DEFAULT_FUNCTIONS` are used. If it is ``None``, no
+        functions are made available.
     global_variables : Optional[Mapping[str, Any]]
-        A dictionary of global variables to make available to Jinja2 templates. If this
-        is not provided, no global variables are available.
+        A dictionary of global variables to make available during string interpolation.
+        If this is not provided, no global variables are available.
     inject_root_as : Optional[str]
         If this is not None, the root of the configuration tree is made available to
-        Jinja2 templates as an UnresolvedDict, UnresolvedList, or UnresolvedFunctionCall
-        by injecting it into the template variables as the value of this key.
+        Jinja2 templates as an :class:`types.UnresolvedDict`,
+        :class:`types.UnresolvedList`, or :class:`types.UnresolvedFunctionCall` by
+        injecting it into the template variables as the value of this key. This allows
+        the root to be referenced directly during string interpolation. Defaults to
+        ``None``.
     filters : Optional[Mapping[str, Callable]]
-        A dictionary of Jinja2 filters to make available to templates. Will be added to
-        the default filters.
-    schema_validator : Callable[[Schema], None]
-        A function to validate the schema. If this is not provided, the default schema
-        validator is used (:func:`smartconfig.validate_schema`).
+        A dictionary of Jinja2 filters to make available to templates. These will be
+        added to Jinja2's set of default filters. If ``None``, no custom filters are
+        provided. Defaults to ``None``.
     preserve_type : bool (default: False)
         If False, the return value of this function is a plain Python dictionary or
         list. If this is True, however, the return type will be the same as the type of
         cfg. See below for details.
-    check_for_function_call : FunctionCallChecker
-        A function that checks if a ConfigurationDict represents a function call. It
-        is given the configuration and the available functions. If it is a function
-        call, it returns a 2-tuple of the function and the input to the function. If
-        not, it returns None. If it is an invalid function call, it should raise
-        a ValueError. If this is not provided, a default implementation is used that
-        assumes function calls are dictionaries with a single key of the form
-        "__<function_name>__". If set to None, function calls are effectively disabled.
+    check_for_function_call : :class:`types.FunctionCallChecker`
+        A function that checks if a :class:`types.ConfigurationDict` represents a
+        function call. It is given the configuration and the available functions. If it
+        is a function call, it returns a 2-tuple of the :class:`types.Function` and the
+        input to the function. If not, it returns None. If it is an invalid function
+        call, it should raise a ``ValueError``. If this is not provided, a default
+        implementation is used that assumes function calls are dictionaries with a
+        single key of the form ``__<function_name>__``. If set to None, function calls
+        are effectively disabled.
 
     Raises
     ------
@@ -1414,9 +1413,6 @@ def resolve(
         reference, or there is some other issue with the configuration itself.
 
     """
-    if schema_validator is not None:
-        schema_validator(schema)
-
     if functions is None:
         converted_functions: Mapping[str, _types.Function] = {}
     else:

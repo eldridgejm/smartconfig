@@ -15,35 +15,35 @@ A configuration is resolved using the :func:`smartconfig.resolve` function.
         The "raw" configuration to resolve.
     schema : :class:`types.Schema`
         The schema describing the structure of the resolved configuration.
-    parsers : Mapping[str, Callable]
-        A dictionary mapping value types to parser functions. The parser functions
+    converters : Mapping[str, Callable]
+        A dictionary mapping value types to converter functions. The converter functions
         should take the raw value (after interpolation) and convert it to the specified
-        type. If this is not provided, the default parsers are used.
+        type. If this is not provided, the default converters in :data:`DEFAULT_CONVERTERS` are used.
     functions : Mapping[str, Union[Callable, :class:`types.Function`]]
         A mapping of function names to functions. The functions should either be basic
         Python functions accepting an instance of :class:`types.FunctionArgs` as input
         and returning a :class:`types.Configuration`, or they should be
         :class:`smartconfig.types.Function` instances. If this is not provided, the
-        default functions are used (see below).
+        default functions in :data:`DEFAULT_FUNCTIONS` are used. If it is ``None``, no
+        functions are made available.
     global_variables : Optional[Mapping[str, Any]]
-        A dictionary of global variables to make available to Jinja2 templates. If this
-        is not provided, no global variables are available.
+        A dictionary of global variables to make available during string interpolation.
+        If this is not provided, no global variables are available.
     inject_root_as : Optional[str]
         If this is not None, the root of the configuration tree is made available to
         Jinja2 templates as an :class:`types.UnresolvedDict`,
         :class:`types.UnresolvedList`, or :class:`types.UnresolvedFunctionCall` by
         injecting it into the template variables as the value of this key. This allows
-        the root to be referenced directly during string interpolation.
+        the root to be referenced directly during string interpolation. Defaults to
+        ``None``.
     filters : Optional[Mapping[str, Callable]]
-        A dictionary of Jinja2 filters to make available to templates. Will be added to
-        the default filters.
-    schema_validator : Callable[[Schema], None]
-        A function to validate the schema. If this is not provided, the default schema
-        validator is used (:func:`smartconfig.validate_schema`).
+        A dictionary of Jinja2 filters to make available to templates. These will be
+        added to Jinja2's set of default filters. If ``None``, no custom filters are
+        provided. Defaults to ``None``.
     preserve_type : bool (default: False)
         If False, the return value of this function is a plain Python dictionary or
         list. If this is True, however, the return type will be the same as the type of
-        cfg. See below for details.
+        ``cfg``. See :ref:`type-preservation` below for more information.
     check_for_function_call : :class:`types.FunctionCallChecker`
         A function that checks if a :class:`types.ConfigurationDict` represents a
         function call. It is given the configuration and the available functions. If it
@@ -56,42 +56,55 @@ A configuration is resolved using the :func:`smartconfig.resolve` function.
 
     Raises
     ------
-    InvalidSchemaError
+    :class:`exceptions.InvalidSchemaError`
         If the schema is not valid.
-    ResolutionError
+    :class:`exceptions.ResolutionError`
         If the configuration does not match the schema, if there is a circular
         reference, or there is some other issue with the configuration itself.
 
-Parsers
--------
+Converters
+----------
+
+The last step in resolving a configuration value is converting it to the type specified
+in the schema. This is done by passing the value to a "converter" function, which
+accepts an object of any type and returns a Python object of the appropriate type (e.g.,
+a converter for the "integer" value type should always return a Python ``int``). The
+converter is responsible not only for converting the value, but also for validating that
+the value is of the correct type.
 
 :func:`resolve` expects a dictionary mapping the value types (e.g., "integer",
-"float", "string", "boolean", "date", "datetime") to functions that convert a raw
-string value to the appropriate type. These are called "parsers".
+"float", "string", "boolean", "date", "datetime") to converter functions.
+`smartconfig` provides several built-in converters in :mod:`smartconfig.converters`,
+and default converters are defined in :data:`DEFAULT_CONVERTERS`:
 
-Default parsers are defined in :data:`DEFAULT_PARSERS`:
+.. data:: DEFAULT_CONVERTERS
 
-.. data:: DEFAULT_PARSERS
+    A mapping of default converters.
 
-    A mapping of default parsers.
+In summary, the default converters are:
 
-The default behavior is "smart". In summary, the parsers are:
-
-- **integer**: :func:`smartconfig.parsers.arithmetic` with type `int`. Allows for basic
+- **integer**: :func:`smartconfig.converters.arithmetic` with type `int`. Allows for basic
   arithmetic, like ``1+2``
-- **float**: :func:`smartconfig.parsers.arithmetic` with type `float`. Allows for basic
+- **float**: :func:`smartconfig.converters.arithmetic` with type `float`. Allows for basic
   floating point arithmetic, like ``1.5 + 2.3``
-- **string**: the identity function
-- **boolean**: :func:`smartconfig.parsers.logic`. Allows for basic boolean logic, like
+- **string**: :class:`str`
+- **boolean**: :func:`smartconfig.converters.logic`. Allows for basic boolean logic, like
   ``true and not (false or true)``
-- **date**: :func:`smartconfig.parsers.smartdate`. Allows for natural language dates,
+- **date**: :func:`smartconfig.converters.smartdate`. Allows for natural language dates,
   like ``"7 days after 2025-01-01"``
-- **datetime**: :func:`smartconfig.parsers.smartdatetime`. Allows for natural language
+- **datetime**: :func:`smartconfig.converters.smartdatetime`. Allows for natural language
   datetimes, like ``"7 days after 2025-01-01 12:00:00"``
 
-To override the default parsers, copy :data:`DEFAULT_PARSERS` and modify it as needed.
-You may provide any function that takes a string and returns the appropriate type.
+In general, if a converter is provided an instance of the type it is supposed to
+convert to, it should return it unchanged. For instance, a converter to "datetime" that
+is given a Python `datetime` object should return it unchanged.
 
+To override the default converters, simply provide a different mapping from the possible
+value types to converter functions to the ``converters`` keyword argument of
+:func:`resolve`. The :data:`DEFAULT_CONVERTERS` dictionary should not be modified
+directly, but it can be copied and modified.
+
+.. _function-calls:
 Functions
 ---------
 
@@ -129,7 +142,9 @@ that take an instance of :class:`smartconfig.types.FunctionArgs` as input and re
 Built-in Functions
 ^^^^^^^^^^^^^^^^^^
 
-A set of default functions is provided in :data:`DEFAULT_FUNCTIONS`:
+`smartconfig` provides several built-in functions for convenience. These are
+implemented in :mod:`smartconfig.functions`. The default functions available to
+:func:`resolve` are defined in :data:`DEFAULT_FUNCTIONS`:
 
 .. data:: DEFAULT_FUNCTIONS
 
@@ -163,6 +178,7 @@ This resolves to:
          "y": 4
     }
 
+.. _recursive-builtin:
 recursive
 *********
 
@@ -288,8 +304,10 @@ and modify it as needed.
 Providing Custom Functions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can define custom functions by adding them to the dictionary passed to
-:func:`resolve` in its ``functions`` keyword argument.
+You can define custom functions by passing a dictionary mapping function names to
+functions to the ``functions`` keyword argument of :func:`resolve`. The
+:data:`DEFAULT_FUNCTIONS` dictionary should not be modified directly, but it can be
+copied and modified.
 
 There are two ways to define functions. First, you can create a simple Python function
 that takes one argument (an instance of :class:`smartconfig.types.FunctionArgs`) and
@@ -357,6 +375,45 @@ The result will be:
         "message": "${x}"
     }
 
+Functions are provided with with an object representing the entire unresolved
+configuration via the :attr:`smartconfig.types.FunctionArgs.root` attribute. This
+object can be used to reference other parts of the configuration without causing the
+whole configuration to be resolved (which might result in circular references). For
+example:
+
+.. code-block:: python
+
+    def compute_bar(args: FunctionArgs) -> Configuration:
+         return args.root["foo"]["x"] + 1
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "dict", "required_keys": {"": {"type": "integer"}}},
+            "bar": {"type": "integer"}
+        }
+    }
+
+    dct = {
+        "foo": {"x": 5},
+        "bar": {"__compute_bar__": None}
+    }
+
+    result = smartconfig.resolve(dct, schema, functions={"compute_bar": compute_bar})
+
+The result will be:
+
+.. code-block:: python
+
+    {
+        "foo": {"x": 5},
+        "bar": 6
+    }
+
+For more on how the :attr:`smartconfig.types.FunctionArgs.root` attribute can be used,
+see the documentation for :class:`types.UnresolvedDict`, :class:`types.UnresolvedList`,
+and :class:`types.UnresolvedFunctionCall`.
+
 
 .. _customizing-function-call-syntax:
 Customizing Function Call Syntax
@@ -380,19 +437,22 @@ None in the call to :func:`resolve`.
 Raw and Recursive String Values
 -------------------------------
 
-By default, `smartconfig` will interpolate all strings in the configuration *once*.
-However, sometimes we want to indicate that a string should not be interpolated or
-parsed. For example, we might want to include a template string in the configuration
-that will be used later. To do this, we can use a :class:`types.RawString`. A
-:class:`types.RawString` is a subclass of :class:`str` that indicates that the string
-should not be interpolated or parsed. In practice, it is usually created by calling the
-built-in function, :ref:`raw-builtin`.
+By default, `smartconfig` will interpolate all strings values in the configuration
+*once*. However, sometimes we want to indicate that a string should not be interpolated
+or converted at all. For example, we might want to include a template string in the
+configuration that will be evaluated elsewhere. To do this, we can wrap the string
+in a :class:`types.RawString`. A :class:`types.RawString` is a subclass of :class:`str`
+that indicates that the string should not be interpolated or parsed. In practice, it is
+usually created by calling the built-in function, :ref:`raw-builtin`.
 
 Similarly, sometimes we might want to indicate that a string should be interpolated
-repeatedly until it stops changing. We can do this by using a :class:`types.RecursiveString`.
-A :class:`types.RecursiveString` is a subclass of :class:`str` as well.
+repeatedly until it stops changing. This is most useful when the string contains
+references to raw strings (which themselves might contain references to raw strings, and
+so on). We can do this by wrapping the string in a :class:`types.RecursiveString`. A
+:class:`types.RecursiveString` is a subclass of :class:`str` as well. In practice, it
+is usually created by calling the built-in function, :ref:`recursive-builtin`.
 
-Recursive strings and raw strings are typically used in conjunctin to define template
+Recursive strings and raw strings are typically used in conjunction to define template
 strings and to evaluate them somewhere else. For example, suppose we have the
 configuration:
 
@@ -461,6 +521,7 @@ keyword argument. If a global variable's name clashes with a key in the
 configuration, the value from the configuration takes precedence. Typically, this
 manifests as a circular reference.
 
+.. _type-preservation:
 Type Preservation
 -----------------
 
@@ -523,10 +584,32 @@ from the node representing ``date_of_first_discussion`` to the node representing
 When a configuration is resolved, a depth-first search is performed on this
 graph, starting at the "root" node of the configuration. When a dictionary or
 list node is encountered, an arbitrary child is recursively resolved before the
-next child is resolved. When a leaf node is encountered, it is resolved by
-first recursively resolving any nodes that it references, and then potentially
-interpolating these resolved values and passing them into a parser to determine
-the final value.
+next child is resolved.
 
-If during resolution a node is encountered that is currently being resolved, a
-circular dependency is detected, and an error is raised.
+When a leaf node is encountered, it is first interpolated (if the value is a string) and
+then converted. Interpolation is handled by the Jinja2 templating engine. During
+interpolation, the engine is given access to the root of the configuration as an
+instance of :class:`types.UnresolvedDict`, :class:`types.UnresolvedList`, or
+:class:`types.UnresolvedFunctionCall`. These "unresolved" container objects represent
+the root without resolving the whole configuration, but otherwise behave like normal
+Python containers. This allows the template to refer to other parts of the configuration
+without resolving the whole thing.
+
+When a reference like ``${foo.bar.baz}`` is encountered during interpolation, Jinja
+looks up the sequence of keys ``foo`` and ``bar`` in the template variables, "drilling
+down" through the nested configuration. When ``foo`` is looked up, the result is again
+an unresolved container; the same happens when ``bar`` is accessed. When Jinja finally
+looks up ``baz`` in the unresolved dictionary containing it, the container type
+recognizes that a leaf value is being accessed, and it triggers the resolution
+(interpolation and conversion) of that value into a Python type. In this way,
+interpolation can implictly trigger the resolution of other parts of the configuration.
+
+Once the value has been interpolated (if necessary), it is passed to a converter
+function that attempts to convert it to the appropriate type. Converters are general,
+taking in objects of any type and returning objects of the appropriate type. If the
+input is a string, the converter typically "parses" it into the appropriate type,
+sometimes by applying natural language processing (like in
+:func:`smartconfig.converters.smartdate`).
+
+If during resolution a node is encountered that is currently being resolved, a circular
+dependency is detected, and an error is raised.

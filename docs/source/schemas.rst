@@ -4,7 +4,7 @@ Schemas
 The first step in using `smartconfig` is to define a **schema**. A schema is a
 dictionary defining the expected structure of a configuration. Importantly,
 `smartconfig` uses the schema to determine what type a value should have (integer, date,
-string, etc.) and therefore which parser should be used to read it.
+string, etc.) and therefore which converter should be used to produce the final value.
 
 Concretely, a schema is a dictionary that follows the formal grammar below.
 

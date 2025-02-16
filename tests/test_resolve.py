@@ -1,3 +1,5 @@
+import datetime
+
 from smartconfig import resolve, exceptions
 from smartconfig.types import (
     RawString,
@@ -873,15 +875,44 @@ def test_interpolation_occurs_when_any_is_used():
 
 def test_converts_integers_to_strings_when_schema_calls_for_it():
     # given
-    schema = {"type": "string"}
+    schema = {"type": "dict", "required_keys": {"foo": {"type": "string"}}}
 
-    config = 42
+    dct = {"foo": 42}
 
     # when
-    result = resolve(config, schema)
+    result = resolve(dct, schema)
 
     # then
-    assert result == "42"
+    assert result["foo"] == "42"
+
+
+def test_converts_strings_to_integers_when_schema_calls_for_it():
+    # given
+    schema = {"type": "dict", "required_keys": {"foo": {"type": "integer"}}}
+
+    dct = {"foo": "42"}
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["foo"] == 42
+
+
+def test_config_contains_datetimes_objects_type_is_left_alone():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {"foo": {"type": "datetime"}},
+    }
+
+    dct = {"foo": datetime.datetime(2020, 1, 1)}
+
+    # when
+    result = resolve(dct, schema)
+
+    # then
+    assert result["foo"] == datetime.datetime(2020, 1, 1)
 
 
 # nullable =============================================================================

@@ -1,4 +1,4 @@
-"""Provides the default functions that can be called within a configuration."""
+"""Provides built-in functions that can be called within a configuration."""
 
 from copy import deepcopy
 import itertools
@@ -10,7 +10,7 @@ from .exceptions import ResolutionError
 
 @Function.new(resolve_input=False)
 def raw(args: FunctionArgs):
-    """Turn the string into a raw string that is not interpolation/parsed."""
+    """Turn the string into a :class:`smartconfig.types.RawString` that is not interpolation/parsed."""
     # the input must be a string
     if not isinstance(args.input, str):
         raise ResolutionError("Input to 'raw' must be a string.", args.keypath)
@@ -18,7 +18,11 @@ def raw(args: FunctionArgs):
 
 
 def recursive(args: FunctionArgs):
-    """Turn the string into a recursive string that is resolved recursively."""
+    """Turn the string into a :class:`smartconfig.types.RecursiveString` that is resolved recursively.
+
+    ``args.input`` must be a string. If not, an error is raised.
+
+    """
     # the input must be a string
     if not isinstance(args.input, str):
         raise ResolutionError("Input to 'recursive' must be a string.", args.keypath)
@@ -28,9 +32,10 @@ def recursive(args: FunctionArgs):
 def splice(args: FunctionArgs):
     """Retrieves and returns the resolved configuration at the given keypath.
 
-    The keypath may either point to a place inside the configuration, in which case
-    it should start with `this`, or it may point to a place in the external
-    variables that were passed along with the resolution context.
+    ``args.input`` must be a string or an int representing the keypath to
+    retrieve. The keypath must point to a place within the configuration.
+    Keypaths pointing to global variables are not allowed and will result in an
+    error.
 
     """
     if not isinstance(args.input, str) and not (
@@ -55,7 +60,7 @@ def _all_elements_are_instances_of(container, type_):
 def update_shallow(args: FunctionArgs):
     """Update the entries of the first dictionary with the entries of the later ones.
 
-    args.input should be a list of dictionaries.
+    ``args.input`` should be a list of dictionaries.
 
     """
     if not isinstance(args.input, list) or not _all_elements_are_instances_of(
@@ -84,7 +89,7 @@ def update_shallow(args: FunctionArgs):
 def update(args: FunctionArgs):
     """Recursively update the first dictionary with the entries of the later ones.
 
-    args.input should be a list of dictionaries.
+    ``args.input`` should be a list of dictionaries.
 
     """
     if not isinstance(args.input, list) or not _all_elements_are_instances_of(
@@ -117,9 +122,9 @@ def update(args: FunctionArgs):
 
 
 def concatenate(args: FunctionArgs):
-    """Concatenate lists.
+    """Concatenates lists.
 
-    args.input should be a list of lists.
+    ``args.input`` should be a list of lists.
 
     """
     if not isinstance(args.input, list) or not _all_elements_are_instances_of(

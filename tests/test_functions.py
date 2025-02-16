@@ -736,3 +736,26 @@ def test_splice_raises_if_key_is_not_a_valid_keypath():
         resolve(dct, schema, functions={"splice": functions.splice})
 
     assert "Input to 'splice' must be a string or int." in str(exc.value)
+
+
+def test_splice_from_global_variables_raises():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {"__splice__": "baz"}
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(
+            dct,
+            schema,
+            functions={"splice": functions.splice},
+            global_variables={"baz": 44},
+        )
+
+    assert "Keypath 'baz' does not exist." in str(exc.value)

@@ -1,7 +1,7 @@
 smartconfig
 ===========
 
-`smartconfig` is a Python library that extends configuration formats like JSON,
+`smartconfig` is a Python library for extending configuration formats like JSON,
 YAML, TOML, and others with "smart" features, such as string interpolation, natural
 language parsing, and type checking.
 
@@ -18,9 +18,9 @@ of the configuration file, and it requires that users know how to write Python
 code.
 
 `smartconfig` aims to bridge the gap between these two approaches by providing
-a simple way to extend simple configuration formats with "smart" features. To
-see how this works, consider the following example. Suppose you have a
-configuration file in JSON format that looks like this:
+a simple way to extend configuration formats with "smart" features. To see how this
+works, consider the following example. Suppose you have a configuration file in JSON
+format that looks like this:
 
 .. code:: json
 
@@ -53,12 +53,12 @@ configuration file in JSON format that looks like this:
 
     json.dump(config, open('example.json', 'w'))
 
-Notice the use of the ``${...}`` syntax to refer to other values in the
-configuration file and the fact that the ``date_of_first_discussion`` key is
-defined relative to the ``date_of_first_lecture`` key; neither of these are
-features in standard JSON parsers. Of course, if we try to load this
-configuration file using Python's `json` module, we will not see anything
-special happen; the references will not be resolved.
+Notice the use of the ``${...}`` syntax to refer to other values in the configuration
+file and the fact that the ``date_of_first_discussion`` key is defined relative to the
+``date_of_first_lecture`` key using natural language; neither of these are features are
+provided by standard JSON parsers. Of course, if we try to load this configuration file
+using Python's `json` module, we will not see anything special happen; the references
+will not be resolved.
 
 Now let's use `smartconfig` to "resolve" the configuration:
 
@@ -141,9 +141,8 @@ features:
 Additionally, `smartconfig` provides the following features to developers:
 
 - **Extensibility**: `smartconfig` is designed to be easily extensible.
-  Developers can define custom parsers for custom natural language parsing,
-  custom functions for complex runtime behavior, and custom filters for
-  transforming values during string interpolation.
+  Developers can define custom type converters, custom functions for complex runtime
+  behavior, and custom filters for transforming values during string interpolation.
 - **Format agnostic**: `smartconfig` can be used with any configuration format
   that can be loaded into a Python dictionary. This includes JSON, YAML, TOML,
   and more.
@@ -157,7 +156,7 @@ Additionally, `smartconfig` provides the following features to developers:
    ./schemas.rst
    ./resolve.rst
    ./functions.rst
-   ./parsers.rst
+   ./converters.rst
    ./types.rst
+   ./exceptions.rst
    ./recipes.rst
-
