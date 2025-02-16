@@ -4,17 +4,25 @@ from copy import deepcopy
 import itertools
 import typing
 
-from .types import Function, FunctionArgs, RawString
+from .types import Function, FunctionArgs, RawString, RecursiveString, ConfigurationDict
 from .exceptions import ResolutionError
 
 
 @Function.new(resolve_input=False)
 def raw(args: FunctionArgs):
-    """Do not resolve the value."""
+    """Turn the string into a raw string that is not interpolation/parsed."""
     # the input must be a string
     if not isinstance(args.input, str):
         raise ResolutionError("Input to 'raw' must be a string.", args.keypath)
     return RawString(args.input)
+
+
+def recursive(args: FunctionArgs):
+    """Turn the string into a recursive string that is resolved recursively."""
+    # the input must be a string
+    if not isinstance(args.input, str):
+        raise ResolutionError("Input to 'recursive' must be a string.", args.keypath)
+    return RecursiveString(args.input)
 
 
 def splice(args: FunctionArgs):
@@ -57,10 +65,10 @@ def update_shallow(args: FunctionArgs):
         )
 
     # true since we checked _all_elements_are_instances_of(args.input, dict) above
-    args.input = typing.cast(list[dict], args.input)
+    input = typing.cast(list[ConfigurationDict], args.input)
 
-    first = deepcopy(args.input[0])
-    for dct in args.input[1:]:
+    first = deepcopy(input[0])
+    for dct in input[1:]:
         first.update(dct)
 
     return first
@@ -85,7 +93,7 @@ def update(args: FunctionArgs):
         )
 
     # true since we checked _all_elements_are_instances_of(args.input, dict) above
-    args.input = typing.cast(list[dict], args.input)
+    input = typing.cast(list[dict], args.input)
 
     def _deep_update(dictionaries: list[dict]) -> dict:
         first = deepcopy(dictionaries[0])
@@ -98,7 +106,7 @@ def update(args: FunctionArgs):
 
         return first
 
-    return _deep_update(args.input)
+    return _deep_update(input)
 
 
 def concatenate(args: FunctionArgs):
@@ -120,6 +128,6 @@ def concatenate(args: FunctionArgs):
         )
 
     # true since we checked _all_elements_are_instances_of(args.input, list) above
-    args.input = typing.cast(list[list], args.input)
+    input = typing.cast(list[list], args.input)
 
-    return list(itertools.chain(*args.input))
+    return list(itertools.chain(*input))

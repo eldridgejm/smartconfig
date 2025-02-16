@@ -27,11 +27,11 @@ configuration file in JSON format that looks like this:
    {
         "course_name": "Introduction to Python",
         "date_of_first_lecture": "2025-01-10",
-        "date_of_first_discussion": "7 days after ${this.first_lecture}",
+        "date_of_first_discussion": "7 days after ${first_lecture}",
         "message": [
-            "Welcome to ${this.course_name}!",
-            "The first lecture is on ${this.first_lecture}.",
-            "The first discussion is on ${this.first_discussion}."
+            "Welcome to ${course_name}!",
+            "The first lecture is on ${first_lecture}.",
+            "The first discussion is on ${first_discussion}."
         ]
    }
 
@@ -43,11 +43,11 @@ configuration file in JSON format that looks like this:
     config = {
         "course_name": "Introduction to Python",
         "date_of_first_lecture": "2025-01-10",
-        "date_of_first_discussion": "7 days after ${this.first_lecture}",
+        "date_of_first_discussion": "7 days after ${first_lecture}",
         "message": [
-            "Welcome to ${this.course_name}!",
-            "The first lecture is on ${this.first_lecture}.",
-            "The first discussion is on ${this.first_discussion}."
+            "Welcome to ${course_name}!",
+            "The first lecture is on ${first_lecture}.",
+            "The first discussion is on ${first_discussion}."
         ]
     }
 
@@ -55,11 +55,12 @@ configuration file in JSON format that looks like this:
 
 Notice the use of the ``${...}`` syntax to refer to other values in the
 configuration file and the fact that the ``date_of_first_discussion`` key is
-defined relative to the ``date_of_first_lecture`` key. Of course, if we try to
-load this configuration file using Python's `json` module, we will not see
-anything special happen; the references will not be resolved.
+defined relative to the ``date_of_first_lecture`` key; neither of these are
+features in standard JSON parsers. Of course, if we try to load this
+configuration file using Python's `json` module, we will not see anything
+special happen; the references will not be resolved.
 
-Now let's use `smartconfig` to load the configuration:
+Now let's use `smartconfig` to "resolve" the configuration:
 
 
 .. testcode::
@@ -112,13 +113,13 @@ Features
 features:
 
 - **String interpolation**: Use ``${...}`` to refer to other values in the
-  configuration file. This helps avoid duplication and the errors that can
-  arise from it.
+  configuration file. This helps avoid tedious duplication and the errors that
+  can arise from it.
 - **Natural language parsers**: `smartconfig` includes natural language parsers
   for dates, numbers, and boolean values. When combined with string
   interpolation, this allows you to define values relative to other values in
   the configuration file. For example, you can define a value as ``7 days after
-  ${this.start_date}``, or ``${this.previous_lecture_number} + 1``.
+  ${start_date}``, or ``${previous_lecture_number} + 1``.
 - **Function calls**: `smartconfig` defines a syntax for calling functions in
   the configuration file. This allows the user to specify complex values that
   are calculated at runtime. Functions are provided for merging dictionaries,
@@ -126,7 +127,9 @@ features:
 - **Complex control flow**: the Jinja2 templating engine is used under
   the hood, which means that you can use Jinja2's control flow constructs
   like `if` statements, `for` loops, and more to define complex values in
-  your configuration file.
+  your configuration file. You can also use Jinja2 filters to transform
+  values in your configuration file, as in ``${value | capitalize}`` to capitalize
+  a string.
 - **Default values**: default values can be provided, so that the user
   can save typing and highlight what's important by only specifying the values
   that are different from the default.
@@ -137,16 +140,18 @@ features:
 
 Additionally, `smartconfig` provides the following features to developers:
 
-- **Extensibility**: `smartconfig` is designed to be easily extensible. You can
-  define your own parsers for custom natural language parsing and you can
-  define your own functions for complex runtime behavior.
+- **Extensibility**: `smartconfig` is designed to be easily extensible.
+  Developers can define custom parsers for custom natural language parsing,
+  custom functions for complex runtime behavior, and custom filters for
+  transforming values during string interpolation.
 - **Format agnostic**: `smartconfig` can be used with any configuration format
   that can be loaded into a Python dictionary. This includes JSON, YAML, TOML,
   and more.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Contents:
+   :hidden:
 
    ./concepts.rst
    ./schemas.rst

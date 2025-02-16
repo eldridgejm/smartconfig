@@ -11,13 +11,14 @@ import functools
 # configurations are "raw" dictionaries, lists, or non-container types; a
 # configuration tree can be built from configurations, and a resolved
 # configuration is again a configuration
-ConfigurationContainer = Union["ConfigurationDict", "ConfigurationList"]
-ConfigurationValue = Union[
+type ConfigurationValue = Union[
     str, int, float, bool, datetime.datetime, datetime.date, None
 ]
-ConfigurationList = List[Union[ConfigurationContainer, ConfigurationValue]]
-ConfigurationDict = Dict[str, Union[ConfigurationContainer, ConfigurationValue]]
-Configuration = Union[ConfigurationContainer, ConfigurationValue]
+type ConfigurationContainer = Union["ConfigurationDict", "ConfigurationList"]
+type ConfigurationList = List["Configuration"]
+type ConfigurationDict = Dict[str, "Configuration"]
+
+type Configuration = Union[ConfigurationContainer, ConfigurationValue]
 
 # unresolved containers ================================================================
 
@@ -27,70 +28,150 @@ Configuration = Union[ConfigurationContainer, ConfigurationValue]
 
 
 class UnresolvedDict(abc.ABC):
-    """A dictionary that lazily resolves its values."""
+    """A dictionary that lazily resolves its values.
+
+    This is an abstract base class and is not meant to be instantiated directly.
+
+    """
 
     @abc.abstractmethod
     def __getitem__(
         self, key: str
-    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]: ...
+    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]:
+        """Get an item from the dictionary.
+
+        The semantics of this depend on the type of object being retrieved. If the
+        object is a container (a dictionary or list), it will be returned as an
+        :class:`UnresolvedDict` or :class:`UnresolvedList`, respectively. If the object
+        is a value, it will be resolved before being returned. If it is a function call,
+        it will be evaluated. If it evaluates to a container, it will be returned as an
+        :class:`UnresolvedDict` or :class:`UnresolvedList`, respectively. If it
+        evaluates to a value, it will again be resolved before being returned.
+
+        """
 
     @abc.abstractmethod
-    def __len__(self) -> int: ...
+    def __len__(self) -> int:
+        """Get the number of items in the dictionary. Does not trigger resolution."""
 
     @abc.abstractmethod
-    def __iter__(self) -> Iterable[str]: ...
+    def __iter__(self) -> Iterable[str]:
+        """Iterate over the keys of the dictionary. Does not trigger resolution."""
 
     @abc.abstractmethod
-    def keys(self) -> Iterable[str]: ...
+    def keys(self) -> Iterable[str]:
+        """Get the keys of the dictionary. Does not trigger resolution."""
 
     @abc.abstractmethod
     def values(
         self,
-    ) -> Iterable[Union["UnresolvedDict", "UnresolvedList", Configuration]]: ...
+    ) -> Iterable[Union["UnresolvedDict", "UnresolvedList", Configuration]]:
+        """Get the values of the dictionary.
+
+        This will trigger the resolution of leaf values and function nodes.
+
+        """
 
     @abc.abstractmethod
-    def resolve(self) -> ConfigurationDict: ...
+    def resolve(self) -> ConfigurationDict:
+        """Recursively resolves the dictionary."""
 
     @abc.abstractmethod
-    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration: ...
+    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration:
+        """Return the resolved configuration at the given keypath.
+
+        This drills down through nested containers to find the part of the configuration
+        at the keypath. It then resolves that part of the configuration and returns it.
+
+        """
 
 
 class UnresolvedList(abc.ABC):
-    """A list that lazily resolves its values."""
+    """A list that lazily resolves its values.
+
+    This is an abstract base class and is not meant to be instantiated directly.
+
+    """
 
     @abc.abstractmethod
     def __getitem__(
         self, ix
-    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]: ...
+    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]:
+        """Get an item from the list.
+
+        The semantics of this depend on the type of object being retrieved. If the
+        object is a container (a dictionary or list), it will be returned as an
+        :class:`UnresolvedDict` or :class:`UnresolvedList`, respectively. If the object
+        is a value, it will be resolved before being returned. If it is a function call,
+        it will be evaluated. If it evaluates to a container, it will be returned as an
+        :class:`UnresolvedDict` or :class:`UnresolvedList`, respectively. If it
+        evaluates to a value, it will again be resolved before being returned.
+
+        """
 
     @abc.abstractmethod
     def __iter__(
         self,
-    ) -> Iterable[Union["UnresolvedDict", "UnresolvedList", Configuration]]: ...
+    ) -> Iterable[Union["UnresolvedDict", "UnresolvedList", Configuration]]:
+        """Iterate over the items in the list.
+
+        This will trigger the resolution of leaf values and function nodes.
+
+        """
 
     @abc.abstractmethod
-    def __len__(self) -> int: ...
+    def __len__(self) -> int:
+        """Get the number of items in the list. Does not trigger resolution."""
 
     @abc.abstractmethod
-    def resolve(self) -> ConfigurationList: ...
+    def resolve(self) -> ConfigurationList:
+        """Recursively resolves the list."""
 
     @abc.abstractmethod
-    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration: ...
+    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration:
+        """Return the resolved configuration at the given keypath.
+
+        This drills down through nested containers to find the part of the configuration
+        at the keypath. It then resolves that part of the configuration and returns it.
+
+        """
 
 
 class UnresolvedFunctionCall(abc.ABC):
-    """A function call that lazily resolves its values."""
+    """A function call that lazily resolves its values.
+
+    This is an abstract base class and is not meant to be instantiated directly.
+
+    """
 
     @abc.abstractmethod
     def __getitem__(
         self, key: str
-    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]: ...
+    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]:
+        """Get an item from the result of the function call.
+
+        The result of the function call might not be a container. If it isn't, this
+        should raise a `TypeError`.
+
+        Otherwise, the semantics match those of :meth:`UnresolvedDict.__getitem__` or
+        :meth:`UnresolvedList.__getitem__`, depending on the type of the result.
+
+        """
 
     @abc.abstractmethod
-    def resolve(self) -> Configuration: ...
+    def resolve(self) -> Configuration:
+        """Recursively resolves the function call."""
 
     @abc.abstractmethod
-    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration: ...
+    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration:
+        """Return the resolved configuration at the given keypath.
+
+        This drills down through nested containers to find the part of the configuration
+        at the keypath. It then resolves that part of the configuration and returns it.
+
+        May raise a `TypeError` if the result of the function call is not a container.
+
+        """
 
 
 # functions ============================================================================
@@ -98,35 +179,45 @@ class UnresolvedFunctionCall(abc.ABC):
 
 @dataclasses.dataclass
 class FunctionArgs:
-    """Holds the arguments for a function call.
+    """Holds the arguments for a function call."""
 
-    Attributes
-    ----------
-    input : ConfigurationValue
-        The input to the function.
-    root : Union[LazyDict, LazyList]
-        The root of the configuration tree.
-    keypath : KeyPath
-        The keypath to the function being evaluated.
-    resolution_context : ResolutionContext
-        The context in which the function is being evaluated.
-
-    """
-
+    #: The input to the function. This is read from the configuration.
     input: Configuration
+
+    #: The root of the configuration tree.
     root: Union[UnresolvedDict, UnresolvedList, UnresolvedFunctionCall]
+
+    #: The keypath to the function being evaluated.
     keypath: "KeyPath"
+
+    #: The context in which the function is being evaluated.
     resolution_context: "ResolutionContext"
 
 
 class Function:
-    """A function that, when called on a configuration, produces a new configuration."""
+    """Represents a function that can be called from within a configuration.
 
-    def __init__(self, fn: Callable, resolve_input=True):
+    Parameters
+    ----------
+    fn : Callable[[FunctionArgs], Configuration]
+        The function to call.
+    resolve_input : bool
+        If `True`, the input will be resolved before being passed to the function.
+        Defaults to `True`.
+
+    """
+
+    def __init__(self, fn: Callable[[FunctionArgs], Configuration], resolve_input=True):
         self.fn = fn
         self.resolve_input = resolve_input
 
     def __call__(self, args: FunctionArgs) -> Configuration:
+        """Call the function.
+
+        If :attr:`resolve_input` is `True`, the input will be resolved before being
+        passed to the function. Otherwise, it will be passed as-is.
+
+        """
         return self.fn(args)
 
     @classmethod
@@ -139,6 +230,16 @@ class Function:
         ----------
         resolve_input : bool
             If `True`, the input will be resolved before being passed to the function.
+
+        Example
+        -------
+
+        .. code:: python
+
+            # define a function whose input is not resolved
+            @Function.new(resolve_input=False)
+            def raw(args: FunctionArgs):
+                return RawString(args.input)
 
         """
 
@@ -153,22 +254,30 @@ class Function:
 
 
 class RawString(str):
-    """A string that should not be interpolated / parsed."""
+    """If this appears in a configuration, it will not be interpolated or parsed.
+
+    A subclass of :class:`str`.
+
+    """
 
 
 class RecursiveString(str):
-    """A string that should be interpolated and parsed recursively."""
+    """If this appears in a configuration, it will be interpolated recursively.
+
+    A subclass of :class:`str`.
+
+    """
 
 
 # misc. type aliases ===================================================================
 
 # a schema is a dictionary that describes the expected structure of a configuration
-Schema = Mapping[str, Any]
+type Schema = Mapping[str, Any]
 
 # a keypath is a tuple of strings that represents a path through a configuration
 # tree. For example, ("foo", "bar", "baz") would represent the path to the value
 # of the key "baz" in the dictionary {"foo": {"bar": {"baz": 42}}}.
-KeyPath = Tuple[str, ...]
+type KeyPath = Tuple[str, ...]
 
 FunctionCallChecker = Callable[
     [ConfigurationDict, Mapping[str, Function]],

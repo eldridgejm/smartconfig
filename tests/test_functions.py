@@ -83,6 +83,57 @@ def test_raw_with_a_non_string_raises():
     assert "Input to 'raw' must be a string." in str(exc.value)
 
 
+# recursive ============================================================================
+
+
+def test_referencing_a_raw_string_in_recursive_string_will_interpolate_repeatedly():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "string"},
+            "baz": {"type": "integer"},
+        },
+    }
+
+    dct = {
+        "foo": 42,
+        "bar": {"__raw__": "${foo} + 3"},
+        "baz": {"__recursive__": "${bar} + 4"},
+    }
+
+    # when
+    resolved = resolve(
+        dct, schema, functions={"raw": functions.raw, "recursive": functions.recursive}
+    )
+
+    # then
+    assert resolved == {"foo": 42, "bar": "${foo} + 3", "baz": 49}
+
+
+def test_recursive_with_a_non_string_raises():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "list", "element_schema": {"type": "integer"}},
+        },
+    }
+
+    dct = {"foo": 42, "bar": {"__recursive__": [1, 2, 3, 4]}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"recursive": functions.recursive})
+
+    assert "Input to 'recursive' must be a string." in str(exc.value)
+
+
+# update_shallow =======================================================================
+
+
 def test_update_shallow_does_not_perform_a_deep_update():
     # given
     schema = {

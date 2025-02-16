@@ -10,37 +10,49 @@ from sphinxawesome_theme import ThemeOptions
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'smartconfig'
-copyright = '2025, Justin Eldridge'
-author = 'Justin Eldridge'
-release = '0.1.0'
+project = "smartconfig"
+copyright = "2025, Justin Eldridge"
+author = "Justin Eldridge"
+release = "0.1.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = []
 
-templates_path = ['_templates']
+templates_path = ["_templates"]
 exclude_patterns = []
 
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.doctest',
+    "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.doctest",
 ]
 
+autodoc_typehints = "signature"
+
+autodoc_type_aliases = {
+    "Schema": "smartconfig.types.Schema",
+    "KeyPath": "smartconfig.types.KeyPath",
+    "Configuration": "smartconfig.types.Configuration",
+    "ConfigurationDict": "smartconfig.types.ConfigurationDict",
+    "ConfigurationList": "smartconfig.types.ConfigurationList",
+    "ConfigurationValue": "smartconfig.types.ConfigurationValue",
+    "ConfigurationContainer": "smartconfig.types.ConfigurationContainer",
+    "FunctionCallChecker": "smartconfig.types.FunctionCallChecker",
+}
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_permalinks_icon = '<span>#</span>'
-html_theme = 'sphinxawesome_theme'
-html_title = 'smartconfig'
-html_static_path = ['_static']
+html_permalinks_icon = "<span>#</span>"
+html_theme = "sphinxawesome_theme"
+html_title = "smartconfig"
+html_static_path = ["_static"]
 
-pygments_style = 'friendly' # 'friendly' is also OK...
-pygments_style_dark = 'paraiso-dark'
+pygments_style = "friendly"  # 'friendly' is also OK...
+pygments_style_dark = "paraiso-dark"
 
 theme_options = ThemeOptions(
     show_prev_next=True,
