@@ -140,18 +140,6 @@ def test_smartdatetime_from_explicit_datetime_with_at_time_overwrites():
     ) == datetime.datetime(2021, 10, 5, 22, 0, 0)
 
 
-def test_smartdatetime_from_date_object():
-    assert parsers.smartdatetime(datetime.date(2021, 10, 10)) == datetime.datetime(
-        2021, 10, 10, 0, 0, 0
-    )
-
-
-def test_smartdatetime_from_datetime_object():
-    assert parsers.smartdatetime(
-        datetime.datetime(2021, 10, 10, 1, 1, 1)
-    ) == datetime.datetime(2021, 10, 10, 1, 1, 1)
-
-
 def test_smartdatetime_delta_days_before():
     assert parsers.smartdatetime(
         "3 days before 2021-10-05 23:59:15"

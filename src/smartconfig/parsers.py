@@ -351,12 +351,6 @@ def smartdatetime(s: str) -> datetimelib.datetime:
     are permitted. For instance: :code:`3 days after 2021-10-05 23:59:00`.
 
     """
-    if isinstance(s, datetimelib.datetime):
-        return s
-
-    if isinstance(s, datetimelib.date):
-        return datetimelib.datetime(s.year, s.month, s.day, 0, 0, 0)
-
     try:
         return datetimelib.datetime.fromisoformat(s)
     except ValueError:

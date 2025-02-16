@@ -1271,7 +1271,7 @@ def _ensure_function(
 def resolve(
     cfg: _types.ConfigurationDict,
     schema: _types.Schema,
-    parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
+    parsers: Mapping[str, Callable] = ...,
     functions: Optional[
         Mapping[
             str,
@@ -1279,15 +1279,13 @@ def resolve(
                 _types.Function, Callable[[_types.FunctionArgs], _types.Configuration]
             ],
         ]
-    ] = DEFAULT_FUNCTIONS,
-    global_variables: Optional[Mapping[str, Any]] = None,
-    inject_root_as: Optional[str] = None,
-    filters: Optional[Mapping[str, Callable]] = None,
-    schema_validator: Callable[[_types.Schema], None] = _validate_schema,
-    preserve_type: bool = False,
-    check_for_function_call: Optional[  # type:ignore[assignment]
-        _types.FunctionCallChecker
-    ] = _check_for_dunder_function_call,
+    ] = ...,
+    global_variables: Optional[Mapping[str, Any]] = ...,
+    inject_root_as: Optional[str] = ...,
+    filters: Optional[Mapping[str, Callable]] = ...,
+    schema_validator: Callable[[_types.Schema], None] = ...,
+    preserve_type: bool = ...,
+    check_for_function_call: Optional[_types.FunctionCallChecker] = ...,
 ) -> dict:
     """Overloaded resolve() for ConfigurationDict."""
 
@@ -1310,7 +1308,7 @@ def resolve(
     filters: Optional[Mapping[str, Callable]] = None,
     schema_validator: Callable[[_types.Schema], None] = _validate_schema,
     preserve_type: bool = False,
-    check_for_function_call: Optional[  # type:ignore[assignment]
+    check_for_function_call: Optional[
         _types.FunctionCallChecker
     ] = _check_for_dunder_function_call,
 ) -> list:
@@ -1321,7 +1319,7 @@ def resolve(
 def resolve(
     cfg: _types.ConfigurationValue,
     schema: _types.Schema,
-    parsers: Mapping[str, Callable] = DEFAULT_PARSERS,
+    parsers: Mapping[str, Callable] = ...,
     functions: Optional[
         Mapping[
             str,
@@ -1329,15 +1327,13 @@ def resolve(
                 _types.Function, Callable[[_types.FunctionArgs], _types.Configuration]
             ],
         ]
-    ] = DEFAULT_FUNCTIONS,
-    global_variables: Optional[Mapping[str, Any]] = None,
-    inject_root_as: Optional[str] = None,
-    filters: Optional[Mapping[str, Callable]] = None,
-    schema_validator: Callable[[_types.Schema], None] = _validate_schema,
-    preserve_type: bool = False,
-    check_for_function_call: Optional[  # type:ignore[assignment]
-        _types.FunctionCallChecker
-    ] = _check_for_dunder_function_call,
+    ] = ...,
+    global_variables: Optional[Mapping[str, Any]] = ...,
+    inject_root_as: Optional[str] = ...,
+    filters: Optional[Mapping[str, Callable]] = ...,
+    schema_validator: Callable[[_types.Schema], None] = ...,
+    preserve_type: bool = ...,
+    check_for_function_call: Optional[_types.FunctionCallChecker] = ...,
 ) -> Any:
     """Overloaded resolve() for ConfigurationValue."""
 

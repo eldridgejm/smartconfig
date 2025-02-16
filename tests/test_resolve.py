@@ -1950,12 +1950,14 @@ def test_unresolved_function_get_keypath():
         },
     }
 
-    def outer(args):
+    def outer(_):
         return {"alpha": 1, "beta": {"__inner__": {}}}
 
     def inner(args):
         assert isinstance(args.root, UnresolvedFunctionCall)
-        return args.root.get_keypath("alpha") + 1
+        number = args.root.get_keypath("alpha")
+        assert isinstance(number, int)
+        return number + 1
 
     dct = {"__outer__": {}}
 

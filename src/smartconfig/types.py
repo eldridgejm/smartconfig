@@ -10,15 +10,19 @@ import functools
 
 # configurations are "raw" dictionaries, lists, or non-container types; a
 # configuration tree can be built from configurations, and a resolved
-# configuration is again a configuration
-type ConfigurationValue = Union[
+# configuration is again a configuration.
+
+# as of Feb. 2025, using the "type" keyword in the type alias causes the type
+# checker to throw a fit, so we'll use the old way for now
+
+ConfigurationValue = Union[
     str, int, float, bool, datetime.datetime, datetime.date, None
 ]
-type ConfigurationContainer = Union["ConfigurationDict", "ConfigurationList"]
-type ConfigurationList = List["Configuration"]
-type ConfigurationDict = Dict[str, "Configuration"]
+ConfigurationContainer = Union["ConfigurationDict", "ConfigurationList"]
+ConfigurationList = List[Union[ConfigurationContainer, ConfigurationValue]]
+ConfigurationDict = Dict[str, Union[ConfigurationContainer, ConfigurationValue]]
 
-type Configuration = Union[ConfigurationContainer, ConfigurationValue]
+Configuration = Union[ConfigurationContainer, ConfigurationValue]
 
 # unresolved containers ================================================================
 
