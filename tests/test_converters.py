@@ -93,6 +93,15 @@ def test_float_parser_when_given_integer_value_leaves_it_alone():
     assert result == 42.0
 
 
+def test_arithmetic_parser_when_given_syntax_error_raises():
+    # given
+    converter = converters.arithmetic(int)
+
+    # when
+    with raises(ConversionError):
+        converter("not a number")
+
+
 # logic ================================================================================
 
 
@@ -129,6 +138,15 @@ def test_logic_parser_when_given_integer_value_raises():
         converter(42)
 
     assert "Cannot convert type <class 'int'> to bool." in str(exc.value)
+
+
+def test_logic_parser_when_given_syntax_error_raises():
+    # given
+    converter = converters.logic
+
+    # when
+    with raises(ConversionError):
+        converter("not a boolean")
 
 
 # smartdate ============================================================================

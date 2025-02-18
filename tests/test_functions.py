@@ -780,3 +780,75 @@ def test_splice_from_global_variables_raises():
         )
 
     assert "Keypath 'baz' does not exist." in str(exc.value)
+
+
+# if ===================================================================================
+
+
+def test_if_evaluates_then_if_condition_is_true():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {"__if__": {"condition": "True", "then": 1, "else": 2}}
+
+    # when
+    resolved = resolve(cfg, schema, functions={"if": functions.if_})
+
+    # then
+    assert resolved == 1
+
+
+def test_if_evaluates_else_if_condition_is_false():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {"__if__": {"condition": "False", "then": 1, "else": 2}}
+
+    # when
+    resolved = resolve(cfg, schema, functions={"if": functions.if_})
+
+    # then
+    assert resolved == 2
+
+
+def test_if_resolves_the_condition():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "boolean"}},
+    }
+
+    cfg = {
+        "bar": "True",
+        "foo": {"__if__": {"condition": "False or ${bar}", "then": 1, "else": 2}},
+    }
+
+    # when
+    resolved = resolve(cfg, schema, functions={"if": functions.if_})
+
+    # then
+    assert resolved == {"bar": True, "foo": 1}
+
+
+def test_if_resolves_then_branch_only_if_condition_is_true():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {"__if__": {"condition": "False", "then": "not an integer!", "else": "3 + 4"}}
+
+    # when
+    resolved = resolve(cfg, schema, functions={"if": functions.if_})
+
+    # then
+    assert resolved == 7
+
+    # when
+    cfg["__if__"]["condition"] = "True"
+    with raises(exceptions.ResolutionError):
+        resolve(cfg, schema, functions={"if": functions.if_})

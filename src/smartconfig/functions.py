@@ -143,3 +143,20 @@ def concatenate(args: FunctionArgs):
     input = typing.cast(list[list], args.input)
 
     return list(itertools.chain(*input))
+
+
+def if_(args: FunctionArgs):
+    """Evaluates configurations, conditionally.
+
+    ``args.input`` should be a dictionary with three keys:
+    - ``condition``: a boolean expression that is evaluated
+    - ``then``: the configuration to use if the condition is true
+    - ``else``: the configuration to use if the condition is false
+
+    """
+    condition = args.resolve(args.input["condition"], schema={"type": "boolean"})
+
+    if condition:
+        return args.resolve(args.input["then"])
+    else:
+        return args.resolve(args.input["else"])

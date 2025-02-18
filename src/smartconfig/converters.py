@@ -89,7 +89,7 @@ def arithmetic(type_):
 
         try:
             number = _eval(ast.parse(value, mode="eval").body)
-        except TypeError:
+        except Exception:
             raise exceptions.ConversionError(
                 f"Cannot parse into {type_.__name__}: '{value}'."
             )
@@ -140,7 +140,10 @@ def logic(value: Any) -> bool:
             assert isinstance(node.op, (ast.Or, ast.And))
             return operators[type(node.op)](*[_eval(v) for v in node.values])
 
-    return bool(_eval(ast.parse(value, mode="eval").body))
+    try:
+        return bool(_eval(ast.parse(value, mode="eval").body))
+    except Exception:
+        raise exceptions.ConversionError(f"Cannot parse into bool: '{value}'.")
 
 
 # dates / datetimes ====================================================================

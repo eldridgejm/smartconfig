@@ -245,6 +245,9 @@ class FunctionArgs:
     #: The context in which the function is being evaluated.
     resolution_context: "ResolutionContext"
 
+    #: A function that resolves a configuration.
+    resolve: Callable[[Configuration], Configuration]
+
 
 class Function:
     """Represents a function that can be called from within a configuration.

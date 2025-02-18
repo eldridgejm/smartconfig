@@ -1006,11 +1006,25 @@ class _FunctionCallNode(_Node):
         assert isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode))
         root = _make_unresolved_container(self.root)
 
+        # make a "resolve" function that can be used by the function to resolve
+        # configurations. This enables advanced use cases like using a function
+        # to implement for-loops.
+        def resolve(
+            configuration: _types.Configuration, schema=None
+        ) -> _types.Configuration:
+            if schema is None:
+                schema = self.schema
+            node = _make_node(
+                configuration,
+                schema,
+                self.resolution_context,
+                parent=self,
+                keypath=self.keypath,
+            )
+            return node.resolve()
+
         args = _types.FunctionArgs(
-            input,
-            root,
-            self.keypath,
-            self.resolution_context,
+            input, root, self.keypath, self.resolution_context, resolve
         )
 
         # evaluate the function itself
