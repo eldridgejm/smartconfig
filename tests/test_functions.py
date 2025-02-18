@@ -852,3 +852,27 @@ def test_if_resolves_then_branch_only_if_condition_is_true():
     cfg["__if__"]["condition"] = "True"
     with raises(exceptions.ResolutionError):
         resolve(cfg, schema, functions={"if": functions.if_})
+
+
+def test_if_raises_if_keys_are_not_condition_then_else():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    # extra key
+    cfg_1 = {"__if__": {"condition": "False", "then": 1, "else": 2, "hi": "there"}}
+    # missing key
+    cfg_2 = {"__if__": {"then": 1, "else": 2}}
+    # missing key
+    cfg_3 = {"__if__": {"condition": "False", "then": 1}}
+    # missing key
+    cfg_4 = {"__if__": {"condition": "False", "else": 1}}
+
+    for cfg in (cfg_1, cfg_2, cfg_3, cfg_4):
+        # when
+        with raises(exceptions.ResolutionError) as exc:
+            resolve(cfg, schema, functions={"if": functions.if_})
+
+        # then
+        assert "must be a dictionary with keys" in str(exc.value)

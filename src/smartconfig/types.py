@@ -1,6 +1,17 @@
 """Types and type aliases."""
 
-from typing import Dict, List, Union, Mapping, Any, Tuple, Callable, Iterable, Optional
+from typing import (
+    Dict,
+    List,
+    Union,
+    Mapping,
+    Any,
+    Tuple,
+    Callable,
+    Iterable,
+    Optional,
+    Protocol,
+)
 import abc
 import dataclasses
 import datetime
@@ -229,6 +240,18 @@ class UnresolvedFunctionCall(abc.ABC):
 # functions ============================================================================
 
 
+class ResolverFunction(Protocol):
+    """A function that resolves a configuration.
+
+    This is a callable that takes a configuration and returns a resolved configuration.
+
+    """
+
+    def __call__(
+        self, config: Configuration, schema: Optional["Schema"] = None
+    ) -> Configuration: ...
+
+
 @dataclasses.dataclass
 class FunctionArgs:
     """Holds the arguments for a function call."""
@@ -246,7 +269,7 @@ class FunctionArgs:
     resolution_context: "ResolutionContext"
 
     #: A function that resolves a configuration.
-    resolve: Callable[[Configuration], Configuration]
+    resolve: ResolverFunction
 
 
 class Function:

@@ -4,12 +4,20 @@ from copy import deepcopy
 import itertools
 import typing
 
-from .types import Function, FunctionArgs, RawString, RecursiveString, ConfigurationDict
+from .types import (
+    Function,
+    FunctionArgs,
+    RawString,
+    RecursiveString,
+    ConfigurationDict,
+    ConfigurationList,
+    Configuration,
+)
 from .exceptions import ResolutionError
 
 
 @Function.new(resolve_input=False)
-def raw(args: FunctionArgs):
+def raw(args: FunctionArgs) -> Configuration:
     """Turn the string into a :class:`smartconfig.types.RawString` that is not interpolation/parsed."""
     # the input must be a string
     if not isinstance(args.input, str):
@@ -17,7 +25,7 @@ def raw(args: FunctionArgs):
     return RawString(args.input)
 
 
-def recursive(args: FunctionArgs):
+def recursive(args: FunctionArgs) -> Configuration:
     """Turn the string into a :class:`smartconfig.types.RecursiveString` that is resolved recursively.
 
     ``args.input`` must be a string. If not, an error is raised.
@@ -29,7 +37,7 @@ def recursive(args: FunctionArgs):
     return RecursiveString(args.input)
 
 
-def splice(args: FunctionArgs):
+def splice(args: FunctionArgs) -> Configuration:
     """Retrieves and returns the resolved configuration at the given keypath.
 
     ``args.input`` must be a string or an int representing the keypath to
@@ -57,7 +65,7 @@ def _all_elements_are_instances_of(container, type_):
     return all(isinstance(element, type_) for element in container)
 
 
-def update_shallow(args: FunctionArgs):
+def update_shallow(args: FunctionArgs) -> ConfigurationDict:
     """Update the entries of the first dictionary with the entries of the later ones.
 
     ``args.input`` should be a list of dictionaries.
@@ -86,7 +94,7 @@ def update_shallow(args: FunctionArgs):
     return first
 
 
-def update(args: FunctionArgs):
+def update(args: FunctionArgs) -> ConfigurationDict:
     """Recursively update the first dictionary with the entries of the later ones.
 
     ``args.input`` should be a list of dictionaries.
@@ -121,7 +129,7 @@ def update(args: FunctionArgs):
     return _deep_update(input)
 
 
-def concatenate(args: FunctionArgs):
+def concatenate(args: FunctionArgs) -> ConfigurationList:
     """Concatenates lists.
 
     ``args.input`` should be a list of lists.
@@ -145,7 +153,7 @@ def concatenate(args: FunctionArgs):
     return list(itertools.chain(*input))
 
 
-def if_(args: FunctionArgs):
+def if_(args: FunctionArgs) -> Configuration:
     """Evaluates configurations, conditionally.
 
     ``args.input`` should be a dictionary with three keys:
@@ -154,6 +162,17 @@ def if_(args: FunctionArgs):
     - ``else``: the configuration to use if the condition is false
 
     """
+    # check that the input is valid
+    if not isinstance(args.input, dict):
+        raise ResolutionError("Input to 'if' must be a dictionary.", args.keypath)
+
+    # check that the keys are exactly "condition", "then" and "else"
+    if set(args.input.keys()) != {"condition", "then", "else"}:
+        raise ResolutionError(
+            "Input to 'if' must be a dictionary with keys 'condition', 'then' and 'else'.",
+            args.keypath,
+        )
+
     condition = args.resolve(args.input["condition"], schema={"type": "boolean"})
 
     if condition:
