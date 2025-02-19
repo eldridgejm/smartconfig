@@ -1000,3 +1000,77 @@ def test_local_variables_are_given_priority_over_global_variables():
 
     # then
     assert resolved == 5
+
+
+# loop
+
+
+def test_loop_over_a_list():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "dict",
+            "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+        },
+    }
+
+    cfg = {
+        "__loop__": {
+            "variable": "x",
+            "over": [1, 2, 3],
+            "in": {
+                "x": "${2*x}",
+                "y": "${3*x}",
+            },
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, schema, functions={"loop": functions.loop})
+
+    # then
+    assert resolved == [
+        {"x": 2, "y": 3},
+        {"x": 4, "y": 6},
+        {"x": 6, "y": 9},
+    ]
+
+
+def test_nested_loop():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "dict",
+            "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+        },
+    }
+
+    cfg = {
+        "__loop__": {
+            "variable": "x",
+            "over": [1, 2],
+            "in": {
+                "__loop__": {
+                    "variable": "y",
+                    "over": [3, 4],
+                    "in": {
+                        "x": "${x}",
+                        "y": "${y}",
+                    },
+                }
+            },
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, schema, functions={"loop": functions.loop})
+
+    # then
+    assert resolved == [
+        {"x": 1, "y": 3},
+        {"x": 1, "y": 4},
+        {"x": 2, "y": 3},
+        {"x": 2, "y": 4},
+    ]

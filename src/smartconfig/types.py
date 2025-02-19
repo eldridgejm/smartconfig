@@ -271,6 +271,9 @@ class FunctionArgs:
     #: A function that resolves a configuration.
     resolve: ResolverFunction
 
+    #: The schema that the result of the function is expected to conform to.
+    schema: "Schema"
+
 
 class Function:
     """Represents a function that can be called from within a configuration.

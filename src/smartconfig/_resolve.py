@@ -1089,7 +1089,7 @@ class _FunctionCallNode(_Node):
             return node.resolve()
 
         args = _types.FunctionArgs(
-            input, root, self.keypath, self.resolution_context, resolve
+            input, root, self.keypath, self.resolution_context, resolve, self.schema
         )
 
         # evaluate the function itself

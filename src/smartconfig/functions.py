@@ -195,3 +195,33 @@ def let(args: FunctionArgs) -> Configuration:
     local_variables = args.resolve(args.input["variables"], schema={"type": "any"})
 
     return args.resolve(args.input["in"], local_variables=local_variables)
+
+
+@Function.new(resolve_input=False)
+def loop(args: FunctionArgs) -> Configuration:
+    """Loops over a list of configurations.
+
+    ``args.input`` should be a dictionary with three keys:
+
+        - ``variable``: the name of the variable that will be assigned the
+          value of each element in the list
+        - ``over``: the list of configurations to loop over
+        - ``in``: the configuration in which the variable is available. One
+          copy will be made for each element in the list.
+
+    """
+    over = args.resolve(
+        args.input["over"], schema={"type": "list", "element_schema": {"type": "any"}}
+    )
+
+    element_schema = args.schema["element_schema"]
+
+    result = []
+    for element in over:
+        local_variables = {args.input["variable"]: element}
+        result.append(
+            args.resolve(
+                args.input["in"], local_variables=local_variables, schema=element_schema
+            )
+        )
+    return result
