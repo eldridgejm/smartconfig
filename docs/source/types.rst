@@ -118,4 +118,4 @@ Miscellaneous
       ]
 
 
-.. autoclass:: ResolutionContext
+.. autoclass:: ResolutionOptions

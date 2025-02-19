@@ -266,7 +266,7 @@ class FunctionArgs:
     keypath: "KeyPath"
 
     #: The context in which the function is being evaluated.
-    resolution_context: "ResolutionContext"
+    resolution_options: "ResolutionOptions"
 
     #: A function that resolves a configuration.
     resolve: ResolverFunction
@@ -367,7 +367,7 @@ FunctionCallChecker = Callable[
 
 
 @dataclasses.dataclass
-class ResolutionContext:
+class ResolutionOptions:
     """Holds information available at the time that a node is resolved.
 
     Attributes

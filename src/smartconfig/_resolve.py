@@ -481,7 +481,7 @@ def _populate_required_children(
     children: Dict[str, _Node],
     dct: _types.ConfigurationDict,
     dict_schema: _types.Schema,
-    resolution_context: _types.ResolutionContext,
+    resolution_options: _types.ResolutionOptions,
     parent: _Node,
     keypath: _types.KeyPath,
 ):
@@ -500,7 +500,7 @@ def _populate_required_children(
             raise ResolutionError("Missing required key.", (keypath + (key,)))
 
         children[key] = _make_node(
-            dct[key], key_schema, resolution_context, parent, keypath + (key,)
+            dct[key], key_schema, resolution_options, parent, keypath + (key,)
         )
 
 
@@ -508,7 +508,7 @@ def _populate_optional_children(
     children: Dict[str, _Node],
     dct: _types.ConfigurationDict,
     dict_schema: _types.Schema,
-    resolution_context: _types.ResolutionContext,
+    resolution_options: _types.ResolutionOptions,
     parent: _Node,
     keypath: _types.KeyPath,
 ):
@@ -536,7 +536,7 @@ def _populate_optional_children(
             continue
 
         children[key] = _make_node(
-            value, key_schema, resolution_context, parent, keypath + (key,)
+            value, key_schema, resolution_options, parent, keypath + (key,)
         )
 
 
@@ -544,7 +544,7 @@ def _populate_extra_children(
     children: Dict[str, _Node],
     dct: _types.ConfigurationDict,
     dict_schema: _types.Schema,
-    resolution_context: _types.ResolutionContext,
+    resolution_options: _types.ResolutionOptions,
     parent: _Node,
     keypath: _types.KeyPath,
 ):
@@ -570,7 +570,7 @@ def _populate_extra_children(
         children[key] = _make_node(
             dct[key],
             dict_schema["extra_keys_schema"],
-            resolution_context,
+            resolution_options,
             parent,
             keypath + (key,),
         )
@@ -581,8 +581,8 @@ class _DictNode(_Node):
 
     Attributes
     ----------
-    resolution_context : _types.ResolutionContext
-        The context in which the node is being resolved.
+    resolution_options : _types.ResolutionOptions
+        The settings that control how the configuration is resolved.
     children : Dict[str, _Node]
         A dictionary of child nodes.
     parent : Optional[_Node]
@@ -596,13 +596,13 @@ class _DictNode(_Node):
 
     def __init__(
         self,
-        resolution_context: _types.ResolutionContext,
+        resolution_options: _types.ResolutionOptions,
         children: Optional[Dict[str, _Node]] = None,
         parent: Optional[_Node] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
         super().__init__(parent, local_variables)
-        self.resolution_context = resolution_context
+        self.resolution_options = resolution_options
         self.children: Dict[str, _Node] = {} if children is None else children
 
     @classmethod
@@ -611,7 +611,7 @@ class _DictNode(_Node):
         dct: _types.ConfigurationDict,
         schema: _types.Schema,
         keypath: _types.KeyPath,
-        resolution_context: _types.ResolutionContext,
+        resolution_options: _types.ResolutionOptions,
         parent: Optional[_Node] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ) -> "_DictNode":
@@ -625,13 +625,13 @@ class _DictNode(_Node):
             The schema to enforce on the configuration dictionary.
         keypath : _types.KeyPath
             The keypath to this node in the configuration tree.
-        resolution_context : ResolutionContext
-            The context in which the node is being resolved.
+        resolution_options : ResolutionOptions
+            The settings that control how the configuration is resolved.
         parent : Optional[Node]
             The parent of this node. Can be `None`.
 
         """
-        node = cls(resolution_context, parent=parent, local_variables=local_variables)
+        node = cls(resolution_options, parent=parent, local_variables=local_variables)
 
         if schema["type"] == "any":
             schema = {
@@ -652,7 +652,7 @@ class _DictNode(_Node):
             children,
             dct,
             schema,
-            resolution_context,
+            resolution_options,
             node,
             keypath,
         )
@@ -660,7 +660,7 @@ class _DictNode(_Node):
             children,
             dct,
             schema,
-            resolution_context,
+            resolution_options,
             node,
             keypath,
         )
@@ -668,7 +668,7 @@ class _DictNode(_Node):
             children,
             dct,
             schema,
-            resolution_context,
+            resolution_options,
             node,
             keypath,
         )
@@ -699,8 +699,8 @@ class _ListNode(_Node):
 
     Attributes
     ----------
-    resolution_context : ResolutionContext
-        The context in which the node is being resolved.
+    resolution_options : ResolutionOptions
+        The settings that control how the configuration is resolved.
     children : List[_Node]
         A list of the node's children.
     parent : Optional[_Node]
@@ -714,13 +714,13 @@ class _ListNode(_Node):
 
     def __init__(
         self,
-        resolution_context: _types.ResolutionContext,
+        resolution_options: _types.ResolutionOptions,
         children: Optional[List[_Node]] = None,
         parent: Optional[_Node] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
         super().__init__(parent, local_variables)
-        self.resolution_context = resolution_context
+        self.resolution_options = resolution_options
         self.children: List[_Node] = [] if children is None else []
 
     @classmethod
@@ -729,12 +729,12 @@ class _ListNode(_Node):
         lst: _types.ConfigurationList,
         list_schema: _types.Schema,
         keypath: _types.KeyPath,
-        resolution_context: _types.ResolutionContext,
+        resolution_options: _types.ResolutionOptions,
         parent: Optional[_Node] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ) -> "_ListNode":
         """Recursively make an internal list node from a ConfigurationList."""
-        node = cls(resolution_context, parent=parent, local_variables=local_variables)
+        node = cls(resolution_options, parent=parent, local_variables=local_variables)
 
         if list_schema["type"] == "any":
             list_schema = {
@@ -749,7 +749,7 @@ class _ListNode(_Node):
             r = _make_node(
                 lst_value,
                 child_schema,
-                resolution_context,
+                resolution_options,
                 node,
                 keypath + (str(i),),
             )
@@ -785,11 +785,11 @@ class _ValueNode(_Node):
         The "raw" value of the leaf node as it appeared in the configuration.
     type_ : str
         A string describing the expected type of this leaf once resolved. Used
-        to determined which converter to use from the resolution context.
+        to determined which converter to use from the resolution options.
     keypath : _types.KeyPath
         The keypath to this node in the configuration tree.
-    resolution_context : ResolutionContext
-        The context in which the node is being resolved.
+    resolution_options : ResolutionOptions
+        The settings that control how the configuration is resolved.
     nullable : Optional[bool]
         Whether the value can be None or not. If `raw` is None this is True, it
         is not converted (no matter what type_ is). Default: False.
@@ -812,7 +812,7 @@ class _ValueNode(_Node):
         value: _types.ConfigurationValue,
         type_,
         keypath: _types.KeyPath,
-        resolution_context: _types.ResolutionContext,
+        resolution_options: _types.ResolutionOptions,
         nullable: bool = False,
         parent: Optional[_Node] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
@@ -821,7 +821,7 @@ class _ValueNode(_Node):
         self.value = value
         self.type_ = type_
         self.keypath = keypath
-        self.resolution_context = resolution_context
+        self.resolution_options = resolution_options
         self.nullable = nullable
 
         # The resolved value of the leaf node. There are two special values. If this is
@@ -837,7 +837,7 @@ class _ValueNode(_Node):
         value: _types.ConfigurationValue,
         schema: _types.Schema,
         keypath: _types.KeyPath,
-        resolution_context: _types.ResolutionContext,
+        resolution_options: _types.ResolutionOptions,
         parent: Optional[_Node] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ) -> "_ValueNode":
@@ -849,7 +849,7 @@ class _ValueNode(_Node):
             value,
             schema["type"],
             keypath,
-            resolution_context,
+            resolution_options,
             nullable=schema["nullable"] if "nullable" in schema else False,
             parent=parent,
             local_variables=local_variables,
@@ -958,18 +958,18 @@ class _ValueNode(_Node):
             environment.context_class = self._make_custom_jinja_context()
 
         # register the custom filters
-        environment.filters.update(self.resolution_context.filters)
+        environment.filters.update(self.resolution_options.filters)
 
         # make undefined references raise an error
         environment.undefined = jinja2.StrictUndefined
 
         template = environment.from_string(s)
 
-        template_variables = dict(self.resolution_context.global_variables)
+        template_variables = dict(self.resolution_options.global_variables)
 
         # inject the root of the configuration tree into the template variables
-        if self.resolution_context.inject_root_as is not None and root is not None:
-            template_variables[self.resolution_context.inject_root_as] = root
+        if self.resolution_options.inject_root_as is not None and root is not None:
+            template_variables[self.resolution_options.inject_root_as] = root
 
         try:
             result = template.render(template_variables)
@@ -984,7 +984,7 @@ class _ValueNode(_Node):
 
     def _convert(self, value, type_) -> _types.ConfigurationValue:
         """convert the configuration value into its final type."""
-        converters = self.resolution_context.converters
+        converters = self.resolution_options.converters
 
         try:
             converter = converters[type_]
@@ -1013,8 +1013,8 @@ class _FunctionCallNode(_Node):
     ----------
     keypath : _types.KeyPath
         The keypath to this node in the configuration tree.
-    resolution_context : _types.ResolutionContext
-        The context in which the node is being resolved.
+    resolution_options : _types.ResolutionOptions
+        The settings that control how resolution is performed.
     function : _types.Function
         The function being called.
     input : _types.Configuration
@@ -1038,7 +1038,7 @@ class _FunctionCallNode(_Node):
     def __init__(
         self,
         keypath: _types.KeyPath,
-        resolution_context: _types.ResolutionContext,
+        resolution_options: _types.ResolutionOptions,
         function: _types.Function,
         input: _types.Configuration,
         schema: _types.Schema,
@@ -1047,7 +1047,7 @@ class _FunctionCallNode(_Node):
     ):
         super().__init__(parent, local_variables)
         self.keypath = keypath
-        self.resolution_context = resolution_context
+        self.resolution_options = resolution_options
         self.schema = schema
         self.function = function
         self.input = input
@@ -1081,7 +1081,7 @@ class _FunctionCallNode(_Node):
             input_node = _make_node(
                 self.input,
                 {"type": "any"},
-                self.resolution_context,
+                self.resolution_options,
                 parent=self,
                 keypath=self.keypath,
             )
@@ -1106,7 +1106,7 @@ class _FunctionCallNode(_Node):
             node = _make_node(
                 configuration,
                 schema,
-                self.resolution_context,
+                self.resolution_options,
                 parent=self,
                 keypath=self.keypath,
                 local_variables=local_variables,
@@ -1114,7 +1114,7 @@ class _FunctionCallNode(_Node):
             return node.resolve()
 
         args = _types.FunctionArgs(
-            input, root, self.keypath, self.resolution_context, resolve, self.schema
+            input, root, self.keypath, self.resolution_options, resolve, self.schema
         )
 
         # evaluate the function itself
@@ -1123,7 +1123,7 @@ class _FunctionCallNode(_Node):
         result = _make_node(
             output,
             self.schema,
-            self.resolution_context,
+            self.resolution_options,
             parent=self,
             keypath=self.keypath,
         )
@@ -1151,7 +1151,7 @@ class _FunctionCallNode(_Node):
 def _make_node(
     cfg: _types.Configuration,
     schema: _types.Schema,
-    resolution_context: _types.ResolutionContext,
+    resolution_options: _types.ResolutionOptions,
     parent: Optional[_Node] = None,
     keypath: _types.KeyPath = tuple(),
     local_variables: Optional[Mapping[str, _types.Configuration]] = None,
@@ -1173,8 +1173,8 @@ def _make_node(
         configuration.
     schema
         A schema dictionary describing the types of the configuration tree nodes.
-    resolution_context
-        The context in which the configuration is being resolved.
+    resolution_options
+        The settings that control how resolution is performed.
     check_for_function_call
         A function that checks if a ConfigurationDict represents a function call. It
         is given the configuration and the available functions. If it is a function
@@ -1200,7 +1200,7 @@ def _make_node(
                 None,
                 {"type": "any"},
                 keypath,
-                resolution_context,
+                resolution_options,
                 parent=parent,
                 local_variables=local_variables,
             )
@@ -1214,8 +1214,8 @@ def _make_node(
 
         # check if this is a function call
         try:
-            result = resolution_context.check_for_function_call(
-                cfg, resolution_context.functions
+            result = resolution_options.check_for_function_call(
+                cfg, resolution_options.functions
             )
         except ValueError as exc:
             raise ResolutionError(f"Invalid function call: {exc}", keypath)
@@ -1223,7 +1223,7 @@ def _make_node(
         if result is not None:
             return _FunctionCallNode(
                 keypath,
-                resolution_context,
+                resolution_options,
                 *result,
                 schema,
                 parent=parent,
@@ -1234,7 +1234,7 @@ def _make_node(
                 cfg,
                 schema,
                 keypath,
-                resolution_context,
+                resolution_options,
                 parent=parent,
                 local_variables=local_variables,
             )
@@ -1243,7 +1243,7 @@ def _make_node(
             cfg,
             schema,
             keypath,
-            resolution_context,
+            resolution_options,
             parent=parent,
         )
     else:
@@ -1251,7 +1251,7 @@ def _make_node(
             cfg,
             schema,
             keypath,
-            resolution_context,
+            resolution_options,
             parent=parent,
             local_variables=local_variables,
         )
@@ -1548,7 +1548,7 @@ def resolve(
         def check_for_function_call(*_):
             return None
 
-    resolution_context = _types.ResolutionContext(
+    resolution_options = _types.ResolutionOptions(
         converters,
         converted_functions,
         global_variables,
@@ -1557,7 +1557,7 @@ def resolve(
         check_for_function_call,
     )
 
-    root = _make_node(cfg, schema, resolution_context)
+    root = _make_node(cfg, schema, resolution_options)
 
     resolved = root.resolve()
 
