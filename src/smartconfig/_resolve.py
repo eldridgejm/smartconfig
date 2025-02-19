@@ -899,7 +899,9 @@ class _ValueNode(_Node):
 
         return self._resolved
 
-    def _make_custom_jinja_context(self, global_variables: Mapping[str, Any]):
+    def _make_custom_jinja_context(
+        self, global_variables: Mapping[str, Any], inject_root_as: Optional[str] = None
+    ):
         """This creates a custom Jinja2 context for string interpolation.
 
         We create this custom context to carefully control how Jinja2 resolves
@@ -923,13 +925,16 @@ class _ValueNode(_Node):
         default behavior of looking up the key in the template variables.
 
         """
-        if self.root is None or isinstance(self.root, _ValueNode):
-            root_container = {}
-        else:
-            assert isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode))
+        if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
             root_container = _make_unresolved_container(self.root)
+        else:
+            root_container = {}
 
         this_node = self
+
+        global_variables = dict(global_variables)
+        if inject_root_as is not None:
+            global_variables[inject_root_as] = root_container
 
         class CustomContext(jinja2.runtime.Context):
             def resolve_or_missing(self, key):
@@ -976,25 +981,14 @@ class _ValueNode(_Node):
             variable_start_string="${", variable_end_string="}"
         )
 
-        if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
-            root_container = _make_unresolved_container(self.root)
-        else:
-            root_container = None
-
-        global_variables = dict(self.resolution_options.global_variables)
-
-        # inject the root of the configuration tree into the global variables
-        if (
-            self.resolution_options.inject_root_as is not None
-            and root_container is not None
-        ):
-            global_variables[self.resolution_options.inject_root_as] = root_container
-
         # create a custom jinja context for resolving references. This will first
         # loop up variables in the local variables, and then in the root of the
         # configuration tree, and finally in the global variables. See
         # the _make_custom_jinja_context() method for more information.
-        environment.context_class = self._make_custom_jinja_context(global_variables)
+        environment.context_class = self._make_custom_jinja_context(
+            self.resolution_options.global_variables,
+            inject_root_as=self.resolution_options.inject_root_as,
+        )
 
         # register the custom filters
         environment.filters.update(self.resolution_options.filters)
