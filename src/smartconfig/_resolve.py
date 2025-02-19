@@ -899,7 +899,7 @@ class _ValueNode(_Node):
 
         return self._resolved
 
-    def _make_custom_jinja_context(self):
+    def _make_custom_jinja_context(self, global_variables: Mapping[str, Any]):
         """This creates a custom Jinja2 context for string interpolation.
 
         We create this custom context to carefully control how Jinja2 resolves
@@ -923,21 +923,36 @@ class _ValueNode(_Node):
         default behavior of looking up the key in the template variables.
 
         """
-        assert isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode))
-        root = _make_unresolved_container(self.root)
+        if self.root is None or isinstance(self.root, _ValueNode):
+            root_container = {}
+        else:
+            assert isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode))
+            root_container = _make_unresolved_container(self.root)
+
         this_node = self
 
         class CustomContext(jinja2.runtime.Context):
             def resolve_or_missing(self, key):
+                # first try local variables
                 try:
                     return this_node.get_local_variable(key)
                 except KeyError:
                     pass
 
+                # then try the root of the configuration tree
                 try:
-                    return root[key]
+                    return root_container[key]
                 except (KeyError, IndexError):
-                    return super().resolve_or_missing(key)
+                    pass
+
+                # then try the global variables
+                try:
+                    return global_variables[key]
+                except KeyError:
+                    pass
+
+                # finally, try jinja's default behavior, including jinja builtins
+                return super().resolve_or_missing(key)
 
         return CustomContext
 
@@ -962,16 +977,24 @@ class _ValueNode(_Node):
         )
 
         if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
-            root = _make_unresolved_container(self.root)
+            root_container = _make_unresolved_container(self.root)
         else:
-            root = None
+            root_container = None
 
-        if root is not None:
-            # create a custom jinja context for resolving references. This will first
-            # loop up variables in the local variables, and then in the root of the
-            # configuration tree, and finally in the global variables. See
-            # the _make_custom_jinja_context() method for more information.
-            environment.context_class = self._make_custom_jinja_context()
+        global_variables = dict(self.resolution_options.global_variables)
+
+        # inject the root of the configuration tree into the global variables
+        if (
+            self.resolution_options.inject_root_as is not None
+            and root_container is not None
+        ):
+            global_variables[self.resolution_options.inject_root_as] = root_container
+
+        # create a custom jinja context for resolving references. This will first
+        # loop up variables in the local variables, and then in the root of the
+        # configuration tree, and finally in the global variables. See
+        # the _make_custom_jinja_context() method for more information.
+        environment.context_class = self._make_custom_jinja_context(global_variables)
 
         # register the custom filters
         environment.filters.update(self.resolution_options.filters)
@@ -981,14 +1004,8 @@ class _ValueNode(_Node):
 
         template = environment.from_string(s)
 
-        template_variables = dict(self.resolution_options.global_variables)
-
-        # inject the root of the configuration tree into the template variables
-        if self.resolution_options.inject_root_as is not None and root is not None:
-            template_variables[self.resolution_options.inject_root_as] = root
-
         try:
-            result = template.render(template_variables)
+            result = template.render()
         except jinja2.exceptions.UndefinedError as exc:
             raise ResolutionError(str(exc), self.keypath)
 
