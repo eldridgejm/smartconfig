@@ -413,13 +413,25 @@ class _Node(abc.ABC):
     Attributes
     ----------
     parent : Optional[Node]
-        The parent of this node. Can be `None`, in which case this is the root
-        of the tree.
+        The parent of this node. Can be `None`, in which case this is the root of the
+        tree.
+    local_variables : Optional[Mapping[str, Configuration]]
+        A dictionary of local variables that can be accessed during string
+        interpolation. If None, this is made an empty dictionary.
 
     """
 
-    def __init__(self, parent: Optional["_Node"] = None):
+    def __init__(
+        self,
+        parent: Optional["_Node"] = None,
+        local_variables: Optional[Mapping[str, _types.Configuration]] = None,
+    ):
         self.parent = parent
+
+        if local_variables is None:
+            self.local_variables = {}
+        else:
+            self.local_variables = local_variables
 
         # cache the root of the tree
         self._root = None
@@ -437,6 +449,29 @@ class _Node(abc.ABC):
     @abc.abstractmethod
     def resolve(self) -> _types.Configuration:
         """Recursively resolve the node into a configuration."""
+
+    def get_local_variable(self, key: str) -> _types.Configuration:
+        """Retrieves the local variable from the node or its ancestors.
+
+        If the local variable is not found, a KeyError is raised. The first node to have
+        the local variable is the one that provides the value, and the search is
+        bottom-up.
+
+        Parameters
+        ----------
+        key: str
+
+        Returns
+        -------
+        The value of the local variable.
+
+        """
+        if key in self.local_variables:
+            return self.local_variables[key]
+        elif self.parent is not None:
+            return self.parent.get_local_variable(key)
+        else:
+            raise KeyError(key)
 
 
 # _DictNode ----------------------------------------------------------------------------
@@ -553,6 +588,9 @@ class _DictNode(_Node):
     parent : Optional[_Node]
         The parent of this node. Can be `None`, in which case this is the root of the
         tree.
+    local_variables : Optional[Mapping[str, Configuration]]
+        A dictionary of local variables that can be accessed during string
+        interpolation.
 
     """
 
@@ -561,8 +599,9 @@ class _DictNode(_Node):
         resolution_context: _types.ResolutionContext,
         children: Optional[Dict[str, _Node]] = None,
         parent: Optional[_Node] = None,
+        local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
-        super().__init__(parent)
+        super().__init__(parent, local_variables)
         self.resolution_context = resolution_context
         self.children: Dict[str, _Node] = {} if children is None else children
 
@@ -574,6 +613,7 @@ class _DictNode(_Node):
         keypath: _types.KeyPath,
         resolution_context: _types.ResolutionContext,
         parent: Optional[_Node] = None,
+        local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ) -> "_DictNode":
         """Construct a _DictNode from a configuration dictionary and its schema.
 
@@ -591,7 +631,7 @@ class _DictNode(_Node):
             The parent of this node. Can be `None`.
 
         """
-        node = cls(resolution_context, parent=parent)
+        node = cls(resolution_context, parent=parent, local_variables=local_variables)
 
         if schema["type"] == "any":
             schema = {
@@ -666,6 +706,9 @@ class _ListNode(_Node):
     parent : Optional[_Node]
         The parent of this node. Can be `None`, in which case this is the root of the
         tree.
+    local_variables : Optional[Mapping[str, Configuration]]
+        A dictionary of local variables that can be accessed during string
+        interpolation
 
     """
 
@@ -674,8 +717,9 @@ class _ListNode(_Node):
         resolution_context: _types.ResolutionContext,
         children: Optional[List[_Node]] = None,
         parent: Optional[_Node] = None,
+        local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
-        super().__init__(parent)
+        super().__init__(parent, local_variables)
         self.resolution_context = resolution_context
         self.children: List[_Node] = [] if children is None else []
 
@@ -687,9 +731,10 @@ class _ListNode(_Node):
         keypath: _types.KeyPath,
         resolution_context: _types.ResolutionContext,
         parent: Optional[_Node] = None,
+        local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ) -> "_ListNode":
         """Recursively make an internal list node from a ConfigurationList."""
-        node = cls(resolution_context, parent=parent)
+        node = cls(resolution_context, parent=parent, local_variables=local_variables)
 
         if list_schema["type"] == "any":
             list_schema = {
@@ -731,36 +776,6 @@ class _ListNode(_Node):
 # _ValueNode ---------------------------------------------------------------------------
 
 
-def _get_local_variable(node: _Node, key: str) -> _types.ConfigurationValue:
-    """Get a local variable by searching up the configuration tree.
-
-    If the local variable is not found, a KeyError is raised. The first
-    node to have the local variable is the one that provides the value, and
-    the search is bottom-up.
-
-    Parameters
-    ----------
-    key : str
-        The name of the local variable.
-
-    Returns
-    -------
-    The value of the local variable.
-
-    """
-    current_node = node
-    while True:
-        if (
-            hasattr(current_node, "local_variables")
-            and key in current_node.local_variables
-        ):
-            return current_node.local_variables[key]
-        elif current_node.parent is not None:
-            current_node = current_node.parent
-        else:
-            raise KeyError(key)
-
-
 class _ValueNode(_Node):
     """Represents a leaf of the configuration tree.
 
@@ -780,6 +795,9 @@ class _ValueNode(_Node):
         is not converted (no matter what type_ is). Default: False.
     parent : Optional[Node]
         The parent of this node. Can be `None`, in which case this is the root.
+    local_variables : Optional[Mapping[str, Configuration]]
+        A dictionary of local variables that can be accessed during string
+        interpolation.
 
     """
 
@@ -797,8 +815,9 @@ class _ValueNode(_Node):
         resolution_context: _types.ResolutionContext,
         nullable: bool = False,
         parent: Optional[_Node] = None,
+        local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
-        super().__init__(parent)
+        super().__init__(parent, local_variables)
         self.value = value
         self.type_ = type_
         self.keypath = keypath
@@ -820,6 +839,7 @@ class _ValueNode(_Node):
         keypath: _types.KeyPath,
         resolution_context: _types.ResolutionContext,
         parent: Optional[_Node] = None,
+        local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ) -> "_ValueNode":
         """Create a leaf node from the configuration and schema."""
         if schema["type"] == "any":
@@ -832,6 +852,7 @@ class _ValueNode(_Node):
             resolution_context,
             nullable=schema["nullable"] if "nullable" in schema else False,
             parent=parent,
+            local_variables=local_variables,
         )
 
     def resolve(self) -> _types.ConfigurationValue:
@@ -881,7 +902,7 @@ class _ValueNode(_Node):
         class CustomContext(jinja2.runtime.Context):
             def resolve_or_missing(self, key):
                 try:
-                    return _get_local_variable(this_node, key)
+                    return this_node.get_local_variable(key)
                 except KeyError:
                     pass
 
@@ -1002,6 +1023,9 @@ class _FunctionCallNode(_Node):
         The schema for the function's output.
     parent : Optional[_Node]
         The parent of this node. Can be `None`, in which case this is the root
+    local_variables : Optional[Mapping[str, Configuration]]
+        A dictionary of local variables that can be accessed during string
+        interpolation.
 
     """
 
@@ -1019,8 +1043,9 @@ class _FunctionCallNode(_Node):
         input: _types.Configuration,
         schema: _types.Schema,
         parent: Optional[_Node] = None,
+        local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
-        super().__init__(parent)
+        super().__init__(parent, local_variables)
         self.keypath = keypath
         self.resolution_context = resolution_context
         self.schema = schema
@@ -1171,12 +1196,13 @@ def _make_node(
         if ("nullable" in schema and schema["nullable"]) or (
             "type" in schema and schema["type"] == "any"
         ):
-            new_node = _ValueNode.from_configuration(
+            return _ValueNode.from_configuration(
                 None,
                 {"type": "any"},
                 keypath,
                 resolution_context,
                 parent=parent,
+                local_variables=local_variables,
             )
         else:
             raise ResolutionError("Unexpectedly null.", keypath)
@@ -1195,19 +1221,25 @@ def _make_node(
             raise ResolutionError(f"Invalid function call: {exc}", keypath)
 
         if result is not None:
-            new_node = _FunctionCallNode(
+            return _FunctionCallNode(
                 keypath,
                 resolution_context,
                 *result,
                 schema,
                 parent=parent,
+                local_variables=local_variables,
             )
         else:
-            new_node = _DictNode.from_configuration(
-                cfg, schema, keypath, resolution_context, parent=parent
+            return _DictNode.from_configuration(
+                cfg,
+                schema,
+                keypath,
+                resolution_context,
+                parent=parent,
+                local_variables=local_variables,
             )
     elif isinstance(cfg, list):
-        new_node = _ListNode.from_configuration(
+        return _ListNode.from_configuration(
             cfg,
             schema,
             keypath,
@@ -1215,18 +1247,14 @@ def _make_node(
             parent=parent,
         )
     else:
-        new_node = _ValueNode.from_configuration(
+        return _ValueNode.from_configuration(
             cfg,
             schema,
             keypath,
             resolution_context,
             parent=parent,
+            local_variables=local_variables,
         )
-
-    if local_variables is not None:
-        new_node.local_variables = local_variables
-
-    return new_node
 
 
 # resolve() ============================================================================
