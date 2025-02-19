@@ -157,9 +157,10 @@ def if_(args: FunctionArgs) -> Configuration:
     """Evaluates configurations, conditionally.
 
     ``args.input`` should be a dictionary with three keys:
-    - ``condition``: a boolean expression that is evaluated
-    - ``then``: the configuration to use if the condition is true
-    - ``else``: the configuration to use if the condition is false
+
+        - ``condition``: a boolean expression that is evaluated
+        - ``then``: the configuration to use if the condition is true
+        - ``else``: the configuration to use if the condition is false
 
     """
     # check that the input is valid
@@ -179,3 +180,18 @@ def if_(args: FunctionArgs) -> Configuration:
         return args.resolve(args.input["then"])
     else:
         return args.resolve(args.input["else"])
+
+
+@Function.new(resolve_input=False)
+def let(args: FunctionArgs) -> Configuration:
+    """Introduces a new "local" variable in the scope of the configuration.
+
+    ``args.input`` should be a dictionary with two keys:
+
+        - ``variables``: a dictionary mapping local variable names to their values
+        - ``in``: the configuration in which the local variables are available
+
+    """
+    local_variables = args.resolve(args.input["variables"], schema={"type": "any"})
+
+    return args.resolve(args.input["in"], local_variables=local_variables)

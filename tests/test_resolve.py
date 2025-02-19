@@ -1117,6 +1117,35 @@ def test_function_call_at_root():
     assert result == 20
 
 
+def test_function_call_at_root_raises_if_circular_reference():
+    # given
+    schema = {"type": "integer"}
+    dct = {"__double__": "${x}"}
+
+    # when
+    with raises(exceptions.ResolutionError):
+        resolve(dct, schema, functions={"double": lambda x: x.input * 2})
+
+
+def test_function_call_at_root_without_circular_reference():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+    }
+
+    def make_dict(args):
+        return {"x": 10, "y": "${x}"}
+
+    cfg = {"__make_dict__": {}}
+
+    # when
+    result = resolve(cfg, schema, functions={"make_dict": make_dict})
+
+    # then
+    assert result == {"x": 10, "y": 10}
+
+
 def test_function_call_in_dictionary():
     # given
     schema = {

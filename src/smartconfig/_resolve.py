@@ -731,6 +731,36 @@ class _ListNode(_Node):
 # _ValueNode ---------------------------------------------------------------------------
 
 
+def _get_local_variable(node: _Node, key: str) -> _types.ConfigurationValue:
+    """Get a local variable by searching up the configuration tree.
+
+    If the local variable is not found, a KeyError is raised. The first
+    node to have the local variable is the one that provides the value, and
+    the search is bottom-up.
+
+    Parameters
+    ----------
+    key : str
+        The name of the local variable.
+
+    Returns
+    -------
+    The value of the local variable.
+
+    """
+    current_node = node
+    while True:
+        if (
+            hasattr(current_node, "local_variables")
+            and key in current_node.local_variables
+        ):
+            return current_node.local_variables[key]
+        elif current_node.parent is not None:
+            current_node = current_node.parent
+        else:
+            raise KeyError(key)
+
+
 class _ValueNode(_Node):
     """Represents a leaf of the configuration tree.
 
@@ -843,6 +873,25 @@ class _ValueNode(_Node):
 
         return self._resolved
 
+    def _make_custom_jinja_context(self):
+        """This creates a custom Jinja2 context for string interpolation."""
+        root = _make_unresolved_container(self.root)
+        this_node = self
+
+        class CustomContext(jinja2.runtime.Context):
+            def resolve_or_missing(self, key):
+                try:
+                    return _get_local_variable(this_node, key)
+                except KeyError:
+                    pass
+
+                try:
+                    return root[key]
+                except (KeyError, IndexError):
+                    return super().resolve_or_missing(key)
+
+        return CustomContext
+
     def _interpolate(self, s: str, recursive=False) -> str:
         """Replace a reference keypath with its resolved value.
 
@@ -885,15 +934,7 @@ class _ValueNode(_Node):
             # "lazy" containers that resolve their contents only when accessed. If a key
             # is not found in the unresolved container, Jinja2 will fall back to the
             # default behavior of looking up the key in the template variables.
-
-            class CustomContext(jinja2.runtime.Context):
-                def resolve_or_missing(self, key):
-                    try:
-                        return root[key]
-                    except (KeyError, IndexError):
-                        return super().resolve_or_missing(key)
-
-            environment.context_class = CustomContext
+            environment.context_class = self._make_custom_jinja_context()
 
         # register the custom filters
         environment.filters.update(self.resolution_context.filters)
@@ -964,6 +1005,12 @@ class _FunctionCallNode(_Node):
 
     """
 
+    # sentinel object denoting that a node is currently being evaluated
+    PENDING = object()
+
+    # sentinel object denoting that the evaluation of this node has not yet started
+    UNDISCOVERED = object()
+
     def __init__(
         self,
         keypath: _types.KeyPath,
@@ -980,6 +1027,14 @@ class _FunctionCallNode(_Node):
         self.function = function
         self.input = input
 
+        # The evaluated value of the function node. There are two special
+        # values. If this is _UNDISCOVERED, the evaluation process has not yet
+        # discovered the function node (this is the default value). If this is
+        # _PENDING, a step in the resolution process has started to evaluate
+        # the function. Otherwise, this contains the evaluated value. Necessary
+        # in order to detect circular references.
+        self._evaluated = _FunctionCallNode.UNDISCOVERED
+
     def evaluate(self) -> Union[_DictNode, _ListNode, _ValueNode]:
         """Evaluate the function, returning a _DictNode, _ListNode, or _ValueNode.
 
@@ -988,6 +1043,15 @@ class _FunctionCallNode(_Node):
         and so on.
 
         """
+        if self._evaluated is _FunctionCallNode.PENDING:
+            raise ResolutionError("Circular reference", self.keypath)
+
+        if self._evaluated is not _FunctionCallNode.UNDISCOVERED:
+            assert isinstance(self._evaluated, (_DictNode, _ListNode, _ValueNode))
+            return self._evaluated
+
+        self._evaluated = _FunctionCallNode.PENDING
+
         if self.function.resolve_input:
             input_node = _make_node(
                 self.input,
@@ -1010,7 +1074,7 @@ class _FunctionCallNode(_Node):
         # configurations. This enables advanced use cases like using a function
         # to implement for-loops.
         def resolve(
-            configuration: _types.Configuration, schema=None
+            configuration: _types.Configuration, schema=None, local_variables=None
         ) -> _types.Configuration:
             if schema is None:
                 schema = self.schema
@@ -1020,6 +1084,7 @@ class _FunctionCallNode(_Node):
                 self.resolution_context,
                 parent=self,
                 keypath=self.keypath,
+                local_variables=local_variables,
             )
             return node.resolve()
 
@@ -1041,9 +1106,10 @@ class _FunctionCallNode(_Node):
         # the result may be a function call itself, in which case we need to evaluate it
         if isinstance(result, _FunctionCallNode):
             # this will evaluate the function call recursively
-            return result.evaluate()
-        else:
-            return result
+            result = result.evaluate()
+
+        self._evaluated = result
+        return result
 
     def resolve(self) -> _types.Configuration:
         """Evaluate the function node and return the resulting Configuration.
@@ -1063,6 +1129,7 @@ def _make_node(
     resolution_context: _types.ResolutionContext,
     parent: Optional[_Node] = None,
     keypath: _types.KeyPath = tuple(),
+    local_variables: Optional[Mapping[str, _types.Configuration]] = None,
 ) -> Union[_DictNode, _ListNode, _ValueNode, _FunctionCallNode]:
     """Recursively constructs a configuration tree from a configuration.
 
@@ -1104,7 +1171,7 @@ def _make_node(
         if ("nullable" in schema and schema["nullable"]) or (
             "type" in schema and schema["type"] == "any"
         ):
-            return _ValueNode.from_configuration(
+            new_node = _ValueNode.from_configuration(
                 None,
                 {"type": "any"},
                 keypath,
@@ -1114,10 +1181,11 @@ def _make_node(
         else:
             raise ResolutionError("Unexpectedly null.", keypath)
 
-    # construct the configuration tree. the configuration tree is a nested container
-    # whose terminal leaf values are _ValueNodes. "Internal" nodes are dictionaries or
-    # lists.
-    if isinstance(cfg, dict):
+    elif isinstance(cfg, dict):
+        # construct the configuration tree. the configuration tree is a nested container
+        # whose terminal leaf values are _ValueNodes. "Internal" nodes are dictionaries or
+        # lists.
+
         # check if this is a function call
         try:
             result = resolution_context.check_for_function_call(
@@ -1127,7 +1195,7 @@ def _make_node(
             raise ResolutionError(f"Invalid function call: {exc}", keypath)
 
         if result is not None:
-            return _FunctionCallNode(
+            new_node = _FunctionCallNode(
                 keypath,
                 resolution_context,
                 *result,
@@ -1135,11 +1203,11 @@ def _make_node(
                 parent=parent,
             )
         else:
-            return _DictNode.from_configuration(
+            new_node = _DictNode.from_configuration(
                 cfg, schema, keypath, resolution_context, parent=parent
             )
     elif isinstance(cfg, list):
-        return _ListNode.from_configuration(
+        new_node = _ListNode.from_configuration(
             cfg,
             schema,
             keypath,
@@ -1147,13 +1215,18 @@ def _make_node(
             parent=parent,
         )
     else:
-        return _ValueNode.from_configuration(
+        new_node = _ValueNode.from_configuration(
             cfg,
             schema,
             keypath,
             resolution_context,
             parent=parent,
         )
+
+    if local_variables is not None:
+        new_node.local_variables = local_variables
+
+    return new_node
 
 
 # resolve() ============================================================================

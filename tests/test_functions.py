@@ -876,3 +876,127 @@ def test_if_raises_if_keys_are_not_condition_then_else():
 
         # then
         assert "must be a dictionary with keys" in str(exc.value)
+
+
+# let ==================================================================================
+
+
+def test_let_provides_local_variables_to_in_block():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {
+        "__let__": {
+            "variables": {"x": 3, "y": 4},
+            "in": "${x} + ${y}",
+        }
+    }
+
+    # when
+    resolved = resolve(cfg, schema, functions={"let": functions.let})
+
+    # then
+    assert resolved == 7
+
+
+def test_let_can_be_nested_and_local_variables_nest_as_well():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {
+        "__let__": {
+            "variables": {"x": 3, "y": 4},
+            "in": {
+                "__let__": {
+                    "variables": {"z": 5},
+                    "in": "${x} + ${y} + ${z}",
+                }
+            },
+        }
+    }
+
+    # when
+    resolved = resolve(cfg, schema, functions={"let": functions.let})
+
+    # then
+    assert resolved == 12
+
+
+def test_let_resolves_the_variables_before_substitution():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    cfg = {
+        "foo": 42,
+        "bar": {
+            "__let__": {
+                "variables": {"x": 3, "y": "${foo}"},
+                "in": "${x} + ${y}",
+            }
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, schema, functions={"let": functions.let})
+
+    # then
+    assert resolved == {"foo": 42, "bar": 45}
+
+
+def test_local_variables_are_given_priority_over_references_to_elsewhere_in_configuration():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {"type": "integer"},
+            "y": {"type": "integer"},
+        },
+    }
+
+    cfg = {
+        "x": 3,
+        "y": {
+            "__let__": {
+                "variables": {"x": 5},
+                "in": "${x} + 4",
+            }
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, schema, functions={"let": functions.let})
+
+    # then
+    assert resolved == {"x": 3, "y": 9}
+
+
+def test_local_variables_are_given_priority_over_global_variables():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {
+        "__let__": {
+            "variables": {"x": 5},
+            "in": "${x}",
+        },
+    }
+
+    # when
+    resolved = resolve(
+        cfg, schema, functions={"let": functions.let}, global_variables={"x": 7}
+    )
+
+    # then
+    assert resolved == 5
