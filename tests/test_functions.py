@@ -1042,8 +1042,11 @@ def test_nested_loop():
     schema = {
         "type": "list",
         "element_schema": {
-            "type": "dict",
-            "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            "type": "list",
+            "element_schema": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
         },
     }
 
@@ -1069,8 +1072,12 @@ def test_nested_loop():
 
     # then
     assert resolved == [
-        {"x": 1, "y": 3},
-        {"x": 1, "y": 4},
-        {"x": 2, "y": 3},
-        {"x": 2, "y": 4},
+        [
+            {"x": 1, "y": 3},
+            {"x": 1, "y": 4},
+        ],
+        [
+            {"x": 2, "y": 3},
+            {"x": 2, "y": 4},
+        ],
     ]
