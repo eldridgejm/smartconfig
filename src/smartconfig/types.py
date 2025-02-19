@@ -248,7 +248,10 @@ class ResolverFunction(Protocol):
     """
 
     def __call__(
-        self, config: Configuration, schema: Optional["Schema"] = None
+        self,
+        configuration: Configuration,
+        schema: Optional["Schema"] = None,
+        local_variables: Optional[Mapping[str, Configuration]] = None,
     ) -> Configuration: ...
 
 

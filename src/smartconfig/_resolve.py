@@ -1115,7 +1115,9 @@ class _FunctionCallNode(_Node):
         # configurations. This enables advanced use cases like using a function
         # to implement for-loops.
         def resolve(
-            configuration: _types.Configuration, schema=None, local_variables=None
+            configuration: _types.Configuration,
+            schema: Optional[_types.Schema] = None,
+            local_variables: Optional[Mapping[str, _types.Configuration]] = None,
         ) -> _types.Configuration:
             if schema is None:
                 schema = self.schema
