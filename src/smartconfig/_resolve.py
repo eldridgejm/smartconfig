@@ -406,13 +406,15 @@ def _get_keypath(
 
 # _Node Abstract Base Class ------------------------------------------------------------
 
+_ConcreteNode = Union["_DictNode", "_ListNode", "_ValueNode", "_FunctionCallNode"]
+
 
 class _Node(abc.ABC):
     """Abstract base class for all nodes in a configuration tree.
 
     Attributes
     ----------
-    parent : Optional[Node]
+    parent : Optional[_ConcreteNode]
         The parent of this node. Can be `None`, in which case this is the root of the
         tree.
     local_variables : Optional[Mapping[str, Configuration]]
@@ -423,7 +425,7 @@ class _Node(abc.ABC):
 
     def __init__(
         self,
-        parent: Optional["_Node"] = None,
+        parent: Optional["_ConcreteNode"] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
         self.parent = parent
@@ -434,11 +436,12 @@ class _Node(abc.ABC):
             self.local_variables = local_variables
 
         # cache the root of the tree
-        self._root = None
+        self._root: Optional[_ConcreteNode] = None
 
     @property
-    def root(self) -> "_Node":
+    def root(self) -> "_ConcreteNode":
         """The root of the configuration tree."""
+        assert isinstance(self, (_DictNode, _ListNode, _ValueNode, _FunctionCallNode))
         if self._root is None:
             if self.parent is None:
                 self._root = self
@@ -478,11 +481,11 @@ class _Node(abc.ABC):
 
 
 def _populate_required_children(
-    children: Dict[str, _Node],
+    children: Dict[str, _ConcreteNode],
     dct: _types.ConfigurationDict,
     dict_schema: _types.Schema,
     resolution_options: _types.ResolutionOptions,
-    parent: _Node,
+    parent: _ConcreteNode,
     keypath: _types.KeyPath,
 ):
     """Populates the required children of a _DictNode.
@@ -505,11 +508,11 @@ def _populate_required_children(
 
 
 def _populate_optional_children(
-    children: Dict[str, _Node],
+    children: Dict[str, _ConcreteNode],
     dct: _types.ConfigurationDict,
     dict_schema: _types.Schema,
     resolution_options: _types.ResolutionOptions,
-    parent: _Node,
+    parent: _ConcreteNode,
     keypath: _types.KeyPath,
 ):
     """Populates the optional children of a _DictNode.
@@ -541,11 +544,11 @@ def _populate_optional_children(
 
 
 def _populate_extra_children(
-    children: Dict[str, _Node],
+    children: Dict[str, _ConcreteNode],
     dct: _types.ConfigurationDict,
     dict_schema: _types.Schema,
     resolution_options: _types.ResolutionOptions,
-    parent: _Node,
+    parent: _ConcreteNode,
     keypath: _types.KeyPath,
 ):
     """Populates the extra children of a _DictNode.
@@ -583,9 +586,9 @@ class _DictNode(_Node):
     ----------
     resolution_options : _types.ResolutionOptions
         The settings that control how the configuration is resolved.
-    children : Dict[str, _Node]
+    children : Dict[str, _ConcreteNode]
         A dictionary of child nodes.
-    parent : Optional[_Node]
+    parent : Optional[_ConcreteNode]
         The parent of this node. Can be `None`, in which case this is the root of the
         tree.
     local_variables : Optional[Mapping[str, Configuration]]
@@ -597,13 +600,13 @@ class _DictNode(_Node):
     def __init__(
         self,
         resolution_options: _types.ResolutionOptions,
-        children: Optional[Dict[str, _Node]] = None,
-        parent: Optional[_Node] = None,
+        children: Optional[Dict[str, _ConcreteNode]] = None,
+        parent: Optional[_ConcreteNode] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
         super().__init__(parent, local_variables)
         self.resolution_options = resolution_options
-        self.children: Dict[str, _Node] = {} if children is None else children
+        self.children: Dict[str, _ConcreteNode] = {} if children is None else children
 
     @classmethod
     def from_configuration(
@@ -612,7 +615,7 @@ class _DictNode(_Node):
         schema: _types.Schema,
         keypath: _types.KeyPath,
         resolution_options: _types.ResolutionOptions,
-        parent: Optional[_Node] = None,
+        parent: Optional[_ConcreteNode] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ) -> "_DictNode":
         """Construct a _DictNode from a configuration dictionary and its schema.
@@ -701,9 +704,9 @@ class _ListNode(_Node):
     ----------
     resolution_options : ResolutionOptions
         The settings that control how the configuration is resolved.
-    children : List[_Node]
+    children : List[_ConcreteNode]
         A list of the node's children.
-    parent : Optional[_Node]
+    parent : Optional[_ConcreteNode]
         The parent of this node. Can be `None`, in which case this is the root of the
         tree.
     local_variables : Optional[Mapping[str, Configuration]]
@@ -715,34 +718,34 @@ class _ListNode(_Node):
     def __init__(
         self,
         resolution_options: _types.ResolutionOptions,
-        children: Optional[List[_Node]] = None,
-        parent: Optional[_Node] = None,
+        children: Optional[List[_ConcreteNode]] = None,
+        parent: Optional[_ConcreteNode] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
         super().__init__(parent, local_variables)
         self.resolution_options = resolution_options
-        self.children: List[_Node] = [] if children is None else []
+        self.children: List[_ConcreteNode] = [] if children is None else []
 
     @classmethod
     def from_configuration(
         cls,
         lst: _types.ConfigurationList,
-        list_schema: _types.Schema,
+        schema: _types.Schema,
         keypath: _types.KeyPath,
         resolution_options: _types.ResolutionOptions,
-        parent: Optional[_Node] = None,
+        parent: Optional[_ConcreteNode] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ) -> "_ListNode":
         """Recursively make an internal list node from a ConfigurationList."""
         node = cls(resolution_options, parent=parent, local_variables=local_variables)
 
-        if list_schema["type"] == "any":
-            list_schema = {
+        if schema["type"] == "any":
+            schema = {
                 "type": "list",
                 "element_schema": {"type": "any", "nullable": True},
             }
 
-        child_schema = list_schema["element_schema"]
+        child_schema = schema["element_schema"]
 
         children = []
         for i, lst_value in enumerate(lst):
@@ -814,7 +817,7 @@ class _ValueNode(_Node):
         keypath: _types.KeyPath,
         resolution_options: _types.ResolutionOptions,
         nullable: bool = False,
-        parent: Optional[_Node] = None,
+        parent: Optional[_ConcreteNode] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
         super().__init__(parent, local_variables)
@@ -838,7 +841,7 @@ class _ValueNode(_Node):
         schema: _types.Schema,
         keypath: _types.KeyPath,
         resolution_options: _types.ResolutionOptions,
-        parent: Optional[_Node] = None,
+        parent: Optional[_ConcreteNode] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ) -> "_ValueNode":
         """Create a leaf node from the configuration and schema."""
@@ -880,10 +883,12 @@ class _ValueNode(_Node):
 
         self._resolved = _ValueNode._PENDING
 
-        if isinstance(self.value, _types.RecursiveString):
-            value = self._safely(self._interpolate, self.value, recursive=True)
-        elif isinstance(self.value, str):
-            value = self._safely(self._interpolate, self.value)
+        if isinstance(self.value, str):
+            value = self._safely(
+                self._interpolate,
+                self.value,
+                recursive=isinstance(self.value, _types.RecursiveString),
+            )
         else:
             value = self.value
 
@@ -895,7 +900,30 @@ class _ValueNode(_Node):
         return self._resolved
 
     def _make_custom_jinja_context(self):
-        """This creates a custom Jinja2 context for string interpolation."""
+        """This creates a custom Jinja2 context for string interpolation.
+
+        We create this custom context to carefully control how Jinja2 resolves
+        references. The typical way to provide template variables to Jinja2 is to pass a
+        dictionary-like object to the .render() method. This object is used by Jinja to
+        create a "context". However, in creating the context itself, Jinja immediately
+        accesses the values in the top-level of the dictionary. This is problematic
+        because the values in the dictionary may be references to other parts of the
+        configuration. If Jinja2 accesses these values before the references are
+        resolved, it can create circular dependencies.
+
+        To avoid this, we create a custom context class that only resolves references
+        when they are accessed during interpolation, and not during the creation of the
+        context. The root of the configuration is stored in a _UnresolvedDict,
+        _UnresolvedList, or _UnresolvedFunctionCall, which are "lazy" containers that
+        resolve their contents only when accessed.
+
+        First, a key is looked up in the local variables. If it is not found, it looked
+        up in the unresolved container representing the root of the configuration tree.
+        If a key is not found in the unresolved container, Jinja2 will fall back to the
+        default behavior of looking up the key in the template variables.
+
+        """
+        assert isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode))
         root = _make_unresolved_container(self.root)
         this_node = self
 
@@ -914,7 +942,7 @@ class _ValueNode(_Node):
         return CustomContext
 
     def _interpolate(self, s: str, recursive=False) -> str:
-        """Replace a reference keypath with its resolved value.
+        """Replace references in the string with their resolved values.
 
         Parameters
         ----------
@@ -939,22 +967,10 @@ class _ValueNode(_Node):
             root = None
 
         if root is not None:
-            # we create this custom context to carefully control how Jinja2 resolves
-            # references. The typical way to provide template variables to Jinja2 is to
-            # pass a dictionary-like object to the .render() method. This object is used
-            # by Jinja to create a "context". However, in creating the context itself,
-            # Jinja immediately accesses the values in the top-level of the dictionary.
-            # This is problematic because the values in the dictionary may be references
-            # to other parts of the configuration. If Jinja2 accesses these values
-            # before the references are resolved, it can create circular dependencies.
-            #
-            # To avoid this, we create a custom context class that only resolves
-            # references when they are accessed during interpolation, and not during the
-            # creation of the context. The root of the configuration is stored in a
-            # _UnresolvedDict, _UnresolvedList, or _UnresolvedFunctionCall, which are
-            # "lazy" containers that resolve their contents only when accessed. If a key
-            # is not found in the unresolved container, Jinja2 will fall back to the
-            # default behavior of looking up the key in the template variables.
+            # create a custom jinja context for resolving references. This will first
+            # loop up variables in the local variables, and then in the root of the
+            # configuration tree, and finally in the global variables. See
+            # the _make_custom_jinja_context() method for more information.
             environment.context_class = self._make_custom_jinja_context()
 
         # register the custom filters
@@ -1021,7 +1037,7 @@ class _FunctionCallNode(_Node):
         The input to the function.
     schema : _types.Schema
         The schema for the function's output.
-    parent : Optional[_Node]
+    parent : Optional[_ConcreteNode]
         The parent of this node. Can be `None`, in which case this is the root
     local_variables : Optional[Mapping[str, Configuration]]
         A dictionary of local variables that can be accessed during string
@@ -1042,7 +1058,7 @@ class _FunctionCallNode(_Node):
         function: _types.Function,
         input: _types.Configuration,
         schema: _types.Schema,
-        parent: Optional[_Node] = None,
+        parent: Optional[_ConcreteNode] = None,
         local_variables: Optional[Mapping[str, _types.Configuration]] = None,
     ):
         super().__init__(parent, local_variables)
@@ -1152,7 +1168,7 @@ def _make_node(
     cfg: _types.Configuration,
     schema: _types.Schema,
     resolution_options: _types.ResolutionOptions,
-    parent: Optional[_Node] = None,
+    parent: Optional[_ConcreteNode] = None,
     keypath: _types.KeyPath = tuple(),
     local_variables: Optional[Mapping[str, _types.Configuration]] = None,
 ) -> Union[_DictNode, _ListNode, _ValueNode, _FunctionCallNode]:
@@ -1192,18 +1208,21 @@ def _make_node(
         The root node of the configuration tree.
 
     """
+    common_kwargs = {
+        "resolution_options": resolution_options,
+        "parent": parent,
+        "keypath": keypath,
+        "local_variables": local_variables,
+        "schema": schema,
+    }
+
     if cfg is None:
         if ("nullable" in schema and schema["nullable"]) or (
             "type" in schema and schema["type"] == "any"
         ):
-            return _ValueNode.from_configuration(
-                None,
-                {"type": "any"},
-                keypath,
-                resolution_options,
-                parent=parent,
-                local_variables=local_variables,
-            )
+            kwargs = common_kwargs.copy()
+            kwargs["schema"] = {"type": "any"}
+            return _ValueNode.from_configuration(None, **kwargs)
         else:
             raise ResolutionError("Unexpectedly null.", keypath)
 
@@ -1222,38 +1241,24 @@ def _make_node(
 
         if result is not None:
             return _FunctionCallNode(
-                keypath,
-                resolution_options,
-                *result,
-                schema,
-                parent=parent,
-                local_variables=local_variables,
+                **common_kwargs,
+                function=result[0],
+                input=result[1],
             )
         else:
             return _DictNode.from_configuration(
                 cfg,
-                schema,
-                keypath,
-                resolution_options,
-                parent=parent,
-                local_variables=local_variables,
+                **common_kwargs,
             )
     elif isinstance(cfg, list):
         return _ListNode.from_configuration(
             cfg,
-            schema,
-            keypath,
-            resolution_options,
-            parent=parent,
+            **common_kwargs,
         )
     else:
         return _ValueNode.from_configuration(
             cfg,
-            schema,
-            keypath,
-            resolution_options,
-            parent=parent,
-            local_variables=local_variables,
+            **common_kwargs,
         )
 
 
