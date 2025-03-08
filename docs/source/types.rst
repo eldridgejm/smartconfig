@@ -1,7 +1,10 @@
 Types
 =====
 
-.. automodule:: smartconfig.types
+The :mod:`smartconfig.types` module defines the types and type aliases
+used throughout the `smartconfig` package.
+
+.. module:: smartconfig.types
 
 Configurations
 --------------
@@ -76,6 +79,8 @@ Functions
 .. autoclass:: FunctionArgs
    :members:
    :undoc-members:
+
+.. autoclass:: Resolver
 
 Special Strings
 ----------------

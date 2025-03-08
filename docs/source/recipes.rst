@@ -166,6 +166,8 @@ The result will be:
     {'doubled_numbers': [2, 4, 6], 'numbers': [1, 2, 3]}
 
 
+.. _recipes_external_variables:
+
 Recipe 3: Suggested conventions for including external variables
 ----------------------------------------------------------------
 

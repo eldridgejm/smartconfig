@@ -241,9 +241,21 @@ class UnresolvedFunctionCall(abc.ABC):
 
 
 class Resolver(Protocol):
-    """A function that resolves a configuration.
+    """A protocol for a function that resolves a configuration.
 
     This is a callable that takes a configuration and returns a resolved configuration.
+
+    Parameters
+    ----------
+    configuration : Configuration
+        The configuration to resolve.
+    schema : Optional[Schema]
+        The schema that the configuration is expected to conform to. If provided, the
+        resolved configuration will be validated against the schema. Defaults to
+        `None`.
+    local_variables : Optional[Mapping[str, Configuration]]
+        Local variables that are made available during string interpolation. Defaults to
+        `None`, in which case no local variables are available.
 
     """
 

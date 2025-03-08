@@ -1400,12 +1400,19 @@ DEFAULT_CONVERTERS = {
 
 # the default functions available to resolve()
 DEFAULT_FUNCTIONS = {
+    "concatenate": _functions.concatenate,
+    "dict_from_items": _functions.dict_from_items,
+    "filter": _functions.filter_,
+    "if": _functions.if_,
+    "let": _functions.let,
+    "loop": _functions.loop,
+    "range": _functions.range_,
     "raw": _functions.raw,
     "recursive": _functions.recursive,
     "splice": _functions.splice,
-    "update_shallow": _functions.update_shallow,
     "update": _functions.update,
-    "concatenate": _functions.concatenate,
+    "update_shallow": _functions.update_shallow,
+    "zip": _functions.zip_,
 }
 
 
