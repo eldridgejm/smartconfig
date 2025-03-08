@@ -39,6 +39,33 @@ def test_raises_if_required_keys_are_missing():
     )
 
 
+def test_raises_if_required_keys_are_missing_in_nested_dict():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {
+                "type": "dict",
+                "required_keys": {
+                    "bar": {"type": "any"},
+                },
+            }
+        },
+    }
+
+    dct = {"foo": {}}
+
+    # when
+    with raises(exceptions.ResolutionError) as excinfo:
+        resolve(dct, schema)
+
+    assert excinfo.value.keypath == ("foo", "bar")
+    assert (
+        str(excinfo.value)
+        == 'Cannot resolve keypath "foo.bar": Dictionary is missing required key "bar".'
+    )
+
+
 def test_raises_if_extra_keys_without_extra_keys_schema():
     # given
     schema = {"type": "dict", "required_keys": {}}
@@ -2054,7 +2081,7 @@ def test_unresolved_function_get_keypath():
     resolve(dct, schema, functions={"outer": outer, "inner": inner})
 
 
-def test_unresolved_dict_get_keypath_deeper_than_container_raises_keyerror():
+def test_unresolved_dict_get_keypath_deeper_than_container_raises_keyerrorais():
     # given
     schema = {
         "type": "dict",
