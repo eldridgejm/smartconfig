@@ -920,6 +920,7 @@ class _ValueNode(_Node):
         The resolved value.
 
         """
+        # raw strings are simply returned
         if isinstance(self.value, _types.RawString):
             # check that the expected type is a string (or any)
             if self.type_ not in ("string", "any"):
@@ -928,15 +929,19 @@ class _ValueNode(_Node):
                 )
             return self.value
 
+        # check for circular references
         if self._resolved is _ValueNode._PENDING:
             raise ResolutionError("Circular reference", self.keypath)
 
+        # if the value is already resolved, return it
         if self._resolved is not _ValueNode._UNDISCOVERED:
             self._resolved = typing.cast(_types.ConfigurationValue, self._resolved)
             return self._resolved
 
+        # if we've reached this point, we're resolving this node for the first time
         self._resolved = _ValueNode._PENDING
 
+        # Step 1: interpolate the string (if its a string)
         if isinstance(self.value, str):
             value = self._safely(
                 self._interpolate,
@@ -946,6 +951,8 @@ class _ValueNode(_Node):
         else:
             value = self.value
 
+        # Step 2: convert the value to the expected type (if it's not None) and cache
+        # the result
         if self.nullable and self.value is None:
             self._resolved = None
         else:
@@ -982,10 +989,16 @@ class _ValueNode(_Node):
         if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
             root_container = _make_unresolved_container(self.root)
         else:
+            # if the root is a value node, then the configuration tree is a single
+            # isolated node. This node cannot have any in-tree references, because
+            # they'd be circular. In this case, an empty root container does the job.
             root_container = {}
 
+        # save a copy of self, because we shadow `self` in `resolve_or_missing` below
         this_node = self
 
+        # copy the globals to prevent modification, then insert the root node if
+        # requested
         global_variables = dict(global_variables)
         if inject_root_as is not None:
             global_variables[inject_root_as] = root_container
