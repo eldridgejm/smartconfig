@@ -33,6 +33,10 @@ def test_raises_if_required_keys_are_missing():
         resolve(dct, schema)
 
     assert excinfo.value.keypath == ("bar",)
+    assert (
+        str(excinfo.value)
+        == 'Cannot resolve keypath "bar": Dictionary is missing required key "bar".'
+    )
 
 
 def test_raises_if_extra_keys_without_extra_keys_schema():
@@ -42,8 +46,13 @@ def test_raises_if_extra_keys_without_extra_keys_schema():
     dct = {"foo": 42}
 
     # when
-    with raises(exceptions.ResolutionError):
+    with raises(exceptions.ResolutionError) as exc:
         resolve(dct, schema)
+
+    assert (
+        str(exc.value)
+        == 'Cannot resolve keypath "foo": Dictionary contains unexpected extra key "foo".'
+    )
 
 
 def test_allows_extra_keys_with_extra_keys_schema():
@@ -276,8 +285,10 @@ def test_raises_if_self_reference_detected():
     }
 
     # when
-    with raises(exceptions.ResolutionError):
+    with raises(exceptions.ResolutionError) as exc:
         resolve(dct, schema)
+
+    assert str(exc.value) == 'Cannot resolve keypath "foo": Circular reference.'
 
 
 def test_raises_if_cyclical_reference_detected():
@@ -298,8 +309,10 @@ def test_raises_if_cyclical_reference_detected():
     }
 
     # when
-    with raises(exceptions.ResolutionError):
+    with raises(exceptions.ResolutionError) as exc:
         resolve(dct, schema)
+
+    assert str(exc.value) == 'Cannot resolve keypath "foo": Circular reference.'
 
 
 def test_interpolation_can_use_jinja_to_loop_over_list():
@@ -550,7 +563,10 @@ def test_interpolate_entire_dict_raises_exception():
     with raises(exceptions.ResolutionError) as exc:
         resolve(dct, schema)
 
-    assert "No converter provided for type: 'dict'" in str(exc.value)
+    assert (
+        str(exc.value)
+        == 'Cannot resolve keypath "bar": No converter provided for type: "dict".'
+    )
 
 
 def test_interpolate_entire_dict_indirectly_raises_exception():
@@ -582,7 +598,7 @@ def test_interpolate_entire_dict_indirectly_raises_exception():
     with raises(exceptions.ResolutionError) as exc:
         resolve(dct, schema)
 
-    assert "No converter provided for type: 'dict'" in str(exc.value)
+    assert 'No converter provided for type: "dict"' in str(exc.value)
 
 
 def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
@@ -620,7 +636,7 @@ def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
         resolve(dct, schema)
 
     # then
-    assert "No converter provided for type: 'dict'" in str(exc.value)
+    assert 'No converter provided for type: "dict"' in str(exc.value)
 
 
 def test_interpolate_entire_list_raises_exception():
@@ -649,7 +665,7 @@ def test_interpolate_entire_list_raises_exception():
         resolve(dct, schema)
 
     # then
-    assert "No converter provided for type: 'list'" in str(exc.value)
+    assert 'No converter provided for type: "list"' in str(exc.value)
 
 
 # converting ==============================================================================

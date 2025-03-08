@@ -16,6 +16,17 @@ from .types import (
 from .exceptions import ResolutionError
 
 
+# helpers ==============================================================================
+
+
+def _all_elements_are_instances_of(container, type_):
+    """Check if all elements in the container are instances of the given type."""
+    return all(isinstance(element, type_) for element in container)
+
+
+# functions ============================================================================
+
+
 @Function.new(resolve_input=False)
 def raw(args: FunctionArgs) -> Configuration:
     """Turn the string into a :class:`smartconfig.types.RawString` that is not interpolation/parsed."""
@@ -59,10 +70,6 @@ def splice(args: FunctionArgs) -> Configuration:
         return args.root.get_keypath(keypath)
     except Exception:
         raise ResolutionError(f"Keypath '{keypath}' does not exist.", args.keypath)
-
-
-def _all_elements_are_instances_of(container, type_):
-    return all(isinstance(element, type_) for element in container)
 
 
 def update_shallow(args: FunctionArgs) -> ConfigurationDict:
@@ -127,30 +134,6 @@ def update(args: FunctionArgs) -> ConfigurationDict:
         return first
 
     return _deep_update(input)
-
-
-def concatenate(args: FunctionArgs) -> ConfigurationList:
-    """Concatenates lists.
-
-    ``args.input`` should be a list of lists.
-
-    """
-    if not isinstance(args.input, list) or not _all_elements_are_instances_of(
-        args.input, list
-    ):
-        raise ResolutionError(
-            "Input to 'concatenate' must be a list of lists.", args.keypath
-        )
-
-    if len(args.input) == 0:
-        raise ResolutionError(
-            "Input to 'concatenate' must be a non-empty list of lists.", args.keypath
-        )
-
-    # true since we checked _all_elements_are_instances_of(args.input, list) above
-    input = typing.cast(list[list], args.input)
-
-    return list(itertools.chain(*input))
 
 
 def if_(args: FunctionArgs) -> Configuration:
@@ -265,45 +248,28 @@ def loop(args: FunctionArgs) -> Configuration:
     return result
 
 
-@Function.new(resolve_input=False)
-def dict_from_items(args: FunctionArgs) -> ConfigurationDict:
-    """Creates a dictionary from a list of key-value pairs.
+def concatenate(args: FunctionArgs) -> ConfigurationList:
+    """Concatenates lists.
 
-    ``args.input`` should be a list of dictionaries with two keys:
-
-        - ``key``: the key of the dictionary
-        - ``value``: the value of the dictionary
+    ``args.input`` should be a list of lists.
 
     """
-    input_ = args.resolve(
-        args.input,
-        schema={
-            "type": "list",
-            "element_schema": {
-                "type": "dict",
-                "required_keys": {"key": {"type": "any"}, "value": {"type": "any"}},
-            },
-        },
-    )
-
-    if not isinstance(input_, list):
+    if not isinstance(args.input, list) or not _all_elements_are_instances_of(
+        args.input, list
+    ):
         raise ResolutionError(
-            "Input to 'dict_from_items' must be a list of dictionaries with keys 'key' and 'value'.",
-            args.keypath,
+            "Input to 'concatenate' must be a list of lists.", args.keypath
         )
 
-    dct = {}
+    if len(args.input) == 0:
+        raise ResolutionError(
+            "Input to 'concatenate' must be a non-empty list of lists.", args.keypath
+        )
 
-    for item in input_:
-        if not isinstance(item, dict) or set(item.keys()) != {"key", "value"}:
-            raise ResolutionError(
-                "Input to 'dict_from_items' must be a list of dictionaries with keys 'key' and 'value'.",
-                args.keypath,
-            )
+    # true since we checked _all_elements_are_instances_of(args.input, list) above
+    input = typing.cast(list[list], args.input)
 
-        dct[item["key"]] = item["value"]
-
-    return dct
+    return list(itertools.chain(*input))
 
 
 def zip_(args: FunctionArgs) -> ConfigurationList:
@@ -412,3 +378,44 @@ def range_(args: FunctionArgs) -> ConfigurationList:
         )
 
     return list(range(start, stop, step))
+
+
+@Function.new(resolve_input=False)
+def dict_from_items(args: FunctionArgs) -> ConfigurationDict:
+    """Creates a dictionary from a list of key-value pairs.
+
+    ``args.input`` should be a list of dictionaries with two keys:
+
+        - ``key``: the key of the dictionary
+        - ``value``: the value of the dictionary
+
+    """
+    input_ = args.resolve(
+        args.input,
+        schema={
+            "type": "list",
+            "element_schema": {
+                "type": "dict",
+                "required_keys": {"key": {"type": "any"}, "value": {"type": "any"}},
+            },
+        },
+    )
+
+    if not isinstance(input_, list):
+        raise ResolutionError(
+            "Input to 'dict_from_items' must be a list of dictionaries with keys 'key' and 'value'.",
+            args.keypath,
+        )
+
+    dct = {}
+
+    for item in input_:
+        if not isinstance(item, dict) or set(item.keys()) != {"key", "value"}:
+            raise ResolutionError(
+                "Input to 'dict_from_items' must be a list of dictionaries with keys 'key' and 'value'.",
+                args.keypath,
+            )
+
+        dct[item["key"]] = item["value"]
+
+    return dct

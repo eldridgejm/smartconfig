@@ -15,11 +15,18 @@ The built-in functions are:
 .. autosummary::
 
    concatenate
+   dict_from_items
+   filter
+   if
+   let
+   loop
+   range
    raw
    recursive
    splice
    update
    update_shallow
+   zip
 
 .. autofunction:: concatenate
 
@@ -33,3 +40,11 @@ The built-in functions are:
 .. autofunction:: splice
 .. autofunction:: update
 .. autofunction:: update_shallow
+.. autofunction:: if
+.. autofunction:: let
+.. autofunction:: loop
+.. autofunction:: concatenate
+.. autofunction:: zip
+.. autofunction:: filter
+.. autofunction:: range
+.. autofunction:: dict_from_items

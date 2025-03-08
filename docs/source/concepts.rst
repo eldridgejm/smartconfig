@@ -3,8 +3,8 @@ Concepts
 
 Before getting started with `smartconfig`, it's useful to understand a few key concepts.
 
-The input to `smartconfig` is a **configuration**. A configuration is defined
-recursively as one of the following:
+The input to `smartconfig` is a **configuration**. A configuration is recursively defined
+as one of the following:
 
 - A **dictionary** whose keys are strings and whose values are again configurations.
 - A **list** of configurations.
@@ -28,12 +28,15 @@ For example, the below is a valid configuration:
 The input configuration is typically read from a file (e.g., a JSON, YAML, or TOML file)
 and contains values that are not yet fully "resolved" (such as
 ``date_of_first_discussion`` in the above example). The goal of `smartconfig` is to
-**resolve** these values and convert the configuration into its final form. Note that
-`smartconfig` does not actually read the input file; that is left to third-party
-packages for reading configuration formats (like `PyYaml` or the `json` module).
-Instead, `smartconfig` accepts as input the standard Python types returned by those
-libraries; this makes it agnostic to the configuration format used and very general in
-its applicability.
+**resolve** these values and convert the configuration into its final form.
+
+.. note::
+
+    `smartconfig` does not actually read the input file; that is left to
+    third-party packages for reading configuration formats (like `PyYaml` or
+    the `json` module). Instead, `smartconfig` accepts as input the standard
+    Python types returned by those libraries; this makes it agnostic to the
+    configuration format used and very general in its applicability.
 
 Resolving a value in a configuration involves two steps: **interpolation** and
 **conversion**. **Interpolation** involves replacing placeholders (e.g.,

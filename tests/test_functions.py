@@ -1220,7 +1220,7 @@ def test_dict_from_items_generated_within_loop_checks_schema_for_required_keys()
             },
         )
 
-    assert "Missing required key." in str(exc.value)
+    assert "missing required key" in str(exc.value)
 
 
 # zip ==================================================================================

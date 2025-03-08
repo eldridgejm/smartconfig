@@ -574,7 +574,9 @@ def _populate_required_children(
 
     for key, key_schema in required_keys.items():
         if key not in dct:
-            raise ResolutionError("Missing required key.", (keypath + (key,)))
+            raise ResolutionError(
+                f'Dictionary is missing required key "{key}".', (keypath + (key,))
+            )
 
         children[key] = _make_node(
             dct[key], key_schema, resolution_options, parent, keypath + (key,)
@@ -641,7 +643,10 @@ def _populate_extra_children(
     extra_keys = dct.keys() - expected_keys
 
     if extra_keys and "extra_keys_schema" not in dict_schema:
-        raise ResolutionError("Unexpected extra key.", keypath + (extra_keys.pop(),))
+        key = extra_keys.pop()
+        raise ResolutionError(
+            f'Dictionary contains unexpected extra key "{key}".', keypath + (key,)
+        )
 
     for key in extra_keys:
         children[key] = _make_node(
@@ -931,7 +936,7 @@ class _ValueNode(_Node):
 
         # check for circular references
         if self._resolved is _ValueNode._PENDING:
-            raise ResolutionError("Circular reference", self.keypath)
+            raise ResolutionError("Circular reference.", self.keypath)
 
         # if the value is already resolved, return it
         if self._resolved is not _ValueNode._UNDISCOVERED:
@@ -1099,7 +1104,7 @@ class _ValueNode(_Node):
             converter = converters[type_]
         except KeyError:
             raise ResolutionError(
-                f"No converter provided for type: '{type_}'.", self.keypath
+                f'No converter provided for type: "{type_}".', self.keypath
             )
 
         return converter(value)
@@ -1108,6 +1113,8 @@ class _ValueNode(_Node):
         """Apply the function and catch any exceptions, raising a ResolutionError."""
         try:
             return fn(*args, **kwargs)
+        except ResolutionError as exc:
+            raise exc
         except Error as exc:
             raise ResolutionError(str(exc), self.keypath) from exc
 

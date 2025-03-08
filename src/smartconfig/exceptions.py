@@ -30,7 +30,7 @@ class ResolutionError(Error):
 
     def __str__(self):
         dotted = _join_dotted(self.keypath)
-        return f'Cannot resolve keypath: "{dotted}": {self.reason}'
+        return f'Cannot resolve keypath "{dotted}": {self.reason}'
 
 
 class ConversionError(Error):
