@@ -231,11 +231,11 @@ from .exceptions import Error, ResolutionError
 # unresolved containers ================================================================
 #
 # These containers are used to represent the configuration while it is being resolved.
-# They are passed to Jinja as template variables available during string interpolation,
-# and they are provided to functions as part of their input so that they can reference
-# other parts of the configuration as well. Accessing an element in a unresolved
-# container triggers the resolution of that element if it is a function node or a value
-# node. Otherwise, it returns another unresolved container.
+# They are passed to Jinja as variables available during string interpolation, and they
+# are provided to functions as part of their input so that they can reference other
+# parts of the configuration as well. Accessing an element in a unresolved container
+# triggers the resolution of that element if it is a function node or a value node.
+# Otherwise, it returns another unresolved container.
 
 # _UnresolvedDict ----------------------------------------------------------------------
 
@@ -396,7 +396,7 @@ class _UnresolvedFunctionCall(_types.UnresolvedFunctionCall):
 def _make_unresolved_container(
     node: Union["_DictNode", "_ListNode", "_FunctionCallNode"],
 ) -> Union[_UnresolvedDict, _UnresolvedList, _UnresolvedFunctionCall]:
-    """Create a unresolved container from a node."""
+    """Create the correct type of unresolved container to wrap a node."""
     if isinstance(node, _DictNode):
         return _UnresolvedDict(node)
     elif isinstance(node, _ListNode):
