@@ -1221,3 +1221,176 @@ def test_dict_from_items_generated_within_loop_checks_schema_for_required_keys()
         )
 
     assert "Missing required key." in str(exc.value)
+
+
+# zip ==================================================================================
+
+
+def test_zip_two_lists():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "list",
+            "element_schema": {"type": "integer"},
+        },
+    }
+
+    dct = {
+        "__zip__": [
+            [1, 2, 3],
+            [4, 5, 6],
+        ]
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"zip": functions.zip_})
+
+    # then
+    assert resolved == [
+        [1, 4],
+        [2, 5],
+        [3, 6],
+    ]
+
+
+def test_zip_three_lists():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "list",
+            "element_schema": {"type": "integer"},
+        },
+    }
+
+    dct = {
+        "__zip__": [
+            [1, 2, 3],
+            [4, 5, 6],
+            [7, 8, 9],
+        ]
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"zip": functions.zip_})
+
+    # then
+    assert resolved == [
+        [1, 4, 7],
+        [2, 5, 8],
+        [3, 6, 9],
+    ]
+
+
+# filter ===============================================================================
+
+
+def test_filter_simple_example():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    dct = {
+        "__filter__": {
+            "iterable": [1, 2, 3, 4, 5],
+            "variable": "x",
+            "condition": "${x % 2 == 0} or ${x == 5}",
+        }
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"filter": functions.filter_})
+
+    # then
+    assert resolved == [2, 4, 5]
+
+
+# range ================================================================================
+
+
+def test_range_uses_start_0_by_default():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    dct = {
+        "__range__": {
+            "stop": 5,
+        }
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"range": functions.range_})
+
+    # then
+    assert resolved == [0, 1, 2, 3, 4]
+
+
+def test_range_with_explisit_start():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    dct = {
+        "__range__": {
+            "start": 1,
+            "stop": 5,
+        }
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"range": functions.range_})
+
+    # then
+    assert resolved == [1, 2, 3, 4]
+
+
+def test_range_with_negative_step():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    dct = {
+        "__range__": {
+            "start": 5,
+            "stop": 1,
+            "step": -1,
+        }
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"range": functions.range_})
+
+    # then
+    assert resolved == [5, 4, 3, 2]
+
+
+def test_range_with_step_of_3():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    dct = {
+        "__range__": {
+            "start": 1,
+            "stop": 10,
+            "step": 3,
+        }
+    }
+
+    # when
+    resolved = resolve(dct, schema, functions={"range": functions.range_})
+
+    # then
+    assert resolved == [1, 4, 7]

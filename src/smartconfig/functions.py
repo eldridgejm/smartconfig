@@ -269,8 +269,10 @@ def loop(args: FunctionArgs) -> Configuration:
 def dict_from_items(args: FunctionArgs) -> ConfigurationDict:
     """Creates a dictionary from a list of key-value pairs.
 
-    ``args.input`` should be a list of dictionaries with two keys: `key`
-    and `value`.
+    ``args.input`` should be a list of dictionaries with two keys:
+
+        - ``key``: the key of the dictionary
+        - ``value``: the value of the dictionary
 
     """
     input_ = args.resolve(
@@ -302,3 +304,111 @@ def dict_from_items(args: FunctionArgs) -> ConfigurationDict:
         dct[item["key"]] = item["value"]
 
     return dct
+
+
+def zip_(args: FunctionArgs) -> ConfigurationList:
+    """Zips lists together.
+
+    ``args.input`` should be a list of lists.
+
+    """
+    if not isinstance(args.input, list) or not _all_elements_are_instances_of(
+        args.input, list
+    ):
+        raise ResolutionError("Input to 'zip' must be a list of lists.", args.keypath)
+
+    if len(args.input) == 0:
+        raise ResolutionError(
+            "Input to 'zip' must be a non-empty list of lists.", args.keypath
+        )
+
+    return [list(entry) for entry in zip(*args.input)]
+
+
+@Function.new(resolve_input=False)
+def filter_(args: FunctionArgs) -> ConfigurationList:
+    """Filters a list.
+
+    ``args.input`` should be a list of dictionaries with three keys:
+
+        - ``iterable``: the list to filter
+        - ``variable``: a string representing the name of the variable that will be
+          assigned the value of each element in the list
+        - ``condition``: a boolean expression that is evaluated
+
+    """
+    if (
+        not isinstance(args.input, dict)
+        or "iterable" not in args.input
+        or "variable" not in args.input
+        or "condition" not in args.input
+    ):
+        raise ResolutionError(
+            "Input to 'filter' must be a dictionary with keys 'iterable', 'variable' and 'condition'.",
+            args.keypath,
+        )
+
+    iterable = args.resolve(
+        args.input["iterable"],
+        schema={"type": "list", "element_schema": {"type": "any"}},
+    )
+
+    if not isinstance(iterable, list):
+        raise ResolutionError(
+            "The value of 'iterable' in 'filter' must be a list.", args.keypath
+        )
+
+    assert isinstance(args.input["variable"], str)
+
+    result = []
+    for element in iterable:
+        local_variables = {args.input["variable"]: element}
+        if args.resolve(
+            args.input["condition"],
+            local_variables=local_variables,
+            schema={"type": "boolean"},
+        ):
+            result.append(element)
+
+    return result
+
+
+def range_(args: FunctionArgs) -> ConfigurationList:
+    """Generates a list of numbers.
+
+    ``args.input`` should be a dictionary with three keys, two of them optional:
+
+        - ``start``: the start of the range (inclusive). Defaults to 0.
+        - ``stop``: the end of the range (exclusive)
+        - ``step``: the step between each element in the range. Defaults to 1.
+
+    """
+    if not isinstance(args.input, dict):
+        raise ResolutionError("Input to 'range' must be a dictionary.", args.keypath)
+
+    if "stop" not in args.input:
+        raise ResolutionError(
+            "Input to 'range' must be a dictionary with a key 'stop'.", args.keypath
+        )
+
+    start = args.input.get("start", 0)
+    stop = args.input["stop"]
+    step = args.input.get("step", 1)
+
+    if set(args.input.keys()) - {"start", "stop", "step"}:
+        raise ResolutionError(
+            "Input to 'range' must be a dictionary with keys 'start', 'stop' and 'step'.",
+            args.keypath,
+        )
+
+    if (
+        not isinstance(start, int)
+        or not isinstance(stop, int)
+        or not isinstance(step, int)
+    ):
+        raise ResolutionError(
+            "The values of 'start', 'stop' and 'step' in 'range' must be integers.",
+            args.keypath,
+        )
+
+    return list(range(start, stop, step))
