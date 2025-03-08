@@ -1048,10 +1048,10 @@ class _ValueNode(_Node):
             variable_start_string="${", variable_end_string="}"
         )
 
-        # create a custom jinja context for resolving references. This will first
-        # loop up variables in the local variables, and then in the root of the
-        # configuration tree, and finally in the global variables. See
-        # the _make_custom_jinja_context() method for more information.
+        # create a custom jinja context for resolving references. This will first look
+        # up keys in the local variables, and then in the root of the configuration
+        # tree, and finally in the global variables. See the
+        # _make_custom_jinja_context() method for more information.
         environment.context_class = self._make_custom_jinja_context(
             self.resolution_options.global_variables,
             inject_root_as=self.resolution_options.inject_root_as,
@@ -1076,8 +1076,23 @@ class _ValueNode(_Node):
         else:
             return result
 
-    def _convert(self, value, type_) -> _types.ConfigurationValue:
-        """convert the configuration value into its final type."""
+    def _convert(self, value, type_: str) -> _types.ConfigurationValue:
+        """convert the configuration value into its final type.
+
+        Parameters
+        ----------
+        value : ConfigurationValue
+            The value to convert.
+
+        type_ : str
+            The expected type of the value. Should be one of the valid value types.
+
+        Returns
+        -------
+        ConfigurationValue
+            The converted value.
+
+        """
         converters = self.resolution_options.converters
 
         try:
@@ -1154,6 +1169,33 @@ class _FunctionCallNode(_Node):
         # in order to detect circular references.
         self._evaluated = _FunctionCallNode.UNDISCOVERED
 
+    def _make_resolver(self) -> _types.Resolver:
+        """Make a "resolver" function that can be used by functions to resolve configs.
+
+        This enables advanced use cases like using a function to implement for-loops.
+        This function satisfies the _types.Resolver protocol.
+
+        """
+
+        def resolver(
+            configuration: _types.Configuration,
+            schema: Optional[_types.Schema] = None,
+            local_variables: Optional[Mapping[str, _types.Configuration]] = None,
+        ) -> _types.Configuration:
+            if schema is None:
+                schema = self.schema
+            node = _make_node(
+                configuration,
+                schema,
+                self.resolution_options,
+                parent=self,
+                keypath=self.keypath,
+                local_variables=local_variables,
+            )
+            return node.resolve()
+
+        return resolver
+
     def evaluate(self) -> Union[_DictNode, _ListNode, _ValueNode]:
         """Evaluate the function, returning a _DictNode, _ListNode, or _ValueNode.
 
@@ -1165,12 +1207,16 @@ class _FunctionCallNode(_Node):
         if self._evaluated is _FunctionCallNode.PENDING:
             raise ResolutionError("Circular reference", self.keypath)
 
+        # if the function has already been evaluated, return the cached result
         if self._evaluated is not _FunctionCallNode.UNDISCOVERED:
             assert isinstance(self._evaluated, (_DictNode, _ListNode, _ValueNode))
             return self._evaluated
 
+        # at this point, we're evaluating the function for the first time
         self._evaluated = _FunctionCallNode.PENDING
 
+        # if the function wants its input to be resolved, we resolve it by creating
+        # a node out of its input configuration and resolving it
         if self.function.resolve_input:
             input_node = _make_node(
                 self.input,
@@ -1189,33 +1235,20 @@ class _FunctionCallNode(_Node):
         assert isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode))
         root = _make_unresolved_container(self.root)
 
-        # make a "resolve" function that can be used by the function to resolve
-        # configurations. This enables advanced use cases like using a function
-        # to implement for-loops.
-        def resolve(
-            configuration: _types.Configuration,
-            schema: Optional[_types.Schema] = None,
-            local_variables: Optional[Mapping[str, _types.Configuration]] = None,
-        ) -> _types.Configuration:
-            if schema is None:
-                schema = self.schema
-            node = _make_node(
-                configuration,
-                schema,
-                self.resolution_options,
-                parent=self,
-                keypath=self.keypath,
-                local_variables=local_variables,
-            )
-            return node.resolve()
+        # create the resolver function that the function can use to resolve
+        # configurations
+        resolver = self._make_resolver()
 
         args = _types.FunctionArgs(
-            input, root, self.keypath, self.resolution_options, resolve, self.schema
+            input, root, self.keypath, self.resolution_options, resolver, self.schema
         )
 
         # evaluate the function itself
         output = self.function(args)
 
+        # turn the output into a node; for one, this enables functions to return
+        # function calls, which will be evaluated recursively. for another, this
+        # allows the schema to be enforced on the output of the function.
         result = _make_node(
             output,
             self.schema,
@@ -1306,10 +1339,11 @@ def _make_node(
         else:
             raise ResolutionError("Unexpectedly null.", keypath)
 
-    elif isinstance(cfg, dict):
-        # construct the configuration tree. the configuration tree is a nested container
-        # whose terminal leaf values are _ValueNodes. "Internal" nodes are dictionaries or
-        # lists.
+    # construct the configuration tree. the configuration tree is a nested container
+    # whose terminal leaf values are _ValueNodes. "Internal" nodes are dictionaries or
+    # lists.
+    if isinstance(cfg, dict):
+        # dictionaries require a little extra care, since they could be function calls
 
         # check if this is a function call
         try:

@@ -192,7 +192,26 @@ def let(args: FunctionArgs) -> Configuration:
         - ``in``: the configuration in which the local variables are available
 
     """
+    if not isinstance(args.input, dict):
+        raise ResolutionError("Input to 'let' must be a dictionary.", args.keypath)
+
+    if "in" not in args.input or "variables" not in args.input:
+        raise ResolutionError(
+            "Input to 'let' must be a dictionary with keys 'variables' and 'in'.",
+            args.keypath,
+        )
+
+    if not isinstance(args.input["variables"], dict):
+        raise ResolutionError(
+            "The value of 'variables' in 'let' must be a dictionary.", args.keypath
+        )
+
     local_variables = args.resolve(args.input["variables"], schema={"type": "any"})
+
+    if not isinstance(local_variables, dict):
+        raise ResolutionError(
+            "The value of 'in' in 'let' must be a dictionary.", args.keypath
+        )
 
     return args.resolve(args.input["in"], local_variables=local_variables)
 
@@ -210,11 +229,30 @@ def loop(args: FunctionArgs) -> Configuration:
           copy will be made for each element in the list.
 
     """
+
+    if (
+        not isinstance(args.input, dict)
+        or "variable" not in args.input
+        or "over" not in args.input
+        or "in" not in args.input
+    ):
+        raise ResolutionError(
+            "Input to 'loop' must be a dictionary with keys 'variable', 'over' and 'in'.",
+            args.keypath,
+        )
+
     over = args.resolve(
         args.input["over"], schema={"type": "list", "element_schema": {"type": "any"}}
     )
 
+    if not isinstance(over, list):
+        raise ResolutionError(
+            "The value of 'over' in 'loop' must be a list.", args.keypath
+        )
+
     element_schema = args.schema["element_schema"]
+
+    assert isinstance(args.input["variable"], str)
 
     result = []
     for element in over:

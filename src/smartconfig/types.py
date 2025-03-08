@@ -240,7 +240,7 @@ class UnresolvedFunctionCall(abc.ABC):
 # functions ============================================================================
 
 
-class ResolverFunction(Protocol):
+class Resolver(Protocol):
     """A function that resolves a configuration.
 
     This is a callable that takes a configuration and returns a resolved configuration.
@@ -272,7 +272,7 @@ class FunctionArgs:
     resolution_options: "ResolutionOptions"
 
     #: A function that resolves a configuration.
-    resolve: ResolverFunction
+    resolve: Resolver
 
     #: The schema that the result of the function is expected to conform to.
     schema: "Schema"
