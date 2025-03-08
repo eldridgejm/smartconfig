@@ -1,52 +1,126 @@
-"""Provides the resolve() function.
+"""Provides the resolve() function and does the real work of resolving configurations.
 
-This module does the heavy-lifting of resolving configurations.
+Here, we describe the implementation details of the resolve() function. For instructions
+on how to use resolve(), refer to the documentation.
 
-We describe the implementation details of the resolve() function here. For instructions
-on how to use it, see the main documentation.
+Background
+==========
 
-Approach
-========
+In smartconfig, a *configuration* is either:
 
-In the documentation, it is described how a configuration can be interpreted as a
-directed "configuration graph", and how config resolution is a depth-first search on
-this graph. This module works by building a concrete representation of the configuration
-graph and performing that traversal.
+- a dictionary whose keys are strings and values are configurations,
+- a list whose elements are configurations, or
+- a simple value (string, integer, float, boolean, date, datetime, or None).
 
-Each node in the graph is represented by one of four node classes: _DictNode, _ListNode,
-_ValueNode, and _FunctionCallNode. Each has a .resolve() method that recursively
-resolves the node and its children. Each node also has a corresponding
-.from_configuration() method that constructs the node from a configuration of the
-appropriate type -- e.g., _DictNode.from_configuration() builds a _DictNode from a
-dictionary, _ListNode.from_configuration() builds a _ListNode from a list, etc. The
-exception is a _FunctionCallNode, which has no .from_configuration() method because it
-is easy enough to create using its constructor.
+The purpose of `smartconfig` is to allow configurations to contain dynamic elements that
+are resolved at runtime, such as references to other parts of the configuration,
+arithmetic expressions, or function calls. The resolve() function takes in an unresolved
+configuration and "resolves" it into a resolved configuration by following all
+references, evaluating all expressions, and calling all functions.
 
-The creation of the tree is orchestrated by the _make_node() function, whose job is to
-take an arbitrary configuration and determine which node class represents it. This
-function is called with the whole configuration to create the root node, and is also
-called by the container node classes to create their children. _make_node() is also
-responsible for detecting when a dictionary represents a function call and creating a
-_FunctionCallNode in that case.
+Internal Representation of Configurations
+=========================================
 
-The main function, resolve(), is a thin wrapper around the root node's .resolve()
-method. It constructs the root node using _make_node(), calls .resolve() on it, and
-returns the result.
+Because configurations are naturally hierarchical, it is useful to think of them as
+*configuration trees*. The internal nodes of the tree are dictionaries and lists, and
+the leaves are simple values.
+
+Value nodes can contain references to other nodes in the configuration tree. If we
+represent these references with "cross-edges" between nodes, our configuration tree
+becomes a *configuration graph*. An edge in this graph captures a dependency: the
+successor node must be resolved before the predecessor node.
+
+This module represents the configuration internally as a configuration tree/graph. It
+defines _DictNode, _ListNode, and _ValueNode types, as well as the _FunctionCallNode
+type for representing dynamic function calls. The creation of the tree/graph is
+orchestrated by the _make_node() function, whose job is to take an arbitrary
+configuration and determine which node class should be used to represents. This function
+is called with the whole configuration to create the root node, and is also called by
+the container node classes to create their children. _make_node() is responsible for
+detecting when a dictionary represents a function call and creating a _FunctionCallNode
+in that case.
+
+Resolution
+==========
+
+Each of the node types listed above implements a `.resolve()` method that recursively
+resolves the node into a resolved configuration; these methods do the actual work of
+resolving the configuration. The resolve() function is a thin wrapper around the root
+which:
+
+    1. Constructs the root node using _make_node(),
+    2. Calls .resolve() on the root node, effectively performing a depth-first traversal
+       of the graph, resolving it as it goes and returning the result.
+
+Much of the real work happens when a _ValueNode is resolved. The resolution of a
+_ValueNode involves two steps:
+
+    1. String interpolation: If the value is a string, it is passed to Jinja2 for string
+       interpolation, as discussed in the "String Interpolation with Jinja2" section
+       below.
+
+    2. Conversion: The resolved string is then converted to the expected type using the
+       appropriate converter as determined by the schema.
+
+There are a few details about resolution that deserve further explanation:
 
 String Interpolation with Jinja2
-================================
+--------------------------------
 
-String interpolation (like in "${foo.bar}") is delegated to Jinja2. During the
-resolution of a _ValueNode representing a string, the string is passed to Jinja2 for
-interpolation. Other parts of the configuration tree are made available to Jinja2 as
-template variables. Typically, this is done by passing a dictionary to Jinja2's render()
-method. However, we cannot pass the fully-resolved configuration tree at the time of
-interpolation, because it hasn't been fully resolved at that point. Instead, the root of
-the configuration tree is passed as an "unresolved" container -- either an
-_UnresolvedDict, _UnresolvedList, or _UnresolvedFunctionCall. When an element of one of
-these containers is accessed, the resolution process is triggered for that element if it
-is a function node or a value node. Otherwise, another unresolved collection is
-returned.
+String interpolation (like of "${foo.bar}") is delegated to Jinja2.
+
+During the resolution of a _ValueNode representing a string, the string is passed to
+Jinja2 for interpolation. When Jinja encounters a reference of the form "${foo.bar}", it
+looks for "foo" in a custom context object that searches three sources, in this order:
+
+    1. Local variables. Each node in the configuration tree can have a dictionary of
+    local variables. These variables are available when resolving any leaf node in its
+    subtree. For more information, see the "Local Variables" section below.
+
+    2. Root. If the reference is not found in the local variables, Jinja2 looks for it
+    in the root of the configuration tree. For more information, see the "Root
+    Container" section below.
+
+    3. Global variables. If the reference is not found in the root of the configuration,
+    Jinja2 looks for it in a dictionary of global variables that can be passed to the
+    resolve() function.
+
+Local Variables
+~~~~~~~~~~~~~~~
+
+When Jinja2 encounters a reference like "${foo.bar}", it looks for "foo" in the custom
+context; in turn, the custom context first searches for "foo" in the "local variables".
+
+The local variables are attached to the nodes in the configuration tree. Each node in
+the tree carries a `.local_variables` attribute; this is a dictionary of variables that
+can be accessed during the resolution of any value node in the subtree rooted at that
+node. This is useful for passing information down the tree. For example, a function node
+might set a variable in its local variables that can be accessed by its children.
+
+In addition, each node type provides a `.get_local_variable()` method to retrieve a
+variable from the node or its ancestors. Calling `.get_local_variable(key)` on a value
+node will search up the tree for the first occurrence of the key, returning its value or
+raising a KeyError if the key is not found.
+
+Root Container
+~~~~~~~~~~~~~~
+
+When Jinja2 encounters a reference like "${foo.bar}", it looks for "foo" using the
+custom context. If the context does not find "foo" in the local variables, it then
+searches for it in the root of the configuration tree. Assuming that "${foo.bar}" is a
+valid reference to another part of the configuration tree, we expect the root node
+to either be a dictionary containing a key "foo" or a function call that evaluates to a
+dictionary containing a key "foo".
+
+At the moment that Jinja2 is performing string interpolation, resolution of the
+configuration is in-progress. For this reason, we do not have access to the
+fully-resolved dictionary at the root of the configuration at that time, and so we can't
+simply look up the value of "foo" within that dictionary. Instead, we represent the root
+as an "unresolved" container: either an _UnresolvedDict, _UnresolvedList, or
+_UnresolvedFunctionCall, depending on the type of the root node. When an element of one
+of these containers is accessed, the resolution process is triggered for that element if
+it is a function node or a value node. Otherwise, another unresolved collection is
+returned. This prevents circular references from causing infinite loops.
 
 Worked Example
 ==============
@@ -81,12 +155,12 @@ With schema:
 When resolve() is called on this configuration, the following major steps occur:
 
     1. resolve() calls _make_node() to create the root node, which in this case a
-       _DictNode. _make_node() delegates this to _DictNode.from_configuration(). This
-       class method creates the children of the node, calling _make_node() on each
-       child. The process continues recursively, and at the end the root node will
-       contain two children: a _ValueNode representing the "${bar.baz}" string and a
-       _DictNode representing the "bar" dictionary. This _DictNode has one child: a
-       _ValueNode representing the number 42.
+       _DictNode. _make_node() delegates the creation of this node to
+       _DictNode.from_configuration(). This class method also creates the children of
+       the node, calling _make_node() on each child. The process continues recursively,
+       and at the end the root node will contain two children: a _ValueNode representing
+       the "${bar.baz}" string and a _DictNode representing the "bar" dictionary. This
+       _DictNode has one child: a _ValueNode representing the number 42.
 
     2. resolve() calls .resolve() on the root node. Because the root node is a
        _DictNode, resolving it amounts to calling the .resolve() method on each of its
@@ -94,22 +168,22 @@ When resolve() is called on this configuration, the following major steps occur:
 
     3. Because the "foo" child is a _ValueNode representing a string, its .resolve()
        method begins by interpolating the string using Jinja2. Before interpolation, the
-       Jinja2 environment is set up to allow access to the root of the configuration
-       tree. More precisely, because the root node is a _DictNode, an instance of
-       _UnresolvedDict is created wrapping the root node. A custom Jinja2 context class
-       is made by overriding the .resolve_or_missing() method to look up keys in the
-       _UnresolvedDict first, falling back to the default behavior of searching
-       the template variables if the variable is not found.
+       a custom Jinja2 context is created which searches through local variables first,
+       then the root, and then through the global variables. More precisely, because the
+       root node is a _DictNode, an instance of _UnresolvedDict is created wrapping the
+       root node, and this is passed to Jinja2 as part of the custom context.
 
     4. Jinja2 begins interpolating the string. It sees the reference to ${bar.baz} and
-       looks up "bar" in the context. The overridden .resolve_or_missing() method first
-       attempts to get the "bar" key from the _UnresolvedDict. The _UnresolvedDict
-       recognizes the key as a reference to a child node of type _DictNode, and so it
-       returns a new _UnresolvedDict wrapping the child node. Jinja2 next looks up "baz"
-       in this new _UnresolvedDict. This time, the _UnresolvedDict recognizes the key as
-       a reference to a child _ValueNode, and so it triggers the resolution of the child
-       node by calling its .resolve() method. Interpolation of the string pauses
-       momentarily while the child node is resolved.
+       looks up "bar" in the context. The context searches the local variables first,
+       but seeing as there are none, it then looks up "bar" in the root of the
+       configuration tree (which is an _UnresolvedDict wrapping the _DictNode
+       representing the root). The _UnresolvedDict recognizes the key as a reference to
+       a child node of type _DictNode, and so it returns a new _UnresolvedDict wrapping
+       the child node. Jinja2 next looks up "baz" in this new _UnresolvedDict. This
+       time, the _UnresolvedDict recognizes the key as a reference to a child
+       _ValueNode, and so it triggers the resolution of the child node by calling its
+       .resolve() method. Interpolation of the string pauses momentarily while the child
+       node is resolved.
 
     5. When .resolve() is called on the _ValueNode representing the number 42,
        interpolation is skipped since the contained value is not a string. The schema
@@ -119,9 +193,9 @@ When resolve() is called on this configuration, the following major steps occur:
     6. Jinja resumes interpolating the string, replacing ${bar.baz} with the resolved
        value of 42. The string is now "42 + 1".
 
-    7. The schema expects the value of "foo" to be an integer, so the arithmetic converter
-       is called on the string "42 + 1", and the result (43) is returned. This is the
-       resolved value of the "foo" key.
+    7. The schema expects the value of "foo" to be an integer, so the arithmetic
+       converter is called on the string "42 + 1", and the result (43) is returned. This
+       is the resolved value of the "foo" key.
 
     8. Now that "foo" has been resolved, the code backtracks to the _DictNode's
        .resolve() method, which then attempts to resolve the "bar" child. This is a
@@ -681,17 +755,7 @@ class _DictNode(_Node):
 
     def resolve(self) -> _types.ConfigurationDict:
         """Recursively resolve the _DictNode into a ConfigurationDict."""
-        # first, we evaluate all function call nodes contained in the dictionary
-        for key, child_node in self.children.items():
-            if isinstance(child_node, _FunctionCallNode):
-                self.children[key] = child_node.evaluate()
-
-        result = {}
-        for key, child_node in self.children.items():
-            assert isinstance(child_node, (_DictNode, _ListNode, _ValueNode))
-            result[key] = child_node.resolve()
-
-        return result
+        return {key: child_node.resolve() for key, child_node in self.children.items()}
 
 
 # _ListNode ----------------------------------------------------------------------------
@@ -763,17 +827,7 @@ class _ListNode(_Node):
 
     def resolve(self) -> _types.ConfigurationList:
         """Recursively resolve the ListNode into a ConfigurationList."""
-        # first, we evaluate all function nodes contained in the list
-        for i, child_node in enumerate(self.children):
-            if isinstance(child_node, _FunctionCallNode):
-                self.children[i] = child_node.evaluate()
-
-        result = []
-        for child_node in self.children:
-            assert isinstance(child_node, (_DictNode, _ListNode, _ValueNode))
-            result.append(child_node.resolve())
-
-        return result
+        return [child_node.resolve() for child_node in self.children]
 
 
 # _ValueNode ---------------------------------------------------------------------------
