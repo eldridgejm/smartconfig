@@ -1,5 +1,6 @@
 from smartconfig import resolve, exceptions
 from smartconfig import functions
+from smartconfig.types import Function
 
 from pytest import raises
 
@@ -878,6 +879,23 @@ def test_if_raises_if_keys_are_not_condition_then_else():
         assert "must be a dictionary with keys" in str(exc.value)
 
 
+def test_if_raises_if_input_is_not_a_dict():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {
+        "__if__": "not a dictionary",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"if": functions.if_})
+
+    assert "Input to 'if' must be a dictionary." in str(exc.value)
+
+
 # let ==================================================================================
 
 
@@ -1002,6 +1020,107 @@ def test_local_variables_are_given_priority_over_global_variables():
     assert resolved == 5
 
 
+def test_let_raises_if_input_is_not_a_dict():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {
+        "__let__": "not a dictionary",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"let": functions.let})
+
+    assert "Input to 'let' must be a dictionary." in str(exc.value)
+
+
+def test_let_raises_if_does_not_contain_keys_variables_and_in():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {
+        "__let__": {"x": 3},
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"let": functions.let})
+
+    assert "must be a dictionary with keys" in str(exc.value)
+
+
+def test_let_raises_if_variables_is_not_a_dict():
+    # given
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {
+        "__let__": {"variables": "not a dictionary", "in": 3},
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"let": functions.let})
+
+    assert "must be a dictionary" in str(exc.value)
+
+
+def test_let_with_variables_that_are_resolved_from_a_function():
+    # given
+    @Function.new()
+    def variables(_):
+        return {"x": 3, "y": 4}
+
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {
+        "__let__": {
+            "variables": {"__variables__": {}},
+            "in": "${x} + ${y}",
+        }
+    }
+
+    # when
+    resolved = resolve(
+        cfg, schema, functions={"let": functions.let, "variables": variables}
+    )
+
+    # then
+    assert resolved == 7
+
+
+def test_let_raises_if_variables_do_not_resolve_to_a_dict():
+    # given
+    @Function.new()
+    def variables(_):
+        return 42
+
+    schema = {
+        "type": "integer",
+    }
+
+    cfg = {
+        "__let__": {
+            "variables": {"__variables__": {}},
+            "in": "${x} + ${y}",
+        }
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"let": functions.let, "variables": variables})
+
+    assert "must be a dictionary" in str(exc.value)
+
+
 # loop =================================================================================
 
 
@@ -1115,6 +1234,88 @@ def test_loop_producing_list_of_dicts():
     ]
 
 
+def test_loop_raises_if_input_is_not_a_dict():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "dict",
+            "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+        },
+    }
+
+    cfg = {
+        "__loop__": "not a dictionary",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"loop": functions.loop})
+
+    assert "must be a dictionary" in str(exc.value)
+
+
+def test_loop_raises_if_does_not_contain_keys_variable_over_and_in():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "dict",
+            "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+        },
+    }
+
+    cfg = {
+        "__loop__": {"x": 3},
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"loop": functions.loop})
+
+    assert "must be a dictionary with keys" in str(exc.value)
+
+
+def test_loop_with_function_returning_over():
+    def over(_):
+        return [1, 2, 3]
+
+    # given
+    schema = {"type": "list", "element_schema": {"type": "integer"}}
+
+    cfg = {
+        "__loop__": {"variable": "x", "over": {"__over__": {}}, "in": "${x} + 1"},
+    }
+
+    # when
+    resolved = resolve(cfg, schema, functions={"loop": functions.loop, "over": over})
+
+    # then
+    assert resolved == [2, 3, 4]
+
+
+def test_loop_raises_if_value_of_over_does_not_resolve_to_a_list():
+    def over(_):
+        return 42
+
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "dict",
+            "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+        },
+    }
+
+    cfg = {
+        "__loop__": {"variable": "x", "over": {"__over__": {}}, "in": {"x": 1, "y": 2}},
+    }
+
+    # when
+    with raises(exceptions.ResolutionError):
+        resolve(cfg, schema, functions={"loop": functions.loop, "over": over})
+
+
 # dict_from_items ======================================================================
 
 
@@ -1223,6 +1424,48 @@ def test_dict_from_items_generated_within_loop_checks_schema_for_required_keys()
     assert "missing required key" in str(exc.value)
 
 
+def test_dict_from_items_raises_if_input_is_not_a_list():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {
+        "__dict_from_items__": "not a list",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError):
+        resolve(dct, schema, functions={"dict_from_items": functions.dict_from_items})
+
+
+def test_dict_from_items_raises_if_input_is_not_a_list_of_dicts_each_with_keys_key_and_value():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+        },
+    }
+
+    dct = {
+        "__dict_from_items__": [
+            {"key": "foo", "value": 42},
+            {"key": "bar", "value": 42},
+            "not a dictionary",
+        ]
+    }
+
+    # when
+    with raises(exceptions.ResolutionError):
+        resolve(dct, schema, functions={"dict_from_items": functions.dict_from_items})
+
+
 # zip ==================================================================================
 
 
@@ -1283,6 +1526,49 @@ def test_zip_three_lists():
     ]
 
 
+def test_zip_raises_if_input_is_not_a_list_of_lists():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "list",
+            "element_schema": {"type": "integer"},
+        },
+    }
+
+    dct = {
+        "__zip__": [
+            [1, 2, 3],
+            4,
+        ]
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"zip": functions.zip_})
+
+    assert "Input to 'zip' must be a list of lists." in str(exc.value)
+
+
+def test_zip_raises_if_input_is_empty():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "list",
+            "element_schema": {"type": "integer"},
+        },
+    }
+
+    dct = {"__zip__": []}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"zip": functions.zip_})
+
+    assert "Input to 'zip' must be a non-empty list of lists." in str(exc.value)
+
+
 # filter ===============================================================================
 
 
@@ -1306,6 +1592,44 @@ def test_filter_simple_example():
 
     # then
     assert resolved == [2, 4, 5]
+
+
+def test_filter_raises_if_input_is_not_a_dict():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    dct = {
+        "__filter__": "not a dictionary",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"filter": functions.filter_})
+
+    assert "must be a dictionary" in str(exc.value)
+
+
+def test_filter_raises_if_value_of_iterable_does_not_resolve_to_a_list():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    dct = {
+        "__filter__": {
+            "iterable": 42,
+            "variable": "x",
+            "condition": "${x % 2 == 0}",
+        }
+    }
+
+    # when
+    with raises(exceptions.ResolutionError):
+        resolve(dct, schema, functions={"filter": functions.filter_})
 
 
 # range ================================================================================
@@ -1394,3 +1718,62 @@ def test_range_with_step_of_3():
 
     # then
     assert resolved == [1, 4, 7]
+
+
+def test_range_raises_if_input_is_not_a_dict():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    dct = {
+        "__range__": "not a dictionary",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"range": functions.range_})
+
+    assert "must be a dictionary" in str(exc.value)
+
+
+def test_range_raises_if_stop_is_not_provided():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    dct = {
+        "__range__": {
+            "start": 1,
+        }
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"range": functions.range_})
+
+    assert "with a key 'stop'" in str(exc.value)
+
+
+def test_range_raises_if_non_integer_values_are_provided():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    dct = {
+        "__range__": {
+            "start": 1,
+            "stop": 3.2,
+        }
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(dct, schema, functions={"range": functions.range_})
+
+    assert "must be integers" in str(exc.value)

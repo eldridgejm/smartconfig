@@ -193,7 +193,7 @@ def let(args: FunctionArgs) -> Configuration:
 
     if not isinstance(local_variables, dict):
         raise ResolutionError(
-            "The value of 'in' in 'let' must be a dictionary.", args.keypath
+            "The value of 'variables' in 'let' must be a dictionary.", args.keypath
         )
 
     return args.resolve(args.input["in"], local_variables=local_variables)
@@ -228,14 +228,14 @@ def loop(args: FunctionArgs) -> Configuration:
         args.input["over"], schema={"type": "list", "element_schema": {"type": "any"}}
     )
 
+    element_schema = args.schema["element_schema"]
+
+    assert isinstance(args.input["variable"], str)
+
     if not isinstance(over, list):
         raise ResolutionError(
             "The value of 'over' in 'loop' must be a list.", args.keypath
         )
-
-    element_schema = args.schema["element_schema"]
-
-    assert isinstance(args.input["variable"], str)
 
     result = []
     for element in over:

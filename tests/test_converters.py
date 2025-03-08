@@ -217,6 +217,11 @@ def test_smartdate_given_a_datetime_object_simplifies_it_to_date():
     ) == datetime.date(2021, 10, 5)
 
 
+def test_smartdate_raises_if_invalid_day_of_the_week_is_given():
+    with raises(ConversionError):
+        converters.smartdate("first foo after 2021-09-14")
+
+
 # smartdatetime ========================================================================
 
 

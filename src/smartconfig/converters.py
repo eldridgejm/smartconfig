@@ -377,11 +377,6 @@ def smartdate(value: Any) -> datetimelib.date:
     if isinstance(value, datetimelib.date):
         return value
 
-    if not isinstance(value, str):
-        raise exceptions.ConversionError(
-            f"Cannot convert type {type(value)} into date."
-        )
-
     try:
         return datetimelib.datetime.fromisoformat(value).date()
     except ValueError:
@@ -438,11 +433,6 @@ def smartdatetime(value: Any) -> datetimelib.datetime:
     if isinstance(value, datetimelib.date):
         raise exceptions.ConversionError(
             f"Cannot implicitly convert date '{value}' into datetime.",
-        )
-
-    if not isinstance(value, str):
-        raise exceptions.ConversionError(
-            f"Cannot convert type {type(value)} into datetime."
         )
 
     try:
