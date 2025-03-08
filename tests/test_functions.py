@@ -1,3 +1,5 @@
+import datetime
+
 from smartconfig import resolve, exceptions
 from smartconfig import functions
 from smartconfig.types import Function
@@ -894,6 +896,40 @@ def test_if_raises_if_input_is_not_a_dict():
         resolve(cfg, schema, functions={"if": functions.if_})
 
     assert "Input to 'if' must be a dictionary." in str(exc.value)
+
+
+def test_if_with_dates_in_comparison():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "date_a": {"type": "date"},
+            "date_b": {"type": "date"},
+            "most_recent": {"type": "date"},
+        },
+    }
+
+    cfg = {
+        "date_a": "2021-10-05",
+        "date_b": "2021-10-06",
+        "most_recent": {
+            "__if__": {
+                "condition": "${date_a > date_b}",
+                "then": "${date_a}",
+                "else": "${date_b}",
+            }
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, schema, functions={"if": functions.if_})
+
+    # then
+    assert resolved == {
+        "date_a": datetime.date(2021, 10, 5),
+        "date_b": datetime.date(2021, 10, 6),
+        "most_recent": datetime.date(2021, 10, 6),
+    }
 
 
 # let ==================================================================================
