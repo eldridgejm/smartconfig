@@ -1,6 +1,6 @@
 [project]
 name = "smartconfig"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add smart functionality to configuration files."
 readme = "README.md"
 authors = [
