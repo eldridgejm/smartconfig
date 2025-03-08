@@ -1002,7 +1002,7 @@ def test_local_variables_are_given_priority_over_global_variables():
     assert resolved == 5
 
 
-# loop
+# loop =================================================================================
 
 
 def test_loop_over_a_list():
@@ -1081,3 +1081,143 @@ def test_nested_loop():
             {"x": 2, "y": 4},
         ],
     ]
+
+
+def test_loop_producing_list_of_dicts():
+    # given
+    schema = {
+        "type": "list",
+        "element_schema": {
+            "type": "dict",
+            "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+        },
+    }
+
+    cfg = {
+        "__loop__": {
+            "variable": "pair",
+            "over": [(1, 2), (3, 4), (5, 6)],
+            "in": {
+                "x": "${pair[0]}",
+                "y": "${pair[1]}",
+            },
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, schema, functions={"loop": functions.loop})
+
+    # then
+    assert resolved == [
+        {"x": 1, "y": 2},
+        {"x": 3, "y": 4},
+        {"x": 5, "y": 6},
+    ]
+
+
+# dict_from_items ======================================================================
+
+
+def test_dict_from_items_simple_example():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "string"},
+        },
+    }
+
+    dct = {
+        "__dict_from_items__": [
+            {"key": "foo", "value": 42},
+            {
+                "key": "bar",
+                "value": "hello",
+            },
+        ]
+    }
+
+    # when
+    resolved = resolve(
+        dct, schema, functions={"dict_from_items": functions.dict_from_items}
+    )
+
+    # then
+    assert resolved == {"foo": 42, "bar": "hello"}
+
+
+def test_dict_from_items_generated_within_loop():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+            "baz": {"type": "integer"},
+        },
+    }
+
+    dct = {
+        "__dict_from_items__": {
+            "__loop__": {
+                "variable": "pair",
+                "over": [("foo", 1), ("bar", 2), ("baz", 3)],
+                "in": {
+                    "key": "${pair[0]}",
+                    "value": "${pair[1]}",
+                },
+            }
+        }
+    }
+
+    # when
+    resolved = resolve(
+        dct,
+        schema,
+        functions={
+            "dict_from_items": functions.dict_from_items,
+            "loop": functions.loop,
+        },
+    )
+
+    # then
+    assert resolved == {"foo": 1, "bar": 2, "baz": 3}
+
+
+def test_dict_from_items_generated_within_loop_checks_schema_for_required_keys():
+    # given
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+            "bar": {"type": "integer"},
+            "baz": {"type": "integer"},
+        },
+    }
+
+    dct = {
+        "__dict_from_items__": {
+            "__loop__": {
+                "variable": "pair",
+                "over": [("foo", 1), ("bar", 2), ("no!", 3)],
+                "in": {
+                    "key": "${pair[0]}",
+                    "value": "${pair[1]}",
+                },
+            }
+        }
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(
+            dct,
+            schema,
+            functions={
+                "dict_from_items": functions.dict_from_items,
+                "loop": functions.loop,
+            },
+        )
+
+    assert "Missing required key." in str(exc.value)

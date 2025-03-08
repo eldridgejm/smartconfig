@@ -263,3 +263,42 @@ def loop(args: FunctionArgs) -> Configuration:
             )
         )
     return result
+
+
+@Function.new(resolve_input=False)
+def dict_from_items(args: FunctionArgs) -> ConfigurationDict:
+    """Creates a dictionary from a list of key-value pairs.
+
+    ``args.input`` should be a list of dictionaries with two keys: `key`
+    and `value`.
+
+    """
+    input_ = args.resolve(
+        args.input,
+        schema={
+            "type": "list",
+            "element_schema": {
+                "type": "dict",
+                "required_keys": {"key": {"type": "any"}, "value": {"type": "any"}},
+            },
+        },
+    )
+
+    if not isinstance(input_, list):
+        raise ResolutionError(
+            "Input to 'dict_from_items' must be a list of dictionaries with keys 'key' and 'value'.",
+            args.keypath,
+        )
+
+    dct = {}
+
+    for item in input_:
+        if not isinstance(item, dict) or set(item.keys()) != {"key", "value"}:
+            raise ResolutionError(
+                "Input to 'dict_from_items' must be a list of dictionaries with keys 'key' and 'value'.",
+                args.keypath,
+            )
+
+        dct[item["key"]] = item["value"]
+
+    return dct
