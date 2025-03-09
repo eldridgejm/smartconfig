@@ -1,9 +1,9 @@
 smartconfig
 ===========
 
-`smartconfig` is a Python library for extending configuration formats like JSON,
-YAML, TOML, and others with "smart" features, such as string interpolation, natural
-language parsing, and type validation.
+`smartconfig` is a Python library that extends configuration formats like JSON,
+YAML, TOML, and others with "smart" features, such as string interpolation,
+natural language parsing, type validation, function calls, and control flow.
 
 Use Cases and Example
 ---------------------
