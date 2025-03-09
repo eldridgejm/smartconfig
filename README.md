@@ -16,16 +16,31 @@ Python programs that require user configuration often use simple configuration f
 {
     "course_name": "Introduction to Python",
     "date_of_first_lecture": "2025-01-10",
-    "date_of_first_discussion": "7 days after ${date_of_first_lecture}",
+    "date_of_first_discussion": "3 days before ${first_lecture}",
     "message": [
         "Welcome to ${course_name}!",
-        "The first lecture is on ${date_of_first_lecture}.",
-        "The first discussion is on ${date_of_first_discussion}."
+        "The first lecture is on ${first_lecture}.",
+        "The first discussion is on ${first_discussion}.",
+        {
+            "__if__": {
+                "condition": "${first_discussion < first_lecture}",
+                "then": "Note! The first discussion is before the first lecture.",
+                "else": "The first discussion is after the first lecture."
+            }
+        }
     ]
 }
 ```
 
-Notice the use of the `${...}` syntax to refer to other values in the configuration file and the fact that the `date_of_first_discussion` key is defined relative to the `date_of_first_lecture` key; neither of these are features in standard JSON parsers. Of course, if we try to load this configuration file using Python's `json` module, we will not see anything special happen; the references will not be resolved.
+Notice the use of the `${...}` syntax to refer to other values in the
+configuration file and that the `date_of_first_discussion` key is defined
+relative to the `date_of_first_lecture` key using natural language. There is
+also a conditional which checks if the date of the first discussion is before
+the date of the first lecture and formats the message accordingly.
+
+None of these features are provided by standard JSON parsers. Of course, if we
+try to load this configuration file using Python's `json` module, we will not
+see anything special happen; the references will not be resolved.
 
 Now let's use `smartconfig` to "resolve" the configuration:
 
@@ -56,19 +71,19 @@ print(result)
 We will see the following output:
 
 ```python
-{
-    'course_name': 'Introduction to Python',
-    'date_of_first_lecture': datetime.date(2025, 1, 10),
-    'date_of_first_discussion': datetime.date(2025, 1, 17),
-    'message': [
-        'Welcome to Introduction to Python!',
-        'The first lecture is on 2025-01-10.',
-        'The first discussion is on 2025-01-17.'
-    ]
-}
+{'course_name': 'Introduction to Python',
+ 'date_of_first_discussion': datetime.date(2025, 1, 7),
+ 'date_of_first_lecture': datetime.date(2025, 1, 10),
+ 'message': ['Welcome to Introduction to Python!',
+             'The first lecture is on 2025-01-10.',
+             'The first discussion is on 2025-01-07.',
+             'Note! The first discussion is before the first lecture.']}
 ```
 
-Notice that the `${...}` references have been resolved, and the date of the first discussion, defined relative to the date of the first lecture in the original JSON, has been calculated correctly.
+Notice that the `${...}` references have been resolved, and the date of the
+first discussion, defined relative to the date of the first lecture in the
+original JSON, has been calculated correctly. The conditional has also
+been evaluated.
 
 This example demonstrates the most basic use case of `smartconfig`: extending simple configuration formats. But `smartconfig` provides many more features that can be used to create powerful and flexible configuration files.
 
