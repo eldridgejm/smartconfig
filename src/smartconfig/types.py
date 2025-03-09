@@ -15,7 +15,6 @@ from typing import (
 import abc
 import dataclasses
 import datetime
-import functools
 
 # configuration type aliases ===========================================================
 
@@ -339,9 +338,10 @@ class Function:
 
         """
 
-        @functools.wraps(cls)
         def decorator(fn: Callable[[FunctionArgs], Configuration]) -> "Function":
-            return cls(fn, resolve_input)
+            result = cls(fn, resolve_input)
+            result.__doc__ = fn.__doc__
+            return result
 
         return decorator
 

@@ -303,5 +303,5 @@ The built-in functions are:
 .. autofunction:: concatenate
 .. autofunction:: zip_
 .. autofunction:: filter_
-.. autofunction:: range
+.. autofunction:: range_
 .. autofunction:: dict_from_items
