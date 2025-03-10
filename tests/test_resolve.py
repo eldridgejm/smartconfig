@@ -2081,7 +2081,7 @@ def test_unresolved_function_get_keypath():
     resolve(dct, schema, functions={"outer": outer, "inner": inner})
 
 
-def test_unresolved_dict_get_keypath_deeper_than_container_raises_keyerrorais():
+def test_unresolved_dict_get_keypath_deeper_than_container_raises_keyerror():
     # given
     schema = {
         "type": "dict",
