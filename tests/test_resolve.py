@@ -1405,7 +1405,7 @@ def test_function_call_with_unknown_function():
     assert "Unknown function" in str(exc.value)
 
 
-def test_function_call_is_given_root_as_lazy_dict_or_list():
+def test_function_call_is_given_root_as_unresolved_dict_or_list():
     # given
     schema = {
         "type": "dict",
