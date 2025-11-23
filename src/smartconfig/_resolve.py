@@ -216,6 +216,7 @@ from typing import (
     List,
     Mapping,
     Optional,
+    TypedDict,
     Union,
 )
 import abc
@@ -331,6 +332,8 @@ class _UnresolvedList(_types.UnresolvedList):
             return _UnresolvedList(child)
         elif isinstance(child, _ValueNode):
             return child.resolve()
+        else:
+            raise TypeError(f"Unexpected node type: {type(child)}")
 
     def __iter__(self):
         for i in range(len(self)):
@@ -505,7 +508,7 @@ class _Node(abc.ABC):
         self.parent = parent
 
         if local_variables is None:
-            self.local_variables = {}
+            self.local_variables: Mapping[str, _types.Configuration] = {}
         else:
             self.local_variables = local_variables
 
@@ -721,7 +724,7 @@ class _DictNode(_Node):
                 "extra_keys_schema": {"type": "any", "nullable": True},
             }
 
-        children = {}
+        children: Dict[str, _ConcreteNode] = {}
 
         # these private functions are used to populate the children of the node. they
         # also enforce the schema by checking that all required keys are present and
@@ -963,7 +966,7 @@ class _ValueNode(_Node):
         else:
             self._resolved = self._safely(self._convert, value, self.type_)
 
-        return self._resolved
+        return typing.cast(_types.ConfigurationValue, self._resolved)
 
     def _make_custom_jinja_context(
         self, global_variables: Mapping[str, Any], inject_root_as: Optional[str] = None
@@ -991,6 +994,9 @@ class _ValueNode(_Node):
         default behavior of looking up the key in the template variables.
 
         """
+        root_container: Union[
+            _UnresolvedDict, _UnresolvedList, _UnresolvedFunctionCall, Dict[str, Any]
+        ]
         if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
             root_container = _make_unresolved_container(self.root)
         else:
@@ -1328,7 +1334,17 @@ def _make_node(
         The root node of the configuration tree.
 
     """
-    common_kwargs = {
+
+    class _CommonKwargs(TypedDict):
+        """Common keyword arguments passed to node constructors in _make_node."""
+
+        resolution_options: _types.ResolutionOptions
+        parent: Optional[_ConcreteNode]
+        keypath: _types.KeyPath
+        local_variables: Optional[Mapping[str, _types.Configuration]]
+        schema: _types.Schema
+
+    common_kwargs: _CommonKwargs = {
         "resolution_options": resolution_options,
         "parent": parent,
         "keypath": keypath,
@@ -1340,8 +1356,7 @@ def _make_node(
         if ("nullable" in schema and schema["nullable"]) or (
             "type" in schema and schema["type"] == "any"
         ):
-            kwargs = common_kwargs.copy()
-            kwargs["schema"] = {"type": "any"}
+            kwargs: _CommonKwargs = {**common_kwargs, "schema": {"type": "any"}}
             return _ValueNode.from_configuration(None, **kwargs)
         else:
             raise ResolutionError("Unexpectedly null.", keypath)
@@ -1399,7 +1414,10 @@ DEFAULT_CONVERTERS = {
 }
 
 # the default functions available to resolve()
-DEFAULT_FUNCTIONS = {
+DEFAULT_FUNCTIONS: Mapping[
+    str,
+    Union[_types.Function, Callable[[_types.FunctionArgs], _types.Configuration]],
+] = {
     "concatenate": _functions.concatenate,
     "dict_from_items": _functions.dict_from_items,
     "filter": _functions.filter_,

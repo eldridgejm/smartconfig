@@ -24,4 +24,5 @@ dev = [
     "sphinxawesome-theme>=5.3.2",
     "sphinxcontrib-mermaid>=1.0.0",
     "ruamel-yaml>=0.18.16",
+    "mypy>=1.18.2",
 ]

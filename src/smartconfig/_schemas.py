@@ -194,7 +194,9 @@ def validate_schema(
         raise _exceptions.InvalidSchemaError("Schema must be a mapping.", keypath)
 
     if "type" not in schema:
-        raise _exceptions.InvalidSchemaError("Required key missing.", keypath + (type,))
+        raise _exceptions.InvalidSchemaError(
+            "Required key missing.", keypath + ("type",)
+        )
 
     args = (schema, keypath, allow_default)
 

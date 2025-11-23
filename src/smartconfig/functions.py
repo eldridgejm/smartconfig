@@ -416,6 +416,8 @@ def dict_from_items(args: FunctionArgs) -> ConfigurationDict:
                 args.keypath,
             )
 
-        dct[item["key"]] = item["value"]
+        key = item["key"]
+        assert isinstance(key, str)
+        dct[key] = item["value"]
 
     return dct
