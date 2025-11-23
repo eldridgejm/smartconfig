@@ -76,3 +76,17 @@ Additionally, `smartconfig` provides the following features to developers:
 
 - **Extensibility**: `smartconfig` is designed to be easily extensible. Developers can define custom type converters, custom functions for complex runtime behavior, and custom filters for transforming values during string interpolation.
 - **Format agnostic**: `smartconfig` can be used with any configuration format that can be loaded into a Python dictionary. This includes JSON, YAML, TOML, and any future format that might be developed.
+
+## Installation
+
+Install directly from GitHub using [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv add git+https://github.com/eldridgejm/smartconfig.git
+```
+
+Or with pip:
+
+```bash
+pip install git+https://github.com/eldridgejm/smartconfig.git
+```

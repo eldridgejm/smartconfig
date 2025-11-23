@@ -157,3 +157,18 @@ Additionally, `smartconfig` provides the following features to developers:
    :caption: Recipes
 
    recipes
+
+Installation
+------------
+
+Install directly from GitHub using `uv <https://docs.astral.sh/uv/>`_:
+
+.. code:: bash
+
+    uv add git+https://github.com/eldridgejm/smartconfig.git
+
+Or with pip:
+
+.. code:: bash
+
+    pip install git+https://github.com/eldridgejm/smartconfig.git

@@ -31,7 +31,7 @@ src/smartconfig/
 ├── __init__.py       # Public API: resolve(), validate_schema(), DEFAULT_*
 ├── _resolve.py       # Core resolution engine (main logic)
 ├── _schemas.py       # Schema validation
-├── converters.py     # Type converters (arithmetic, smartdate, logic)
+├── converters.py     # Type converters (arithmetic, smartdate, smartdatetime, logic)
 ├── functions.py      # Built-in functions (if_, loop, let, filter_, etc.)
 ├── types.py          # Type definitions and protocols
 └── exceptions.py     # Error, InvalidSchemaError, ResolutionError, ConversionError
