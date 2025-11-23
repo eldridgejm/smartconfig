@@ -28,6 +28,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.doctest",
+    "sphinxcontrib.mermaid",
 ]
 
 autodoc_typehints = "signature"

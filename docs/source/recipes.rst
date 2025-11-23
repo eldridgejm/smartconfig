@@ -114,7 +114,7 @@ into a Python object, we can use Jinja2 templates to generate configurations.
 
 In the following example, we provide a custom function called ``read_json`` that parses
 a JSON string into a Python object. We then use Jinja2 templates to generate the JSON
-repreesentation of a list of doubled numbers. When we resolve the configuration, the
+representation of a list of doubled numbers. When we resolve the configuration, the
 ``read_json`` function parses that templated JSON into a Python list.
 
 .. testcode:: python
@@ -166,88 +166,87 @@ The result will be:
     {'doubled_numbers': [2, 4, 6], 'numbers': [1, 2, 3]}
 
 
-.. _recipes_external_variables:
+Recipe 3: Using YAML tags as syntactic sugar for function calls
+---------------------------------------------------------------
 
-Recipe 3: Suggested conventions for including external variables
-----------------------------------------------------------------
+`smartconfig` uses the ``{"__function_name__": argument}`` syntax for function calls.
+While explicit, this can be verbose. If you are using YAML, you can use YAML tags
+to provide a cleaner syntax.
 
-Sometimes you may want to allow a configuration to access "external variables" that have
-been defined elsewhere. For example, your project may include a configuration file at
-its root and many configuration files in subdirectories. You may want the subdirectory
-configurations to be able to refer to variables defined in the root configuration file
-so that they do not need to be duplicated.
+For example, instead of writing:
 
-One way to do this is with the ``global_variables`` argument to :func:`smartconfig.resolve`,
-however, this is to be avoided. This is because the top-level keys of the configuration
-and the keys of the global variables are merged together into the same namespace, which
-can lead to key collisions and unexpected behavior. Rather, the ``global_variables``
-argument should be used for things like global functions that should be available during
-resolution, and whose names are known not to collide with any built-in Jinja2 functions.
+.. code:: yaml
 
-Instead, it is better to combine the configuration with the external variables into one
-dictionary that becomes the new root configuration. The suggested convention is to use a
-"this" key to refer to the configuration currently being processed, and an "vars" key to
-refer to the external variables. Under this convention, internal references that were once
-``${key}`` become ``${this.key}``, and external references that were once ``${key}``
-become ``${vars.key}``, making it more explicit where the value is coming from.
+    doubled:
+        __double__:
+            number: 5
 
-As an example of this, consider the following configuration:
+You could write:
+
+.. code:: yaml
+
+    doubled: !double 5
+
+The idea is simple: whenever we see a YAML tag like ``!double``, we translate it
+into a function call of the form ``{"__double__": <value>}``.
+To achieve this, we can use `ruamel.yaml`'s `add_multi_constructor` to handle any
+tag starting with `!`.
 
 .. testcode:: python
 
-    config = {
-        "course_name": "Introduction to Python",
-        "date_of_first_lecture": "${ vars.date_of_first_lecture }",
-        "date_of_first_discussion": "7 days after ${this.date_of_first_lecture}",
-        "message": [
-            "Welcome to ${this.course_name}!",
-            "The first lecture is on ${this.date_of_first_lecture}.",
-            "The first discussion is on ${this.date_of_first_discussion}."
-        ]
-    }
+    from ruamel.yaml import YAML, ScalarNode, SequenceNode, MappingNode
+    import smartconfig
 
-    external_variables = {
-        "date_of_first_lecture": "2025-01-10"
-    }
+    # 1. Define a generic constructor for all tags starting with !
+    def generic_constructor(loader, tag_suffix, node):
+        # tag_suffix is the name of the tag, e.g. "repeat" for "!repeat"
+        function_name = tag_suffix
 
-    root = {
-        "this": config,
-        "vars": external_variables
-    }
+        # construct the value based on the node type
+        if isinstance(node, ScalarNode):
+            value = loader.construct_scalar(node)
+        elif isinstance(node, SequenceNode):
+            value = loader.construct_sequence(node)
+        elif isinstance(node, MappingNode):
+            value = loader.construct_mapping(node)
+        else:
+            raise ValueError(f"Unknown node type: {type(node)}")
 
+        return {f"__{function_name}__": value}
+
+    # 2. Register the generic constructor
+    yaml = YAML(typ='safe')
+    yaml.constructor.add_multi_constructor('!', generic_constructor)
+
+    # 3. Define a custom function to use
+    def double(args):
+        return int(args.input) * 2
+
+    # 4. Define the schema
     schema = {
         "type": "dict",
         "required_keys": {
-            "this": {
-                "type": "dict",
-                "required_keys": {
-                    "course_name": {"type": "string"},
-                    "date_of_first_lecture": {"type": "date"},
-                    "date_of_first_discussion": {"type": "date"},
-                    "message": {"type": "list", "element_schema": {"type": "string"}}
-                }
-            },
-            "vars": {
-                "type": "dict",
-                "extra_keys_schema": {
-                    "type": "any",
-                }
-            }
+            "doubled": {"type": "integer"},
         }
     }
 
-    print(smartconfig.resolve(root, schema))
+    # 5. Load the configuration
+    yaml_str = """
+    doubled: !double 5
+    """
 
-The result will be:
+    config = yaml.load(yaml_str)
+
+    # 6. Resolve
+    result = smartconfig.resolve(
+        config,
+        schema,
+        functions={"double": double}
+    )
+    print(result)
+
+As expected, we see:
 
 .. testoutput:: python
 
-    {'this': {'course_name': 'Introduction to Python',
-              'date_of_first_discussion': datetime.date(2025, 1, 17),
-              'date_of_first_lecture': datetime.date(2025, 1, 10),
-              'message': ['Welcome to Introduction to Python!',
-                          'The first lecture is on 2025-01-10.',
-                          'The first discussion is on 2025-01-17.']},
-     'vars': {'date_of_first_lecture': '2025-01-10'}}
-
-Note that under this convention, the external variables are also resolved.
+    {'doubled': 10}

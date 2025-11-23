@@ -1,5 +1,5 @@
-Types
-=====
+Types and Classes
+=================
 
 The :mod:`smartconfig.types` module defines the types and type aliases
 used throughout the `smartconfig` package.
@@ -8,6 +8,8 @@ used throughout the `smartconfig` package.
 
 Configurations
 --------------
+
+Type aliases used to describe the structure of a configuration.
 
 .. class:: ConfigurationDict
 
@@ -40,9 +42,11 @@ Configurations
 
    Type alias for ``Union[ConfigurationContainer, ConfigurationValue]``
 
-
 Unresolved Containers
 ---------------------
+
+These classes are used to represent the configuration while it is being resolved.
+They are passed to functions and Jinja2 templates to allow for lazy resolution.
 
 .. autoclass:: UnresolvedDict
    :members:
@@ -69,12 +73,12 @@ Unresolved Containers
 Functions
 ---------
 
+These classes and types are used to define and interact with custom functions.
+
 .. autoclass:: Function
    :members:
    :undoc-members:
-
-   .. automethod:: new
-   .. automethod:: __call__
+   :special-members: __call__
 
 .. autoclass:: FunctionArgs
    :members:
@@ -85,6 +89,9 @@ Functions
 Special Strings
 ----------------
 
+These classes are subclasses of ``str`` that have special meaning when they appear
+in a configuration.
+
 .. autoclass:: RawString
 
 .. autoclass:: RecursiveString
@@ -92,10 +99,11 @@ Special Strings
 Miscellaneous
 -------------
 
+These types are used for various purposes throughout the package.
+
 .. class:: Schema
 
    Type alias for ``Mapping[str, Any]``.
-
 
 .. class:: KeyPath
 
@@ -109,9 +117,8 @@ Miscellaneous
    a possible function call, and a mapping of function names to available functions as
    :class:`Function` instances. If the dictionary represents a valid function call,
    this should return the :class:`Function` and a :class:`Configuration` representing
-   its input. Otherwise, it should return None. If the functionc call is invalid and
+   its input. Otherwise, it should return None. If the function call is invalid and
    malformed, this should raise a :class:`ValueError`.
-
 
    Type alias for:
 
@@ -121,6 +128,5 @@ Miscellaneous
             [ConfigurationDict, Mapping[str, Function]],
             Union[tuple[Function, Configuration], None],
       ]
-
 
 .. autoclass:: ResolutionOptions

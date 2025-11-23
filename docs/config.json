@@ -1,0 +1,1 @@
+{"app_name": "DataDash", "launch_date": "2025-10-01", "reminder": "2 days before ${launch_date}", "motd": "Welcome to ${app_name}!"}

@@ -29,11 +29,11 @@ def arithmetic(type_):
     numeric type.
 
     If the integer converter is given an integer value (instead of a string) it leaves
-    it alone. Same for the float converter. However, if the integer converter is given
-    a float value, it will raise a :class::`ConversionError`, even if that float
-    represents an integer. This is to avoid possible unexpected loss of precision. If
-    the float converter is given an integer value, it will convert it to a float, since
-    there are no ambiguities there.
+    it alone. Same for the float converter. If the integer converter is given a float
+    value or a string that evaluates to a float, it will convert it to an integer only
+    if it represents a whole number (e.g., ``3.0`` becomes ``3``, ``"6.0 / 3"`` becomes
+    ``2``). Otherwise, it raises a :class:`ConversionError`. If the float converter is
+    given an integer value, it will convert it to a float.
 
     Parameters
     ----------
@@ -83,18 +83,28 @@ def arithmetic(type_):
             return float(value)
 
         if type_ is int and isinstance(value, float):
+            if value.is_integer():
+                return int(value)
             raise exceptions.ConversionError(
-                f"Cannot implicitly convert float {value} into integer.", value
+                f"Cannot convert float {value} to integer: value is not a whole number.",
+                value,
             )
 
         try:
             number = _eval(ast.parse(value, mode="eval").body)
+
+            # at this point, number should be an int or a float, and we'll recursively
+            # convert it to the desired type. If it is not, raise an error.
+
+            if not isinstance(number, (int, float)):
+                raise ValueError
+
+            return converter(number)
+
         except Exception:
             raise exceptions.ConversionError(
                 f"Cannot parse into {type_.__name__}: '{value}'."
             )
-        assert isinstance(number, (int, float))
-        return type_(number)
 
     return converter
 
@@ -160,6 +170,11 @@ class _DateMatchError(Exception):
 
 
 # helpers ------------------------------------------------------------------------------
+
+
+def _contains_time_component(s: str) -> bool:
+    """Check if a string contains a time pattern (HH:MM)."""
+    return bool(re.search(r"\d{2}:\d{2}", s))
 
 
 def _parse_datetime_from_explicit(s: str) -> datetimelib.datetime:
@@ -350,10 +365,7 @@ def smartdate(value: Any) -> datetimelib.date:
     Example
     -------
 
-    .. testsetup::
-
-        import datetime
-
+    >>> import datetime
     >>> from smartconfig.converters import smartdate
     >>> smartdate('2021-10-01')
     datetime.date(2021, 10, 1)
@@ -411,10 +423,7 @@ def smartdatetime(value: Any) -> datetimelib.datetime:
     Examples
     --------
 
-    .. testsetup::
-
-        import datetime
-
+    >>> import datetime
     >>> from smartconfig.converters import smartdatetime
     >>> smartdatetime('2021-10-01 23:59:59')
     datetime.datetime(2021, 10, 1, 23, 59, 59)
@@ -422,6 +431,12 @@ def smartdatetime(value: Any) -> datetimelib.datetime:
     datetime.datetime(2021, 10, 8, 23, 59)
     >>> smartdatetime('first monday after 2021-09-10 23:59:00')
     datetime.datetime(2021, 9, 13, 23, 59)
+    >>> smartdatetime('2021-10-01 at 12:00:00')
+    datetime.datetime(2021, 10, 1, 12, 0)
+    >>> smartdatetime('2021-10-01')
+    Traceback (most recent call last):
+    ...
+    smartconfig.exceptions.ConversionError: Cannot implicitly convert date string '2021-10-01' into datetime. Please include a time component.
     >>> smartdatetime(datetime.date(2021, 10, 1))
     Traceback (most recent call last):
     ...
@@ -433,6 +448,12 @@ def smartdatetime(value: Any) -> datetimelib.datetime:
     if isinstance(value, datetimelib.date):
         raise exceptions.ConversionError(
             f"Cannot implicitly convert date '{value}' into datetime.",
+        )
+
+    if not _contains_time_component(value):
+        raise exceptions.ConversionError(
+            f"Cannot implicitly convert date string '{value}' into datetime. "
+            "Please include a time component.",
         )
 
     try:

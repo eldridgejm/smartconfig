@@ -3,10 +3,12 @@
 Schemas
 =======
 
-The first step in using `smartconfig` is to define a **schema**. A schema is a
-dictionary defining the expected structure of a configuration. Importantly,
-`smartconfig` uses the schema to determine what type a value should have (integer, date,
-string, etc.) and therefore which converter should be used to produce the final value.
+In order for `smartconfig` to properly resolve a configuration, it first needs
+to know the expected structure and types of the configuration. This is
+specified using a **schema**. A schema is a dictionary defining the expected
+structure of a configuration. Importantly, `smartconfig` uses the schema to
+determine what type a value should have (integer, date, string, etc.) and
+therefore which converter should be used to produce the final value.
 
 Concretely, a schema is a dictionary that follows the formal grammar below.
 
@@ -51,6 +53,9 @@ their non-default counterparts, but with an additional field named `default`
 that specifies the default value should that part of the configuration be
 missing.
 
+Schemas can be validated using the :func:`smartconfig.validate_schema`
+function.
+
 Examples
 --------
 
@@ -84,8 +89,8 @@ The schema describing this structure is:
         },
     }
 
-Example 2: Extra keys
-^^^^^^^^^^^^^^^^^^^^^
+Example 2: Allowing extra keys
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 By default, `smartconfig` will raise an error if the configuration contains
 keys not specified in the schema. Sometimes, however, it is useful to allow the
@@ -104,8 +109,8 @@ grade. Such a configuration might look like this:
         "age": 63,
         "enrolled_in": ["Math 100", "History 101", "Physics 200"],
         "grades": {
-            "Math 20": "A-",
-            "Sociology 10": "A",
+            "Math 100": "A-",
+            "History 101": "A",
         }
     }
 
@@ -130,8 +135,8 @@ keys. We can allow for this using the `extra_keys_schema` field in the schema:
         }
     }
 
-Example 3: Nullable values
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Example 3: Allowing nullable values
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 By default, values in a configuration are not allowed to be `None`. However, we
 can allow for `None` values by setting the `nullable` field to `True` in the
@@ -256,8 +261,8 @@ Example 1. We can do this with the following schema:
         }
     }
 
-Example 6: Any schema
-^^^^^^^^^^^^^^^^^^^^^
+Example 6: "Any" schema
+^^^^^^^^^^^^^^^^^^^^^^^
 
 Sometimes we do not know in advance what the structure of a configuration will
 be, and we want to allow the user to specify any possible configuration. In
@@ -274,10 +279,3 @@ structure. However, if the "any" schema is used, `smartconfig` will not be able
 to determine the intended type of the values in the configuration, and will
 therefore do no parsing of the values. String interpolation will still be
 performed.
-
-Validating Schemas
-------------------
-
-`smartconfig` provides the following function for validating schemas:
-
-.. autofunction:: smartconfig.validate_schema

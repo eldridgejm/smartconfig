@@ -1,7 +1,7 @@
 smartconfig
 ===========
 
-`smartconfig` is a library for enhancing standard configuration formats (JSON, YAML, TOML) with dynamic features like interpolation, natural language parsing, and type validation, allowing you to build powerful configuration systems for your applications.
+`smartconfig` is a Python library for enhancing standard configuration formats (JSON, YAML, TOML) with dynamic features like interpolation, natural language parsing, and type validation, allowing you to build powerful configuration systems for your applications.
 
 Use Cases and Quick Start
 -------------------------
@@ -118,26 +118,42 @@ Additionally, `smartconfig` provides the following features to developers:
 
 .. toctree::
    :maxdepth: 1
-   :caption: Getting Started
-   :hidden:
+   :caption: Key Concepts
 
-   ./quickstart.rst
-   ./schemas.rst
-   ./recipes.rst
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Custom Behavior
-   :hidden:
-
-   ./functions.rst
-   ./converters.rst
+   configurations
+   schemas
+   resolution
 
 .. toctree::
    :maxdepth: 1
-   :caption: API
-   :hidden:
+   :caption: Default Behavior
 
-   ./resolve.rst
-   ./types.rst
-   ./exceptions.rst
+   default_converters
+   default_functions
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Customizing Behavior
+
+   resolution_in_detail
+   custom_converters
+   custom_functions
+   custom_filters
+   external_variables
+   type_preservation
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Reference
+
+   api
+   types
+   converters
+   functions
+   exceptions
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Recipes
+
+   recipes

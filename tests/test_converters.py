@@ -73,13 +73,49 @@ def test_arithmetic_parser_when_given_float_value_leaves_it_alone():
     assert result == 42.0
 
 
-def test_integer_parser_when_given_float_value_raises():
+def test_integer_arithmetic_given_non_integer_float_value_raises():
     # given
     converter = converters.arithmetic(int)
 
     # when
     with raises(ConversionError):
-        converter(42.9)
+        converter(3.5)
+
+
+def test_integer_arithmetic_given_integer_float_value_converts():
+    """A float like 3.0 that represents an integer should convert to int."""
+    # given
+    converter = converters.arithmetic(int)
+
+    # when
+    result = converter(3.0)
+
+    # then
+    assert result == 3
+    assert isinstance(result, int)
+
+
+def test_integer_arithmetic_expression_evaluating_to_non_integer_raises():
+    """An expression like '5/2' that evaluates to 2.5 should raise."""
+    # given
+    converter = converters.arithmetic(int)
+
+    # when / then
+    with raises(ConversionError):
+        converter("5 / 2")
+
+
+def test_integer_arithmetic_expression_evaluating_to_integer_float_converts():
+    """An expression like '6.0 / 3' that evaluates to 2.0 should convert to 2."""
+    # given
+    converter = converters.arithmetic(int)
+
+    # when
+    result = converter("6.0 / 3")
+
+    # then
+    assert result == 2
+    assert isinstance(result, int)
 
 
 def test_float_parser_when_given_integer_value_leaves_it_alone():
@@ -225,8 +261,10 @@ def test_smartdate_raises_if_invalid_day_of_the_week_is_given():
 # smartdatetime ========================================================================
 
 
-def test_smartdatetime_from_explicit_date():
-    assert converters.smartdatetime("2021-10-05") == datetime.datetime(2021, 10, 5)
+def test_smartdatetime_from_date_only_string_raises():
+    """A date string without a time component should raise an error."""
+    with raises(ConversionError):
+        converters.smartdatetime("2021-10-05")
 
 
 def test_smartdatetime_from_explicit_datetime():
@@ -273,20 +311,20 @@ def test_smartdatetime_delta_hours_after():
 
 def test_smartdatetime_first_date_before():
     assert converters.smartdatetime(
-        "first monday before 2021-09-17"
-    ) == datetime.datetime(2021, 9, 13)
+        "first monday before 2021-09-17 12:00:00"
+    ) == datetime.datetime(2021, 9, 13, 12, 0, 0)
 
 
 def test_smartdatetime_first_date_after():
     assert converters.smartdatetime(
-        "first monday after 2021-09-10"
-    ) == datetime.datetime(2021, 9, 13)
+        "first monday after 2021-09-10 12:00:00"
+    ) == datetime.datetime(2021, 9, 13, 12, 0, 0)
 
 
 def test_smartdatetime_first_date_after_multiple_choices():
     assert converters.smartdatetime(
-        "first monday, friday after 2021-09-14"
-    ) == datetime.datetime(2021, 9, 17)
+        "first monday, friday after 2021-09-14 12:00:00"
+    ) == datetime.datetime(2021, 9, 17, 12, 0, 0)
 
 
 def test_smartdatetime_first_date_after_allows_overwriting_time_with_at():
