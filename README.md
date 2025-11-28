@@ -14,10 +14,10 @@ Python programs that require user configuration often use simple configuration f
 
 ```json
 {
-    "app_name": "DataDash",
-    "launch_date": "2025-10-01",
-    "reminder": "2 days before ${launch_date}",
-    "motd": "Welcome to ${app_name}!"
+    "course_name": "Introduction to Computer Science",
+    "start_date": "2025-09-01",
+    "first_homework_due": "first tuesday after ${start_date}",
+    "welcome_msg": "Welcome to ${course_name}!"
 }
 ```
 
@@ -28,37 +28,30 @@ Notice the use of `${...}` for interpolation and natural language date expressio
 ```python
 import json
 import smartconfig
-from pprint import pprint
+import datetime
 
 # 1. Load raw configuration
 with open("config.json") as f:
     raw_config = json.load(f)
 
-# 2. Define schema
-schema = {
-    "type": "dict",
-    "required_keys": {
-        "app_name": {"type": "string"},
-        "launch_date": {"type": "date"},
-        "reminder": {"type": "date"},
-        "motd": {"type": "string"},
-    }
-}
+# 2. Define a prototype (class-based schema)
+class Course(smartconfig.Prototype):
+    course_name: str
+    start_date: datetime.date
+    first_homework_due: datetime.date
+    welcome_msg: str
 
-# 3. Resolve
-resolved = smartconfig.resolve(raw_config, schema)
-pprint(resolved)
+# 3. Resolve to a Prototype instance
+resolved = smartconfig.resolve(raw_config, Course)
+print(resolved)
 ```
 
-The resolved configuration is a standard Python dictionary with all values computed:
+The resolved configuration is an instance of `Course` with all values computed:
 
 **Output**
 
 ```python
-{'app_name': 'DataDash',
- 'launch_date': datetime.date(2025, 10, 1),
- 'motd': 'Welcome to DataDash!',
- 'reminder': datetime.date(2025, 9, 29)}
+Course(course_name='Introduction to Computer Science', start_date=datetime.date(2025, 9, 1), first_homework_due=datetime.date(2025, 9, 2), welcome_msg='Welcome to Introduction to Computer Science!')
 ```
 
 ## Features
