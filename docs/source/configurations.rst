@@ -4,7 +4,7 @@ Configurations
 Using `smartconfig` involves three steps:
 
 1. Read a **"raw" configuration** (usually from JSON, YAML, or TOML) into a Python dictionary.
-2. Define a **schema** that specifies the expected structure and types of the configuration.
+2. Specify the expected structure and types of the configuration using either a **schema** or a **prototype**.
 3. Call :func:`smartconfig.resolve()` to produce a **"resolved" configuration** where all dynamic values have been computed.
 
 This section introduces the first concept: the **configuration**. For the others, see :doc:`schemas` and :doc:`resolution`.
@@ -59,4 +59,6 @@ A **resolved configuration** is the output of `smartconfig`. It is a configurati
         ]
     }
 
-In order to resolve a raw configuration, `smartconfig` needs to know what structure and types to expect. This is the purpose of :doc:`schemas`, which are discussed next.
+In order to resolve a raw configuration, `smartconfig` needs to know what
+structure and types to expect. This is the purpose of :doc:`schemas`, which are
+discussed next.

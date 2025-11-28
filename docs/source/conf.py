@@ -13,7 +13,7 @@ from sphinxawesome_theme import ThemeOptions
 project = "smartconfig"
 copyright = "2025, Justin Eldridge"
 author = "Justin Eldridge"
-release = "0.2.0"
+release = "0.4.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -21,7 +21,7 @@ release = "0.2.0"
 extensions = []
 
 templates_path = ["_templates"]
-exclude_patterns = []
+exclude_patterns: list[str] = []
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -51,6 +51,10 @@ html_permalinks_icon = "<span>#</span>"
 html_theme = "sphinxawesome_theme"
 html_title = "smartconfig"
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]
+html_js_files = [
+    ("mermaid_theme_fix.js", {"type": "module"}),
+]
 
 pygments_style = "friendly"  # 'friendly' is also OK...
 pygments_style_dark = "paraiso-dark"

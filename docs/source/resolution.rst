@@ -8,9 +8,18 @@ Resolution
     from pprint import pprint
     print = pprint
 
-The process of converting a raw configuration into a resolved configuration is called **resolution**. During resolution, `smartconfig` processes the configuration according to the provided schema, performing interpolation of placeholders, conversion of values to their appropriate types, and evaluation of any function calls.
+The process of converting a raw configuration into a resolved configuration is
+called **resolution**. During resolution, `smartconfig` processes the
+configuration according to the provided schema or prototype, performing
+interpolation of placeholders, conversion of values to their appropriate types,
+and evaluation of any function calls.
 
-:func:`smartconfig.resolve` is the main function that performs resolution. It takes two arguments: the raw configuration (a Python dictionary) and the schema (also a Python dictionary). The behavior of :func:`smartconfig.resolve` can be customized using various optional parameters; see the function documentation as well as the pages in the "Customizing Behavior" section for more details.
+:func:`smartconfig.resolve` is the main function that performs resolution. It
+takes two arguments: the raw configuration (a Python dictionary) and the schema
+or prototype specifying its expected structure. The behavior of
+:func:`smartconfig.resolve` can be customized using various optional
+parameters; see the function documentation as well as the pages in the
+"Customizing Behavior" section for more details.
 
 Interpolation
 ~~~~~~~~~~~~~
@@ -31,26 +40,19 @@ Interpolation is performed recursively by default. That is, if after one iterati
         "detailed_message": "${welcome_message} Enjoy your learning journey."
     }
 
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "course_name": {"type": "string"},
-            "welcome_message": {"type": "string"},
-            "detailed_message": {"type": "string"},
-        }
-    }
+    class Course(smartconfig.Prototype):
+        course_name: str
+        welcome_message: str
+        detailed_message: str
 
-    resolved = smartconfig.resolve(config, schema)
+    resolved = smartconfig.resolve(config, Course)
     pprint(resolved)
 
 This would output:
 
 .. testoutput:: python
 
-    {'course_name': 'Introduction to Python',
-     'detailed_message': 'Welcome to Introduction to Python! Enjoy your learning '
-                         'journey.',
-     'welcome_message': 'Welcome to Introduction to Python!'}
+    Course(course_name='Introduction to Python', welcome_message='Welcome to Introduction to Python!', detailed_message='Welcome to Introduction to Python! Enjoy your learning journey.')
 
 Jinja2
 ^^^^^^
@@ -60,28 +62,24 @@ Interpolation is implemented using the `Jinja2` templating engine, which support
 .. testcode:: python
 
     config = {
-        "foo": "testing",
-        "foo_len": "${foo | length}",
-        "is_long_t_word": "${foo_len > 5} and ${ foo.startswith('t') }"
+        "course_name": "Advanced Python",
+        "name_length": "${course_name | length}",
+        "is_advanced": "${ course_name.startswith('Advanced') }"
     }
 
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "foo": {"type": "string"},
-            "foo_len": {"type": "integer"},
-            "is_long_t_word": {"type": "boolean"},
-        }
-    }
+    class CourseMetadata(smartconfig.Prototype):
+        course_name: str
+        name_length: int
+        is_advanced: bool
 
-    resolved = smartconfig.resolve(config, schema)
+    resolved = smartconfig.resolve(config, CourseMetadata)
     pprint(resolved)
 
 This would output:
 
 .. testoutput:: python
 
-    {'foo': 'testing', 'foo_len': 7, 'is_long_t_word': True}
+    CourseMetadata(course_name='Advanced Python', name_length=15, is_advanced=True)
 
 Conversion
 ~~~~~~~~~~
@@ -103,15 +101,11 @@ objects. For example:
         "assignment_due": "7 days after ${assignment_released}"
     }
 
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "assignment_released": {"type": "datetime"},
-            "assignment_due": {"type": "datetime"},
-        }
-    }
+    class Assignment(smartconfig.Prototype):
+        assignment_released: datetime.datetime
+        assignment_due: datetime.datetime
 
-    resolved = smartconfig.resolve(config, schema)
+    resolved = smartconfig.resolve(config, Assignment)
     pprint(resolved)
 
 This would output:
@@ -148,29 +142,25 @@ logic. It takes a dictionary with three keys: ``condition``, ``then``, and
 
 .. testcode:: python
 
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "x": {"type": "integer"},
-            "y": {"type": "integer"}
-        }
-    }
+    class StudentEligibility(smartconfig.Prototype):
+        student_score: int
+        is_eligible: bool
 
     config = {
-        "x": 10,
-        "y": {"__if__": {"condition": "${x > 5}", "then": 1, "else": 0}}
+        "student_score": 85,
+        "is_eligible": {"__if__": {"condition": "${student_score >= 70}", "then": True, "else": False}}
     }
 
-    print(smartconfig.resolve(config, schema))
+    print(smartconfig.resolve(config, StudentEligibility))
 
 This resolves to:
 
 .. testoutput:: python
 
-    {'x': 10, 'y': 1}
+    StudentEligibility(student_score=85, is_eligible=True)
 
 Here we are taking advantage of the fact that templating is done by the
-Jinja2 and so during interpolation ``${x > 5}`` evaluates to ``True``, and
+Jinja2 and so during interpolation ``${student_score >= 70}`` evaluates to ``True``, and
 thus the ``then`` branch is taken.
 
 More Details

@@ -97,7 +97,7 @@ def arithmetic(type_):
             # convert it to the desired type. If it is not, raise an error.
 
             if not isinstance(number, (int, float)):
-                raise ValueError
+                raise ValueError("Result is not a number.")
 
             return converter(number)
 

@@ -1,8 +1,15 @@
+"""This module tests the built-in functions in smartconfig.functions.
+
+Tests of the function-calling mechanism itself are in test_resolve.py.
+
+"""
+
 import datetime
+import typing
 
 from smartconfig import resolve, exceptions
 from smartconfig import functions
-from smartconfig.types import Function
+from smartconfig.types import Function, Schema, ConfigurationDict, ConfigurationList
 
 from pytest import raises
 
@@ -11,7 +18,7 @@ from pytest import raises
 
 def test_raw_does_not_convert():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -19,10 +26,10 @@ def test_raw_does_not_convert():
         },
     }
 
-    dct = {"foo": 42, "bar": {"__raw__": "1 + 3"}}
+    cfg: ConfigurationDict = {"foo": 42, "bar": {"__raw__": "1 + 3"}}
 
     # when
-    resolved = resolve(dct, schema, functions={"raw": functions.raw})
+    resolved = resolve(cfg, schema, functions={"raw": functions.raw})
 
     # then
     assert resolved == {"foo": 42, "bar": "1 + 3"}
@@ -30,7 +37,7 @@ def test_raw_does_not_convert():
 
 def test_raw_does_not_interpolate():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -38,10 +45,10 @@ def test_raw_does_not_interpolate():
         },
     }
 
-    dct = {"foo": 42, "bar": {"__raw__": "${this.foo} + 3"}}
+    cfg: ConfigurationDict = {"foo": 42, "bar": {"__raw__": "${this.foo} + 3"}}
 
     # when
-    resolved = resolve(dct, schema, functions={"raw": functions.raw})
+    resolved = resolve(cfg, schema, functions={"raw": functions.raw})
 
     # then
     assert resolved == {"foo": 42, "bar": "${this.foo} + 3"}
@@ -49,7 +56,7 @@ def test_raw_does_not_interpolate():
 
 def test_referencing_a_raw_string_in_normal_string_will_interpolate_once():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -58,10 +65,14 @@ def test_referencing_a_raw_string_in_normal_string_will_interpolate_once():
         },
     }
 
-    dct = {"foo": 42, "bar": {"__raw__": "${foo} + 3"}, "baz": "${bar} + 4"}
+    cfg: ConfigurationDict = {
+        "foo": 42,
+        "bar": {"__raw__": "${foo} + 3"},
+        "baz": "${bar} + 4",
+    }
 
     # when
-    resolved = resolve(dct, schema, functions={"raw": functions.raw})
+    resolved = resolve(cfg, schema, functions={"raw": functions.raw})
 
     # then
     assert resolved == {"foo": 42, "bar": "${foo} + 3", "baz": "${foo} + 3 + 4"}
@@ -69,7 +80,7 @@ def test_referencing_a_raw_string_in_normal_string_will_interpolate_once():
 
 def test_raw_with_a_non_string_raises():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -77,11 +88,11 @@ def test_raw_with_a_non_string_raises():
         },
     }
 
-    dct = {"foo": 42, "bar": {"__raw__": [1, 2, 3, 4]}}
+    cfg: ConfigurationDict = {"foo": 42, "bar": {"__raw__": [1, 2, 3, 4]}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"raw": functions.raw})
+        resolve(cfg, schema, functions={"raw": functions.raw})
 
     assert "Input to 'raw' must be a string." in str(exc.value)
 
@@ -91,7 +102,7 @@ def test_raw_with_a_non_string_raises():
 
 def test_referencing_a_raw_string_in_recursive_string_will_interpolate_repeatedly():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -100,7 +111,7 @@ def test_referencing_a_raw_string_in_recursive_string_will_interpolate_repeatedl
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": 42,
         "bar": {"__raw__": "${foo} + 3"},
         "baz": {"__recursive__": "${bar} + 4"},
@@ -108,7 +119,7 @@ def test_referencing_a_raw_string_in_recursive_string_will_interpolate_repeatedl
 
     # when
     resolved = resolve(
-        dct, schema, functions={"raw": functions.raw, "recursive": functions.recursive}
+        cfg, schema, functions={"raw": functions.raw, "recursive": functions.recursive}
     )
 
     # then
@@ -117,7 +128,7 @@ def test_referencing_a_raw_string_in_recursive_string_will_interpolate_repeatedl
 
 def test_recursive_with_a_non_string_raises():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -125,11 +136,11 @@ def test_recursive_with_a_non_string_raises():
         },
     }
 
-    dct = {"foo": 42, "bar": {"__recursive__": [1, 2, 3, 4]}}
+    cfg: ConfigurationDict = {"foo": 42, "bar": {"__recursive__": [1, 2, 3, 4]}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"recursive": functions.recursive})
+        resolve(cfg, schema, functions={"recursive": functions.recursive})
 
     assert "Input to 'recursive' must be a string." in str(exc.value)
 
@@ -139,7 +150,7 @@ def test_recursive_with_a_non_string_raises():
 
 def test_update_shallow_does_not_perform_a_deep_update():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -160,7 +171,7 @@ def test_update_shallow_does_not_perform_a_deep_update():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "baz": {
             "__update_shallow__": [
                 {"a": 1, "b": {"c": 5, "d": 6}},
@@ -171,7 +182,7 @@ def test_update_shallow_does_not_perform_a_deep_update():
 
     # when
     resolved = resolve(
-        dct, schema, functions={"update_shallow": functions.update_shallow}
+        cfg, schema, functions={"update_shallow": functions.update_shallow}
     )
 
     # then
@@ -182,7 +193,7 @@ def test_update_shallow_does_not_perform_a_deep_update():
 
 def test_update_shallow_with_four_dictionaries():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -195,13 +206,13 @@ def test_update_shallow_with_four_dictionaries():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "baz": {"__update_shallow__": [{"a": 1, "b": 2}, {"a": 3}, {"a": 5}, {"b": 7}]}
     }
 
     # when
     resolved = resolve(
-        dct, schema, functions={"update_shallow": functions.update_shallow}
+        cfg, schema, functions={"update_shallow": functions.update_shallow}
     )
 
     # then
@@ -215,7 +226,7 @@ def test_update_shallow_with_four_dictionaries():
 
 def test_update_shallow_raises_if_input_is_not_a_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -228,18 +239,18 @@ def test_update_shallow_raises_if_input_is_not_a_list():
         },
     }
 
-    dct = {"baz": {"__update_shallow__": 4}}
+    cfg: ConfigurationDict = {"baz": {"__update_shallow__": 4}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"update_shallow": functions.update_shallow})
+        resolve(cfg, schema, functions={"update_shallow": functions.update_shallow})
 
     assert "Input to 'update_shallow' must be a list of dictionaries." in str(exc.value)
 
 
 def test_update_shallow_raises_if_input_is_not_a_list_of_dicts():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -252,18 +263,18 @@ def test_update_shallow_raises_if_input_is_not_a_list_of_dicts():
         },
     }
 
-    dct = {"baz": {"__update_shallow__": [{"hi": "there"}, 5]}}
+    cfg: ConfigurationDict = {"baz": {"__update_shallow__": [{"hi": "there"}, 5]}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"update_shallow": functions.update_shallow})
+        resolve(cfg, schema, functions={"update_shallow": functions.update_shallow})
 
     assert "Input to 'update_shallow' must be a list of dictionaries." in str(exc.value)
 
 
 def test_update_shallow_raises_if_input_is_empty():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -276,11 +287,11 @@ def test_update_shallow_raises_if_input_is_empty():
         },
     }
 
-    dct = {"baz": {"__update_shallow__": []}}
+    cfg: ConfigurationDict = {"baz": {"__update_shallow__": []}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"update_shallow": functions.update_shallow})
+        resolve(cfg, schema, functions={"update_shallow": functions.update_shallow})
 
     assert "Input to 'update_shallow' must be a non-empty list of dictionaries." in str(
         exc.value
@@ -292,7 +303,7 @@ def test_update_shallow_raises_if_input_is_empty():
 
 def test_update_uses_values_from_the_righmost_map():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -305,10 +316,10 @@ def test_update_uses_values_from_the_righmost_map():
         },
     }
 
-    dct = {"baz": {"__update__": [{"a": 1, "b": 2}, {"a": 3}]}}
+    cfg: ConfigurationDict = {"baz": {"__update__": [{"a": 1, "b": 2}, {"a": 3}]}}
 
     # when
-    resolved = resolve(dct, schema, functions={"update": functions.update})
+    resolved = resolve(cfg, schema, functions={"update": functions.update})
 
     # then
     assert resolved == {
@@ -320,7 +331,7 @@ def test_update_uses_values_from_the_righmost_map():
 
 
 def test_update_is_recursive():
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "x": {
@@ -332,10 +343,12 @@ def test_update_is_recursive():
         },
     }
 
-    config = {"x": {"__update__": [{"a": {"foo": 1}}, {"a": {"bar": 2}}]}}
+    cfg: ConfigurationDict = {
+        "x": {"__update__": [{"a": {"foo": 1}}, {"a": {"bar": 2}}]}
+    }
 
     # when
-    resolved = resolve(config, schema, functions={"update": functions.update})
+    resolved = resolve(cfg, schema, functions={"update": functions.update})
 
     assert resolved == {"x": {"a": {"foo": 1, "bar": 2}}}
 
@@ -345,7 +358,7 @@ def test_update_with_partial_update():
     # second level of nesting
 
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -366,7 +379,7 @@ def test_update_with_partial_update():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "baz": {
             "__update__": [
                 {"a": 1, "b": {"c": 5, "d": 6}},
@@ -376,7 +389,7 @@ def test_update_with_partial_update():
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"update": functions.update})
+    resolved = resolve(cfg, schema, functions={"update": functions.update})
 
     # then
     assert resolved == {
@@ -386,7 +399,7 @@ def test_update_with_partial_update():
 
 def test_update_with_four_dictionaries():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -407,7 +420,7 @@ def test_update_with_four_dictionaries():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "baz": {
             "__update__": [
                 {"a": 1, "b": {"c": 5, "d": 6}},
@@ -419,7 +432,7 @@ def test_update_with_four_dictionaries():
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"update": functions.update})
+    resolved = resolve(cfg, schema, functions={"update": functions.update})
 
     # then
     assert resolved == {
@@ -429,7 +442,7 @@ def test_update_with_four_dictionaries():
 
 def test_update_raises_if_input_is_not_a_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -442,18 +455,18 @@ def test_update_raises_if_input_is_not_a_list():
         },
     }
 
-    dct = {"baz": {"__update__": 4}}
+    cfg: ConfigurationDict = {"baz": {"__update__": 4}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"update": functions.update})
+        resolve(cfg, schema, functions={"update": functions.update})
 
     assert "Input to 'update' must be a list of dictionaries." in str(exc.value)
 
 
 def test_update_raises_if_input_is_not_a_list_of_dicts():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -466,18 +479,18 @@ def test_update_raises_if_input_is_not_a_list_of_dicts():
         },
     }
 
-    dct = {"baz": {"__update__": [{"hi": "there"}, 5]}}
+    cfg: ConfigurationDict = {"baz": {"__update__": [{"hi": "there"}, 5]}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"update": functions.update})
+        resolve(cfg, schema, functions={"update": functions.update})
 
     assert "Input to 'update' must be a list of dictionaries." in str(exc.value)
 
 
 def test_update_raises_if_input_is_empty():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -490,11 +503,11 @@ def test_update_raises_if_input_is_empty():
         },
     }
 
-    dct = {"baz": {"__update__": []}}
+    cfg: ConfigurationDict = {"baz": {"__update__": []}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"update": functions.update})
+        resolve(cfg, schema, functions={"update": functions.update})
 
     assert "Input to 'update' must be a non-empty list of dictionaries." in str(
         exc.value
@@ -506,7 +519,7 @@ def test_update_raises_if_input_is_empty():
 
 def test_concatenate_with_two_lists():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -516,10 +529,10 @@ def test_concatenate_with_two_lists():
         },
     }
 
-    dct = {"baz": {"__concatenate__": [[1, 2], [3, 4]]}}
+    cfg: ConfigurationDict = {"baz": {"__concatenate__": [[1, 2], [3, 4]]}}
 
     # when
-    resolved = resolve(dct, schema, functions={"concatenate": functions.concatenate})
+    resolved = resolve(cfg, schema, functions={"concatenate": functions.concatenate})
 
     # then
     assert resolved == {
@@ -529,7 +542,7 @@ def test_concatenate_with_two_lists():
 
 def test_concatenate_with_three_lists():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -539,10 +552,10 @@ def test_concatenate_with_three_lists():
         },
     }
 
-    dct = {"baz": {"__concatenate__": [[1, 2], [3, 4], [5, 6]]}}
+    cfg: ConfigurationDict = {"baz": {"__concatenate__": [[1, 2], [3, 4], [5, 6]]}}
 
     # when
-    resolved = resolve(dct, schema, functions={"concatenate": functions.concatenate})
+    resolved = resolve(cfg, schema, functions={"concatenate": functions.concatenate})
 
     # then
     assert resolved == {
@@ -552,7 +565,7 @@ def test_concatenate_with_three_lists():
 
 def test_concatenate_raises_if_input_is_not_a_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -562,18 +575,18 @@ def test_concatenate_raises_if_input_is_not_a_list():
         },
     }
 
-    dct = {"baz": {"__concatenate__": 4}}
+    cfg: ConfigurationDict = {"baz": {"__concatenate__": 4}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"concatenate": functions.concatenate})
+        resolve(cfg, schema, functions={"concatenate": functions.concatenate})
 
     assert "Input to 'concatenate' must be a list of lists." in str(exc.value)
 
 
 def test_concatenate_raises_if_input_is_not_a_list_of_lists():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -583,18 +596,18 @@ def test_concatenate_raises_if_input_is_not_a_list_of_lists():
         },
     }
 
-    dct = {"baz": {"__concatenate__": [[1, 2], 5]}}
+    cfg: ConfigurationDict = {"baz": {"__concatenate__": [[1, 2], 5]}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"concatenate": functions.concatenate})
+        resolve(cfg, schema, functions={"concatenate": functions.concatenate})
 
     assert "Input to 'concatenate' must be a list of lists." in str(exc.value)
 
 
 def test_concatenate_raises_if_input_is_empty():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -604,11 +617,11 @@ def test_concatenate_raises_if_input_is_empty():
         },
     }
 
-    dct = {"baz": {"__concatenate__": []}}
+    cfg: ConfigurationDict = {"baz": {"__concatenate__": []}}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"concatenate": functions.concatenate})
+        resolve(cfg, schema, functions={"concatenate": functions.concatenate})
 
     assert "Input to 'concatenate' must be a non-empty list of lists." in str(exc.value)
 
@@ -618,7 +631,7 @@ def test_concatenate_raises_if_input_is_empty():
 
 def test_splice_a_dictionary():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -638,13 +651,13 @@ def test_splice_a_dictionary():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "baz": {"a": 1, "b": 2},
         "foo": {"__splice__": "baz"},
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"splice": functions.splice})
+    resolved = resolve(cfg, schema, functions={"splice": functions.splice})
 
     # then
     assert resolved == {
@@ -655,7 +668,7 @@ def test_splice_a_dictionary():
 
 def test_splice_still_converts():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -675,13 +688,13 @@ def test_splice_still_converts():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "baz": {"a": 1, "b": 2},
         "foo": {"__splice__": "baz"},
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"splice": functions.splice})
+    resolved = resolve(cfg, schema, functions={"splice": functions.splice})
 
     # then
     assert resolved == {
@@ -692,7 +705,7 @@ def test_splice_still_converts():
 
 def test_splice_raises_if_key_does_not_exist():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "baz": {
@@ -712,30 +725,30 @@ def test_splice_raises_if_key_does_not_exist():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "baz": {"a": 1, "b": 2},
         "foo": {"__splice__": "quux"},
     }
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"splice": functions.splice})
+        resolve(cfg, schema, functions={"splice": functions.splice})
 
     assert "Keypath 'quux' does not exist." in str(exc.value)
 
 
 def test_splice_argument_can_be_an_integer_index_of_list():
     # given a schema for a list of lists
-    schema = {"type": "list", "element_schema": {"type": "string"}}
+    schema: Schema = {"type": "list", "element_schema": {"type": "string"}}
 
-    dct = [
+    cfg: ConfigurationList = [
         "one",
         {"__splice__": 0},
         "three",
     ]
 
     # when
-    resolved = resolve(dct, schema, functions={"splice": functions.splice})
+    resolved = resolve(cfg, schema, functions={"splice": functions.splice})
 
     # then
     assert resolved == [
@@ -747,9 +760,9 @@ def test_splice_argument_can_be_an_integer_index_of_list():
 
 def test_splice_raises_if_key_is_not_a_valid_keypath():
     # given a schema for a list of lists
-    schema = {"type": "list", "element_schema": {"type": "string"}}
+    schema: Schema = {"type": "list", "element_schema": {"type": "string"}}
 
-    dct = [
+    cfg: ConfigurationList = [
         "one",
         {"__splice__": True},
         "three",
@@ -757,14 +770,14 @@ def test_splice_raises_if_key_is_not_a_valid_keypath():
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"splice": functions.splice})
+        resolve(cfg, schema, functions={"splice": functions.splice})
 
     assert "Input to 'splice' must be a string or int." in str(exc.value)
 
 
 def test_splice_from_global_variables_raises():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -772,11 +785,11 @@ def test_splice_from_global_variables_raises():
         },
     }
 
-    dct = {"__splice__": "baz"}
+    cfg: ConfigurationDict = {"__splice__": "baz"}
 
     with raises(exceptions.ResolutionError) as exc:
         resolve(
-            dct,
+            cfg,
             schema,
             functions={"splice": functions.splice},
             global_variables={"baz": 44},
@@ -790,11 +803,11 @@ def test_splice_from_global_variables_raises():
 
 def test_if_evaluates_then_if_condition_is_true():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {"__if__": {"condition": "True", "then": 1, "else": 2}}
+    cfg: ConfigurationDict = {"__if__": {"condition": "True", "then": 1, "else": 2}}
 
     # when
     resolved = resolve(cfg, schema, functions={"if": functions.if_})
@@ -805,11 +818,11 @@ def test_if_evaluates_then_if_condition_is_true():
 
 def test_if_evaluates_else_if_condition_is_false():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {"__if__": {"condition": "False", "then": 1, "else": 2}}
+    cfg: ConfigurationDict = {"__if__": {"condition": "False", "then": 1, "else": 2}}
 
     # when
     resolved = resolve(cfg, schema, functions={"if": functions.if_})
@@ -820,12 +833,12 @@ def test_if_evaluates_else_if_condition_is_false():
 
 def test_if_resolves_the_condition():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "boolean"}},
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "bar": "True",
         "foo": {"__if__": {"condition": "False or ${bar}", "then": 1, "else": 2}},
     }
@@ -839,11 +852,13 @@ def test_if_resolves_the_condition():
 
 def test_if_resolves_then_branch_only_if_condition_is_true():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {"__if__": {"condition": "False", "then": "not an integer!", "else": "3 + 4"}}
+    cfg: ConfigurationDict = {
+        "__if__": {"condition": "False", "then": "not an integer!", "else": "3 + 4"}
+    }
 
     # when
     resolved = resolve(cfg, schema, functions={"if": functions.if_})
@@ -852,25 +867,28 @@ def test_if_resolves_then_branch_only_if_condition_is_true():
     assert resolved == 7
 
     # when
-    cfg["__if__"]["condition"] = "True"
+    if_body = typing.cast(dict[str, object], cfg["__if__"])
+    if_body["condition"] = "True"
     with raises(exceptions.ResolutionError):
         resolve(cfg, schema, functions={"if": functions.if_})
 
 
 def test_if_raises_if_keys_are_not_condition_then_else():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
     # extra key
-    cfg_1 = {"__if__": {"condition": "False", "then": 1, "else": 2, "hi": "there"}}
+    cfg_1: ConfigurationDict = {
+        "__if__": {"condition": "False", "then": 1, "else": 2, "hi": "there"}
+    }
     # missing key
-    cfg_2 = {"__if__": {"then": 1, "else": 2}}
+    cfg_2: ConfigurationDict = {"__if__": {"then": 1, "else": 2}}
     # missing key
-    cfg_3 = {"__if__": {"condition": "False", "then": 1}}
+    cfg_3: ConfigurationDict = {"__if__": {"condition": "False", "then": 1}}
     # missing key
-    cfg_4 = {"__if__": {"condition": "False", "else": 1}}
+    cfg_4: ConfigurationDict = {"__if__": {"condition": "False", "else": 1}}
 
     for cfg in (cfg_1, cfg_2, cfg_3, cfg_4):
         # when
@@ -883,11 +901,11 @@ def test_if_raises_if_keys_are_not_condition_then_else():
 
 def test_if_raises_if_input_is_not_a_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__if__": "not a dictionary",
     }
 
@@ -900,7 +918,7 @@ def test_if_raises_if_input_is_not_a_dict():
 
 def test_if_with_dates_in_comparison():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "date_a": {"type": "date"},
@@ -909,7 +927,7 @@ def test_if_with_dates_in_comparison():
         },
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "date_a": "2021-10-05",
         "date_b": "2021-10-06",
         "most_recent": {
@@ -937,11 +955,11 @@ def test_if_with_dates_in_comparison():
 
 def test_let_provides_local_variables_to_in_block():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__let__": {
             "variables": {"x": 3, "y": 4},
             "in": "${x} + ${y}",
@@ -957,11 +975,11 @@ def test_let_provides_local_variables_to_in_block():
 
 def test_let_can_be_nested_and_local_variables_nest_as_well():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__let__": {
             "variables": {"x": 3, "y": 4},
             "in": {
@@ -982,7 +1000,7 @@ def test_let_can_be_nested_and_local_variables_nest_as_well():
 
 def test_let_resolves_the_variables_before_substitution():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -990,7 +1008,7 @@ def test_let_resolves_the_variables_before_substitution():
         },
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "foo": 42,
         "bar": {
             "__let__": {
@@ -1009,7 +1027,7 @@ def test_let_resolves_the_variables_before_substitution():
 
 def test_local_variables_are_given_priority_over_references_to_elsewhere_in_configuration():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "x": {"type": "integer"},
@@ -1017,7 +1035,7 @@ def test_local_variables_are_given_priority_over_references_to_elsewhere_in_conf
         },
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "x": 3,
         "y": {
             "__let__": {
@@ -1036,11 +1054,11 @@ def test_local_variables_are_given_priority_over_references_to_elsewhere_in_conf
 
 def test_local_variables_are_given_priority_over_global_variables():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__let__": {
             "variables": {"x": 5},
             "in": "${x}",
@@ -1058,11 +1076,11 @@ def test_local_variables_are_given_priority_over_global_variables():
 
 def test_let_raises_if_input_is_not_a_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__let__": "not a dictionary",
     }
 
@@ -1075,11 +1093,11 @@ def test_let_raises_if_input_is_not_a_dict():
 
 def test_let_raises_if_does_not_contain_keys_variables_and_in():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__let__": {"x": 3},
     }
 
@@ -1092,11 +1110,11 @@ def test_let_raises_if_does_not_contain_keys_variables_and_in():
 
 def test_let_raises_if_variables_is_not_a_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__let__": {"variables": "not a dictionary", "in": 3},
     }
 
@@ -1113,11 +1131,11 @@ def test_let_with_variables_that_are_resolved_from_a_function():
     def variables(_):
         return {"x": 3, "y": 4}
 
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__let__": {
             "variables": {"__variables__": {}},
             "in": "${x} + ${y}",
@@ -1139,11 +1157,11 @@ def test_let_raises_if_variables_do_not_resolve_to_a_dict():
     def variables(_):
         return 42
 
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__let__": {
             "variables": {"__variables__": {}},
             "in": "${x} + ${y}",
@@ -1162,7 +1180,7 @@ def test_let_raises_if_variables_do_not_resolve_to_a_dict():
 
 def test_loop_over_a_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "dict",
@@ -1170,7 +1188,7 @@ def test_loop_over_a_list():
         },
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__loop__": {
             "variable": "x",
             "over": [1, 2, 3],
@@ -1194,7 +1212,7 @@ def test_loop_over_a_list():
 
 def test_nested_loop():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "list",
@@ -1205,7 +1223,7 @@ def test_nested_loop():
         },
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__loop__": {
             "variable": "x",
             "over": [1, 2],
@@ -1240,7 +1258,7 @@ def test_nested_loop():
 
 def test_loop_producing_list_of_dicts():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "dict",
@@ -1248,10 +1266,10 @@ def test_loop_producing_list_of_dicts():
         },
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__loop__": {
             "variable": "pair",
-            "over": [(1, 2), (3, 4), (5, 6)],
+            "over": typing.cast(ConfigurationList, [(1, 2), (3, 4), (5, 6)]),
             "in": {
                 "x": "${pair[0]}",
                 "y": "${pair[1]}",
@@ -1272,7 +1290,7 @@ def test_loop_producing_list_of_dicts():
 
 def test_loop_raises_if_input_is_not_a_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "dict",
@@ -1280,7 +1298,7 @@ def test_loop_raises_if_input_is_not_a_dict():
         },
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__loop__": "not a dictionary",
     }
 
@@ -1293,7 +1311,7 @@ def test_loop_raises_if_input_is_not_a_dict():
 
 def test_loop_raises_if_does_not_contain_keys_variable_over_and_in():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "dict",
@@ -1301,7 +1319,7 @@ def test_loop_raises_if_does_not_contain_keys_variable_over_and_in():
         },
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__loop__": {"x": 3},
     }
 
@@ -1317,9 +1335,9 @@ def test_loop_with_function_returning_over():
         return [1, 2, 3]
 
     # given
-    schema = {"type": "list", "element_schema": {"type": "integer"}}
+    schema: Schema = {"type": "list", "element_schema": {"type": "integer"}}
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__loop__": {"variable": "x", "over": {"__over__": {}}, "in": "${x} + 1"},
     }
 
@@ -1335,7 +1353,7 @@ def test_loop_raises_if_value_of_over_does_not_resolve_to_a_list():
         return 42
 
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "dict",
@@ -1343,7 +1361,7 @@ def test_loop_raises_if_value_of_over_does_not_resolve_to_a_list():
         },
     }
 
-    cfg = {
+    cfg: ConfigurationDict = {
         "__loop__": {"variable": "x", "over": {"__over__": {}}, "in": {"x": 1, "y": 2}},
     }
 
@@ -1357,7 +1375,7 @@ def test_loop_raises_if_value_of_over_does_not_resolve_to_a_list():
 
 def test_dict_from_items_simple_example():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1365,7 +1383,7 @@ def test_dict_from_items_simple_example():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__dict_from_items__": [
             {"key": "foo", "value": 42},
             {
@@ -1377,7 +1395,7 @@ def test_dict_from_items_simple_example():
 
     # when
     resolved = resolve(
-        dct, schema, functions={"dict_from_items": functions.dict_from_items}
+        cfg, schema, functions={"dict_from_items": functions.dict_from_items}
     )
 
     # then
@@ -1386,7 +1404,7 @@ def test_dict_from_items_simple_example():
 
 def test_dict_from_items_generated_within_loop():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1395,11 +1413,13 @@ def test_dict_from_items_generated_within_loop():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__dict_from_items__": {
             "__loop__": {
                 "variable": "pair",
-                "over": [("foo", 1), ("bar", 2), ("baz", 3)],
+                "over": typing.cast(
+                    ConfigurationList, [("foo", 1), ("bar", 2), ("baz", 3)]
+                ),
                 "in": {
                     "key": "${pair[0]}",
                     "value": "${pair[1]}",
@@ -1410,7 +1430,7 @@ def test_dict_from_items_generated_within_loop():
 
     # when
     resolved = resolve(
-        dct,
+        cfg,
         schema,
         functions={
             "dict_from_items": functions.dict_from_items,
@@ -1424,7 +1444,7 @@ def test_dict_from_items_generated_within_loop():
 
 def test_dict_from_items_generated_within_loop_checks_schema_for_required_keys():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1433,11 +1453,13 @@ def test_dict_from_items_generated_within_loop_checks_schema_for_required_keys()
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__dict_from_items__": {
             "__loop__": {
                 "variable": "pair",
-                "over": [("foo", 1), ("bar", 2), ("no!", 3)],
+                "over": typing.cast(
+                    ConfigurationList, [("foo", 1), ("bar", 2), ("no!", 3)]
+                ),
                 "in": {
                     "key": "${pair[0]}",
                     "value": "${pair[1]}",
@@ -1449,7 +1471,7 @@ def test_dict_from_items_generated_within_loop_checks_schema_for_required_keys()
     # when
     with raises(exceptions.ResolutionError) as exc:
         resolve(
-            dct,
+            cfg,
             schema,
             functions={
                 "dict_from_items": functions.dict_from_items,
@@ -1462,7 +1484,7 @@ def test_dict_from_items_generated_within_loop_checks_schema_for_required_keys()
 
 def test_dict_from_items_raises_if_input_is_not_a_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1470,18 +1492,18 @@ def test_dict_from_items_raises_if_input_is_not_a_list():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__dict_from_items__": "not a list",
     }
 
     # when
     with raises(exceptions.ResolutionError):
-        resolve(dct, schema, functions={"dict_from_items": functions.dict_from_items})
+        resolve(cfg, schema, functions={"dict_from_items": functions.dict_from_items})
 
 
 def test_dict_from_items_raises_if_input_is_not_a_list_of_dicts_each_with_keys_key_and_value():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1489,7 +1511,7 @@ def test_dict_from_items_raises_if_input_is_not_a_list_of_dicts_each_with_keys_k
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__dict_from_items__": [
             {"key": "foo", "value": 42},
             {"key": "bar", "value": 42},
@@ -1499,7 +1521,7 @@ def test_dict_from_items_raises_if_input_is_not_a_list_of_dicts_each_with_keys_k
 
     # when
     with raises(exceptions.ResolutionError):
-        resolve(dct, schema, functions={"dict_from_items": functions.dict_from_items})
+        resolve(cfg, schema, functions={"dict_from_items": functions.dict_from_items})
 
 
 # zip ==================================================================================
@@ -1507,7 +1529,7 @@ def test_dict_from_items_raises_if_input_is_not_a_list_of_dicts_each_with_keys_k
 
 def test_zip_two_lists():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "list",
@@ -1515,7 +1537,7 @@ def test_zip_two_lists():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__zip__": [
             [1, 2, 3],
             [4, 5, 6],
@@ -1523,7 +1545,7 @@ def test_zip_two_lists():
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"zip": functions.zip_})
+    resolved = resolve(cfg, schema, functions={"zip": functions.zip_})
 
     # then
     assert resolved == [
@@ -1535,7 +1557,7 @@ def test_zip_two_lists():
 
 def test_zip_three_lists():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "list",
@@ -1543,7 +1565,7 @@ def test_zip_three_lists():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__zip__": [
             [1, 2, 3],
             [4, 5, 6],
@@ -1552,7 +1574,7 @@ def test_zip_three_lists():
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"zip": functions.zip_})
+    resolved = resolve(cfg, schema, functions={"zip": functions.zip_})
 
     # then
     assert resolved == [
@@ -1564,7 +1586,7 @@ def test_zip_three_lists():
 
 def test_zip_raises_if_input_is_not_a_list_of_lists():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "list",
@@ -1572,7 +1594,7 @@ def test_zip_raises_if_input_is_not_a_list_of_lists():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__zip__": [
             [1, 2, 3],
             4,
@@ -1581,14 +1603,14 @@ def test_zip_raises_if_input_is_not_a_list_of_lists():
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"zip": functions.zip_})
+        resolve(cfg, schema, functions={"zip": functions.zip_})
 
     assert "Input to 'zip' must be a list of lists." in str(exc.value)
 
 
 def test_zip_raises_if_input_is_empty():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "list",
@@ -1596,11 +1618,11 @@ def test_zip_raises_if_input_is_empty():
         },
     }
 
-    dct = {"__zip__": []}
+    cfg: ConfigurationDict = {"__zip__": []}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"zip": functions.zip_})
+        resolve(cfg, schema, functions={"zip": functions.zip_})
 
     assert "Input to 'zip' must be a non-empty list of lists." in str(exc.value)
 
@@ -1610,12 +1632,12 @@ def test_zip_raises_if_input_is_empty():
 
 def test_filter_simple_example():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__filter__": {
             "iterable": [1, 2, 3, 4, 5],
             "variable": "x",
@@ -1624,7 +1646,7 @@ def test_filter_simple_example():
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"filter": functions.filter_})
+    resolved = resolve(cfg, schema, functions={"filter": functions.filter_})
 
     # then
     assert resolved == [2, 4, 5]
@@ -1632,30 +1654,30 @@ def test_filter_simple_example():
 
 def test_filter_raises_if_input_is_not_a_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__filter__": "not a dictionary",
     }
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"filter": functions.filter_})
+        resolve(cfg, schema, functions={"filter": functions.filter_})
 
     assert "must be a dictionary" in str(exc.value)
 
 
 def test_filter_raises_if_value_of_iterable_does_not_resolve_to_a_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__filter__": {
             "iterable": 42,
             "variable": "x",
@@ -1665,7 +1687,7 @@ def test_filter_raises_if_value_of_iterable_does_not_resolve_to_a_list():
 
     # when
     with raises(exceptions.ResolutionError):
-        resolve(dct, schema, functions={"filter": functions.filter_})
+        resolve(cfg, schema, functions={"filter": functions.filter_})
 
 
 # range ================================================================================
@@ -1673,32 +1695,32 @@ def test_filter_raises_if_value_of_iterable_does_not_resolve_to_a_list():
 
 def test_range_uses_start_0_by_default():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__range__": {
             "stop": 5,
         }
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"range": functions.range_})
+    resolved = resolve(cfg, schema, functions={"range": functions.range_})
 
     # then
     assert resolved == [0, 1, 2, 3, 4]
 
 
-def test_range_with_explisit_start():
+def test_range_with_explicit_start():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__range__": {
             "start": 1,
             "stop": 5,
@@ -1706,7 +1728,7 @@ def test_range_with_explisit_start():
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"range": functions.range_})
+    resolved = resolve(cfg, schema, functions={"range": functions.range_})
 
     # then
     assert resolved == [1, 2, 3, 4]
@@ -1714,12 +1736,12 @@ def test_range_with_explisit_start():
 
 def test_range_with_negative_step():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__range__": {
             "start": 5,
             "stop": 1,
@@ -1728,7 +1750,7 @@ def test_range_with_negative_step():
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"range": functions.range_})
+    resolved = resolve(cfg, schema, functions={"range": functions.range_})
 
     # then
     assert resolved == [5, 4, 3, 2]
@@ -1736,12 +1758,12 @@ def test_range_with_negative_step():
 
 def test_range_with_step_of_3():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__range__": {
             "start": 1,
             "stop": 10,
@@ -1750,7 +1772,7 @@ def test_range_with_step_of_3():
     }
 
     # when
-    resolved = resolve(dct, schema, functions={"range": functions.range_})
+    resolved = resolve(cfg, schema, functions={"range": functions.range_})
 
     # then
     assert resolved == [1, 4, 7]
@@ -1758,30 +1780,30 @@ def test_range_with_step_of_3():
 
 def test_range_raises_if_input_is_not_a_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__range__": "not a dictionary",
     }
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"range": functions.range_})
+        resolve(cfg, schema, functions={"range": functions.range_})
 
     assert "must be a dictionary" in str(exc.value)
 
 
 def test_range_raises_if_stop_is_not_provided():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__range__": {
             "start": 1,
         }
@@ -1789,19 +1811,19 @@ def test_range_raises_if_stop_is_not_provided():
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"range": functions.range_})
+        resolve(cfg, schema, functions={"range": functions.range_})
 
     assert "with a key 'stop'" in str(exc.value)
 
 
 def test_range_raises_if_non_integer_values_are_provided():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "__range__": {
             "start": 1,
             "stop": 3.2,
@@ -1810,6 +1832,28 @@ def test_range_raises_if_non_integer_values_are_provided():
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"range": functions.range_})
+        resolve(cfg, schema, functions={"range": functions.range_})
 
     assert "must be integers" in str(exc.value)
+
+
+def test_range_raises_if_extra_keys_are_provided():
+    # given
+    schema: Schema = {
+        "type": "list",
+        "element_schema": {"type": "integer"},
+    }
+
+    cfg: ConfigurationDict = {
+        "__range__": {
+            "start": 1,
+            "stop": 5,
+            "extra": "not allowed",
+        }
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"range": functions.range_})
+
+    assert "must be a dictionary with keys" in str(exc.value)

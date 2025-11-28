@@ -226,6 +226,7 @@ import typing
 import jinja2
 
 from . import converters as _converters, functions as _functions, types as _types
+from ._prototypes import Prototype, is_prototype_class
 from .exceptions import Error, ResolutionError
 
 
@@ -333,7 +334,7 @@ class _UnresolvedList(_types.UnresolvedList):
         elif isinstance(child, _ValueNode):
             return child.resolve()
         else:
-            raise TypeError(f"Unexpected node type: {type(child)}")
+            raise TypeError(f"Unexpected node type: {type(child)}")  # pragma: no cover
 
     def __iter__(self):
         for i in range(len(self)):
@@ -1532,11 +1533,36 @@ def _ensure_function(
 # type of resolve() is the same as the input type. This is useful for IDEs and
 # static type checkers.
 
+# type variable for Prototype subclasses
+_P = typing.TypeVar("_P", bound=Prototype)
+
+
+@typing.overload
+def resolve(
+    cfg: _types.Configuration,
+    spec: type[_P],
+    converters: Mapping[str, Callable] = ...,
+    functions: Optional[
+        Mapping[
+            str,
+            Union[
+                _types.Function, Callable[[_types.FunctionArgs], _types.Configuration]
+            ],
+        ]
+    ] = ...,
+    global_variables: Optional[Mapping[str, Any]] = ...,
+    inject_root_as: Optional[str] = ...,
+    filters: Optional[Mapping[str, Callable]] = ...,
+    preserve_type: bool = ...,
+    check_for_function_call: Optional[_types.FunctionCallChecker] = ...,
+) -> _P:
+    """Overloaded resolve() for ConfigurationValue."""
+
 
 @typing.overload
 def resolve(
     cfg: _types.ConfigurationDict,
-    schema: _types.Schema,
+    spec: _types.Schema,
     converters: Mapping[str, Callable] = ...,
     functions: Optional[
         Mapping[
@@ -1558,7 +1584,7 @@ def resolve(
 @typing.overload
 def resolve(
     cfg: _types.ConfigurationList,
-    schema: _types.Schema,
+    spec: _types.Schema,
     converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
     functions: Optional[
         Mapping[
@@ -1582,7 +1608,7 @@ def resolve(
 @typing.overload
 def resolve(
     cfg: _types.ConfigurationValue,
-    schema: _types.Schema,
+    spec: _types.Schema,
     converters: Mapping[str, Callable] = ...,
     functions: Optional[
         Mapping[
@@ -1606,7 +1632,7 @@ def resolve(
 
 def resolve(
     cfg: _types.Configuration,
-    schema: _types.Schema,
+    spec: Union[_types.Schema, type[Prototype]],
     converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
     functions: Optional[
         Mapping[
@@ -1623,15 +1649,17 @@ def resolve(
     check_for_function_call: Optional[  # type:ignore[assignment]
         _types.FunctionCallChecker
     ] = _check_for_dunder_function_call,
-) -> _types.Configuration:
+) -> _types.Configuration | Prototype:
     """Resolve a configuration by interpolating and parsing its entries.
 
     Parameters
     ----------
     cfg : :class:`types.Configuration`
         The "raw" configuration to resolve.
-    schema : :class:`types.Schema`
-        The schema describing the structure of the resolved configuration.
+    spec : Union[:class:`types.Schema`, :class:`Prototype`]
+        The schema describing the structure of the resolved configuration, or a
+        :class:`Prototype` subclass. If a :class:`Prototype` subclass is provided, the
+        resolved configuration will be an instance of that :class:`Prototype` class.
     converters : Mapping[str, Callable]
         A dictionary mapping value types to converter functions. The converter functions
         should take the raw value (after interpolation) and convert it to the specified
@@ -1708,11 +1736,20 @@ def resolve(
         check_for_function_call,
     )
 
+    if is_prototype_class(spec):
+        schema = spec._schema()
+    else:
+        schema = typing.cast(_types.Schema, spec)
+
     root = _make_node(cfg, schema, resolution_options)
 
     resolved = root.resolve()
 
-    if not preserve_type:
+    if is_prototype_class(spec):
+        # convert the resolved dict into a Prototype instance
+        assert isinstance(resolved, dict)
+        return spec._from_dict(resolved)
+    elif not preserve_type:
         return resolved
     else:
         output = copy.deepcopy(cfg)

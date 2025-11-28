@@ -35,6 +35,7 @@ The graph for this configuration looks like this:
 
 .. mermaid::
 
+   %%{init: {'themeVariables': {'edgeLabelBackground':'rgba(0,0,0,0)'}}}%%
    flowchart TB
        root["root (dict)"]
        course_name["course_name<br/>(value)"]
@@ -58,6 +59,8 @@ The graph for this configuration looks like this:
        msg1 -.->|depends on| date_of_first_lecture
        msg2 -.->|depends on| date_of_first_discussion
 
+       style root fill:#9370db40,stroke:#9370db
+       style message fill:#9370db40,stroke:#9370db
        style course_name fill:#ffd70040,stroke:#ffd700
        style date_of_first_lecture fill:#ffd70040,stroke:#ffd700
        style date_of_first_discussion fill:#ffd70040,stroke:#ffd700

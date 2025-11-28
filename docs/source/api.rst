@@ -8,16 +8,22 @@ The core functionality of `smartconfig` is exposed through two main functions:
 :func:`resolve` for resolving configurations and :func:`validate_schema` for
 checking the validity of schemas.
 
-.. function:: resolve(...) -> Configuration
+.. function:: resolve(...) -> Configuration or Prototype
 
-    Resolve a configuration by interpolating and parsing its entries.
+    Resolve a configuration by interpolating and parsing its entries. The
+    structure of the configuration can be described either by an explicit
+    schema dictionary or by a :class:`Prototype` subclass. If a prototype
+    is provided, the return value is an instance of that class.
 
     Parameters
     ----------
     cfg : :class:`types.Configuration`
         The "raw" configuration to resolve.
-    schema : :class:`types.Schema`
-        The schema describing the structure of the resolved configuration.
+    spec : :class:`types.Schema` or :class:`Prototype`
+        Either a schema dictionary describing the structure of the resolved
+        configuration, or a :class:`Prototype` subclass to use as a typed
+        target. When a prototype is provided, the return value is an instance
+        of that class instead of a plain dictionary.
         See: :ref:`schemas`.
     converters : Mapping[str, Callable]
         A dictionary mapping value types (as strings) to converter functions.

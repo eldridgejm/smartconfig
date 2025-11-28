@@ -1,10 +1,14 @@
 import datetime
 
-from smartconfig import resolve, exceptions
+from smartconfig import resolve, exceptions, Prototype, NotRequired
 from smartconfig.types import (
+    ConfigurationDict,
+    ConfigurationList,
+    Schema,
     RawString,
     RecursiveString,
     Function,
+    FunctionArgs,
     UnresolvedDict,
     UnresolvedList,
     UnresolvedFunctionCall,
@@ -18,7 +22,7 @@ from pytest import raises
 
 def test_raises_if_required_keys_are_missing():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "any"},
@@ -26,11 +30,11 @@ def test_raises_if_required_keys_are_missing():
         },
     }
 
-    dct = {"foo": 42}
+    cfg: ConfigurationDict = {"foo": 42}
 
     # when
     with raises(exceptions.ResolutionError) as excinfo:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     assert excinfo.value.keypath == ("bar",)
     assert (
@@ -41,7 +45,7 @@ def test_raises_if_required_keys_are_missing():
 
 def test_raises_if_required_keys_are_missing_in_nested_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {
@@ -53,11 +57,11 @@ def test_raises_if_required_keys_are_missing_in_nested_dict():
         },
     }
 
-    dct = {"foo": {}}
+    cfg: ConfigurationDict = {"foo": {}}
 
     # when
     with raises(exceptions.ResolutionError) as excinfo:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     assert excinfo.value.keypath == ("foo", "bar")
     assert (
@@ -68,13 +72,13 @@ def test_raises_if_required_keys_are_missing_in_nested_dict():
 
 def test_raises_if_extra_keys_without_extra_keys_schema():
     # given
-    schema = {"type": "dict", "required_keys": {}}
+    schema: Schema = {"type": "dict", "required_keys": {}}
 
-    dct = {"foo": 42}
+    cfg: ConfigurationDict = {"foo": 42}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     assert (
         str(exc.value)
@@ -84,12 +88,12 @@ def test_raises_if_extra_keys_without_extra_keys_schema():
 
 def test_allows_extra_keys_with_extra_keys_schema():
     # given
-    schema = {"type": "dict", "extra_keys_schema": {"type": "any"}}
+    schema: Schema = {"type": "dict", "extra_keys_schema": {"type": "any"}}
 
-    dct = {"foo": 42}
+    cfg: ConfigurationDict = {"foo": 42}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == 42
@@ -97,15 +101,15 @@ def test_allows_extra_keys_with_extra_keys_schema():
 
 def test_fills_in_missing_value_with_default_if_provided():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "optional_keys": {"foo": {"default": 42, "type": "integer"}},
     }
 
-    dct = {}
+    cfg: ConfigurationDict = {}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == 42
@@ -113,7 +117,7 @@ def test_fills_in_missing_value_with_default_if_provided():
 
 def test_allows_missing_keys_if_required_is_false():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "optional_keys": {
             "foo": {"type": "integer"},
@@ -123,10 +127,10 @@ def test_allows_missing_keys_if_required_is_false():
         },
     }
 
-    dct = {"bar": 42}
+    cfg: ConfigurationDict = {"bar": 42}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["bar"] == 42
@@ -135,7 +139,7 @@ def test_allows_missing_keys_if_required_is_false():
 
 def test_list_of_dicts():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "dict",
@@ -143,10 +147,10 @@ def test_list_of_dicts():
         },
     }
 
-    dct = [{"foo": 42}, {"foo": 10}]
+    cfg: ConfigurationList = [{"foo": 42}, {"foo": 10}]
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result == [{"foo": 42}, {"foo": 10}]
@@ -157,12 +161,12 @@ def test_list_of_dicts():
 
 def test_lists_are_permitted_as_root_node():
     # given
-    schema = {"type": "list", "element_schema": {"type": "integer"}}
+    schema: Schema = {"type": "list", "element_schema": {"type": "integer"}}
 
-    lst = [1, 2, 3]
+    cfg: ConfigurationList = [1, 2, 3]
 
     # when
-    result = resolve(lst, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result == [1, 2, 3]
@@ -170,14 +174,14 @@ def test_lists_are_permitted_as_root_node():
 
 def test_values_are_permitted_as_root_node():
     # given
-    schema = {
+    schema: Schema = {
         "type": "integer",
     }
 
-    x = "1 + 2"
+    cfg = "1 + 2"
 
     # when
-    result = resolve(x, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result == 3
@@ -188,7 +192,7 @@ def test_values_are_permitted_as_root_node():
 
 def test_interpolation_of_other_dictionary_entries_same_level():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -196,10 +200,10 @@ def test_interpolation_of_other_dictionary_entries_same_level():
         },
     }
 
-    dct = {"foo": "hello", "bar": "testing ${foo}"}
+    cfg: ConfigurationDict = {"foo": "hello", "bar": "testing ${foo}"}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["bar"] == "testing hello"
@@ -207,7 +211,7 @@ def test_interpolation_of_other_dictionary_entries_same_level():
 
 def test_interpolation_of_a_high_node_referencing_a_deeper_node():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -218,10 +222,10 @@ def test_interpolation_of_a_high_node_referencing_a_deeper_node():
         },
     }
 
-    dct = {"foo": "testing ${bar.baz}", "bar": {"baz": "this"}}
+    cfg: ConfigurationDict = {"foo": "testing ${bar.baz}", "bar": {"baz": "this"}}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == "testing this"
@@ -229,7 +233,7 @@ def test_interpolation_of_a_high_node_referencing_a_deeper_node():
 
 def test_interpolation_of_a_deep_node_referencing_a_higher_node():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -240,10 +244,10 @@ def test_interpolation_of_a_deep_node_referencing_a_higher_node():
         },
     }
 
-    dct = {"foo": "testing", "bar": {"baz": "${foo} this"}}
+    cfg: ConfigurationDict = {"foo": "testing", "bar": {"baz": "${foo} this"}}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == "testing"
@@ -252,7 +256,7 @@ def test_interpolation_of_a_deep_node_referencing_a_higher_node():
 
 def test_interpolation_can_reference_list_elements():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -263,10 +267,13 @@ def test_interpolation_can_reference_list_elements():
         },
     }
 
-    dct = {"foo": "testing ${bar.1}", "bar": ["this", "that", "the other"]}
+    cfg: ConfigurationDict = {
+        "foo": "testing ${bar.1}",
+        "bar": ["this", "that", "the other"],
+    }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == "testing that"
@@ -274,7 +281,7 @@ def test_interpolation_can_reference_list_elements():
 
 def test_chain_of_multiple_interpolations():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -283,14 +290,14 @@ def test_chain_of_multiple_interpolations():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": "this",
         "bar": "testing ${foo}",
         "baz": "now ${bar}",
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == "this"
@@ -300,27 +307,27 @@ def test_chain_of_multiple_interpolations():
 
 def test_raises_if_self_reference_detected():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": "${foo}",
     }
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     assert str(exc.value) == 'Cannot resolve keypath "foo": Circular reference.'
 
 
 def test_raises_if_cyclical_reference_detected():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -329,7 +336,7 @@ def test_raises_if_cyclical_reference_detected():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": "${baz}",
         "bar": "${foo}",
         "baz": "${bar}",
@@ -337,14 +344,14 @@ def test_raises_if_cyclical_reference_detected():
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     assert str(exc.value) == 'Cannot resolve keypath "foo": Circular reference.'
 
 
 def test_interpolation_can_use_jinja_to_loop_over_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "list", "element_schema": {"type": "string"}},
@@ -352,13 +359,13 @@ def test_interpolation_can_use_jinja_to_loop_over_list():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": ["this", "that", "the other"],
         "bar": "{% for item in foo %}item: ${ item } {% endfor %}",
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["bar"] == "item: this item: that item: the other "
@@ -366,7 +373,7 @@ def test_interpolation_can_use_jinja_to_loop_over_list():
 
 def test_interpolation_can_use_jinja_to_loop_over_dict_keys_explicitly():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "dict", "extra_keys_schema": {"type": "string"}},
@@ -374,13 +381,13 @@ def test_interpolation_can_use_jinja_to_loop_over_dict_keys_explicitly():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": {"this": "that", "the": "other"},
         "bar": "{% for key in foo.keys() | sort %}key: ${ key } {% endfor %}",
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["bar"] == "key: the key: this "
@@ -388,7 +395,7 @@ def test_interpolation_can_use_jinja_to_loop_over_dict_keys_explicitly():
 
 def test_interpolation_can_use_jinja_to_loop_over_dict_keys_implicitly():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "dict", "extra_keys_schema": {"type": "string"}},
@@ -396,13 +403,13 @@ def test_interpolation_can_use_jinja_to_loop_over_dict_keys_implicitly():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": {"this": "that", "the": "other"},
         "bar": "{% for key in foo | sort %}key: ${ key } {% endfor %}",
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["bar"] == "key: the key: this "
@@ -410,7 +417,7 @@ def test_interpolation_can_use_jinja_to_loop_over_dict_keys_implicitly():
 
 def test_can_use_jinja_methods():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -418,13 +425,13 @@ def test_can_use_jinja_methods():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": "this",
         "bar": "testing ${foo.upper()}",
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == "this"
@@ -433,18 +440,18 @@ def test_can_use_jinja_methods():
 
 def test_can_use_builtin_jinja_function_range():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "string"}},
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": 3,
         "bar": "{% for i in range(foo) %}${ i }{% endfor %}",
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["bar"] == "012"
@@ -452,7 +459,7 @@ def test_can_use_builtin_jinja_function_range():
 
 def test_can_treat_floats_as_floats():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "float"},
@@ -460,13 +467,13 @@ def test_can_treat_floats_as_floats():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": 3.00,
         "bar": "testing ${foo + 4}",
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == 3.0
@@ -475,7 +482,7 @@ def test_can_treat_floats_as_floats():
 
 def test_interpolation_of_keys_with_dots():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "this": {
@@ -488,7 +495,7 @@ def test_interpolation_of_keys_with_dots():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "this": {
             "foo.txt": "this",
             "bar": "testing ${this['foo.txt']}",
@@ -496,7 +503,7 @@ def test_interpolation_of_keys_with_dots():
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["this"]["foo.txt"] == "this"
@@ -505,7 +512,7 @@ def test_interpolation_of_keys_with_dots():
 
 def test_interpolation_is_not_confused_by_different_jinja_syntax():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -513,13 +520,13 @@ def test_interpolation_is_not_confused_by_different_jinja_syntax():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": "this",
         "bar": "testing ${foo} $[ that ]",
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == "this"
@@ -528,7 +535,7 @@ def test_interpolation_is_not_confused_by_different_jinja_syntax():
 
 def test_interpolation_from_deeply_nested_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "publication_schema": {
@@ -547,7 +554,7 @@ def test_interpolation_from_deeply_nested_list():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "publication_schema": {
             "required_artifacts": [
                 "foo",
@@ -559,7 +566,7 @@ def test_interpolation_from_deeply_nested_list():
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["publication_schema"]["required_artifacts"][2] == "baz"
@@ -567,7 +574,7 @@ def test_interpolation_from_deeply_nested_list():
 
 def test_interpolate_entire_dict_raises_exception():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {
@@ -581,14 +588,14 @@ def test_interpolate_entire_dict_raises_exception():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": {"x": 1, "y": 2},
         "bar": "${foo}",
     }
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     assert (
         str(exc.value)
@@ -598,7 +605,7 @@ def test_interpolate_entire_dict_raises_exception():
 
 def test_interpolate_entire_dict_indirectly_raises_exception():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {
@@ -614,7 +621,7 @@ def test_interpolate_entire_dict_indirectly_raises_exception():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": {"x": 1, "y": 2},
         "bar": "${foo}",
         "baz": "${bar.y}",
@@ -623,14 +630,14 @@ def test_interpolate_entire_dict_indirectly_raises_exception():
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     assert 'No converter provided for type: "dict"' in str(exc.value)
 
 
 def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {
@@ -651,7 +658,7 @@ def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": {"x": 1, "y": 2},
         "bar": "${baz.y}",
         "baz": "${quux}",
@@ -660,7 +667,7 @@ def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     # then
     assert 'No converter provided for type: "dict"' in str(exc.value)
@@ -668,7 +675,7 @@ def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
 
 def test_interpolate_entire_list_raises_exception():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {
@@ -682,14 +689,14 @@ def test_interpolate_entire_list_raises_exception():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": [1, 2],
         "bar": "${foo}",
     }
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     # then
     assert 'No converter provided for type: "list"' in str(exc.value)
@@ -700,15 +707,15 @@ def test_interpolate_entire_list_raises_exception():
 
 def test_leafs_are_converted_into_expected_types():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer"}},
     }
 
-    dct = {"foo": "42"}
+    cfg: ConfigurationDict = {"foo": "42"}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == 42
@@ -716,7 +723,7 @@ def test_leafs_are_converted_into_expected_types():
 
 def test_converting_occurs_after_interpolation():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -724,10 +731,10 @@ def test_converting_occurs_after_interpolation():
         },
     }
 
-    dct = {"foo": "42", "bar": "${foo}"}
+    cfg: ConfigurationDict = {"foo": "42", "bar": "${foo}"}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == 42
@@ -736,12 +743,12 @@ def test_converting_occurs_after_interpolation():
 
 def test_converting_of_extra_dictionary_keys():
     # given
-    schema = {"type": "dict", "extra_keys_schema": {"type": "integer"}}
+    schema: Schema = {"type": "dict", "extra_keys_schema": {"type": "integer"}}
 
-    dct = {"foo": "42", "bar": "10"}
+    cfg: ConfigurationDict = {"foo": "42", "bar": "10"}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == 42
@@ -750,12 +757,12 @@ def test_converting_of_extra_dictionary_keys():
 
 def test_converting_of_list_elements():
     # given
-    schema = {"type": "list", "element_schema": {"type": "integer"}}
+    schema: Schema = {"type": "list", "element_schema": {"type": "integer"}}
 
-    dct = ["10", "25"]
+    cfg: ConfigurationList = ["10", "25"]
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result == [10, 25]
@@ -763,7 +770,7 @@ def test_converting_of_list_elements():
 
 def test_raw_strings_resolve_to_raw_strings():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -771,10 +778,10 @@ def test_raw_strings_resolve_to_raw_strings():
         },
     }
 
-    dct = {"foo": "this", "bar": RawString("${foo}")}
+    cfg: ConfigurationDict = {"foo": "this", "bar": RawString("${foo}")}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert isinstance(result["bar"], RawString)
@@ -782,7 +789,7 @@ def test_raw_strings_resolve_to_raw_strings():
 
 def test_raw_strings_are_not_interpolated():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -790,10 +797,10 @@ def test_raw_strings_are_not_interpolated():
         },
     }
 
-    dct = {"foo": "this", "bar": RawString("${foo}")}
+    cfg: ConfigurationDict = {"foo": "this", "bar": RawString("${foo}")}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["bar"] == "${foo}"
@@ -801,7 +808,7 @@ def test_raw_strings_are_not_interpolated():
 
 def test_raw_strings_are_still_type_checked():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -809,18 +816,18 @@ def test_raw_strings_are_still_type_checked():
         },
     }
 
-    dct = {"foo": "this", "bar": RawString("42")}
+    cfg: ConfigurationDict = {"foo": "this", "bar": RawString("42")}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     assert "Schema expected something other than a string" in str(exc.value)
 
 
 def test_recursive_strings_resolve_to_regular_strings():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -828,10 +835,10 @@ def test_recursive_strings_resolve_to_regular_strings():
         },
     }
 
-    dct = {"foo": "this", "bar": RecursiveString("testing ${foo}")}
+    cfg: ConfigurationDict = {"foo": "this", "bar": RecursiveString("testing ${foo}")}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert isinstance(result["bar"], str) and not isinstance(
@@ -841,7 +848,7 @@ def test_recursive_strings_resolve_to_regular_strings():
 
 def test_recursive_strings_are_interpolated_recursively():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -850,14 +857,14 @@ def test_recursive_strings_are_interpolated_recursively():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": "hello",
         "bar": RawString("${foo} world"),
         "baz": RecursiveString("I said: ${bar}"),
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result == {
@@ -869,16 +876,16 @@ def test_recursive_strings_are_interpolated_recursively():
 
 def test_raises_if_no_converter_provided_for_type():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer"}},
     }
 
-    dct = {"foo": "42"}
+    cfg: ConfigurationDict = {"foo": "42"}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, converters={})
+        resolve(cfg, schema, converters={})
 
     assert "No converter provided" in str(exc.value)
 
@@ -888,29 +895,33 @@ def test_raises_if_no_converter_provided_for_type():
 
 def test_all_types_preserved_when_any_is_used():
     # given
-    schema = {
+    schema: Schema = {
         "type": "any",
     }
 
-    dct = {"foo": "testing", "bar": {"x": 1, "y": 2}, "baz": [1, 2, 3]}
+    cfg: ConfigurationDict = {
+        "foo": "testing",
+        "bar": {"x": 1, "y": 2},
+        "baz": [1, 2, 3],
+    }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
-    assert result == dct
+    assert result == cfg
 
 
 def test_interpolation_occurs_when_any_is_used():
     # given
-    schema = {
+    schema: Schema = {
         "type": "any",
     }
 
-    dct = {"foo": "testing", "bar": "${foo} this"}
+    cfg: ConfigurationDict = {"foo": "testing", "bar": "${foo} this"}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["bar"] == "testing this"
@@ -918,12 +929,12 @@ def test_interpolation_occurs_when_any_is_used():
 
 def test_converts_integers_to_strings_when_schema_calls_for_it():
     # given
-    schema = {"type": "dict", "required_keys": {"foo": {"type": "string"}}}
+    schema: Schema = {"type": "dict", "required_keys": {"foo": {"type": "string"}}}
 
-    dct = {"foo": 42}
+    cfg: ConfigurationDict = {"foo": 42}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == "42"
@@ -931,12 +942,12 @@ def test_converts_integers_to_strings_when_schema_calls_for_it():
 
 def test_converts_strings_to_integers_when_schema_calls_for_it():
     # given
-    schema = {"type": "dict", "required_keys": {"foo": {"type": "integer"}}}
+    schema: Schema = {"type": "dict", "required_keys": {"foo": {"type": "integer"}}}
 
-    dct = {"foo": "42"}
+    cfg: ConfigurationDict = {"foo": "42"}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == 42
@@ -944,15 +955,15 @@ def test_converts_strings_to_integers_when_schema_calls_for_it():
 
 def test_config_contains_datetimes_objects_type_is_left_alone():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "datetime"}},
     }
 
-    dct = {"foo": datetime.datetime(2020, 1, 1)}
+    cfg: ConfigurationDict = {"foo": datetime.datetime(2020, 1, 1)}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] == datetime.datetime(2020, 1, 1)
@@ -963,15 +974,15 @@ def test_config_contains_datetimes_objects_type_is_left_alone():
 
 def test_dictionary_can_be_nullable():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "dict", "nullable": True}},
     }
 
-    dct = {"foo": None}
+    cfg: ConfigurationDict = {"foo": None}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] is None
@@ -979,7 +990,7 @@ def test_dictionary_can_be_nullable():
 
 def test_list_can_be_nullable():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {
@@ -990,10 +1001,10 @@ def test_list_can_be_nullable():
         },
     }
 
-    dct = {"foo": None}
+    cfg: ConfigurationDict = {"foo": None}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] is None
@@ -1001,15 +1012,15 @@ def test_list_can_be_nullable():
 
 def test_leaf_can_be_nullable():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer", "nullable": True}},
     }
 
-    dct = {"foo": None}
+    cfg: ConfigurationDict = {"foo": None}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] is None
@@ -1017,29 +1028,29 @@ def test_leaf_can_be_nullable():
 
 def test_error_is_raised_if_None_is_provided_but_value_is_not_nullable():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer"}},
     }
 
-    dct = {"foo": None}
+    cfg: ConfigurationDict = {"foo": None}
 
     # when
     with raises(exceptions.ResolutionError):
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
 
 def test_any_can_be_None_without_being_nullable():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "any"}},
     }
 
-    dct = {"foo": None}
+    cfg: ConfigurationDict = {"foo": None}
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["foo"] is None
@@ -1050,23 +1061,23 @@ def test_any_can_be_None_without_being_nullable():
 
 def test_exception_raised_when_referencing_an_undefined_key():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "string"}},
     }
 
-    dct = {"foo": "${bar}"}
+    cfg: ConfigurationDict = {"foo": "${bar}"}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     assert "'bar' is undefined" in str(exc.value)
 
 
 def test_exception_has_correct_path_with_missing_key_in_nested_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {
@@ -1076,11 +1087,11 @@ def test_exception_has_correct_path_with_missing_key_in_nested_dict():
         },
     }
 
-    dct = {"foo": {}}
+    cfg: ConfigurationDict = {"foo": {}}
 
     # when
     with raises(exceptions.ResolutionError) as excinfo:
-        resolve(dct, schema)
+        resolve(cfg, schema)
 
     assert excinfo.value.keypath == (
         "foo",
@@ -1090,7 +1101,7 @@ def test_exception_has_correct_path_with_missing_key_in_nested_dict():
 
 def test_exception_has_correct_path_with_missing_key_in_nested_dict_within_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {
             "type": "dict",
@@ -1102,7 +1113,7 @@ def test_exception_has_correct_path_with_missing_key_in_nested_dict_within_list(
         },
     }
 
-    lst = [
+    cfg: ConfigurationList = [
         {
             "foo": 10,
         },
@@ -1111,9 +1122,27 @@ def test_exception_has_correct_path_with_missing_key_in_nested_dict_within_list(
 
     # when
     with raises(exceptions.ResolutionError) as excinfo:
-        resolve(lst, schema)
+        resolve(cfg, schema)
 
     assert excinfo.value.keypath == ("1", "foo")
+
+
+def test_exception_raised_when_schema_includes_default_value_that_doesnt_match_type():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "optional_keys": {
+            "foo": {"type": "integer", "default": "not an int"},
+        },
+    }
+
+    cfg: ConfigurationDict = {}
+
+    # when/then
+    with raises(exceptions.ResolutionError) as excinfo:
+        resolve(cfg, schema)
+
+    assert "Cannot parse into int" in str(excinfo.value)
 
 
 # preserve_type ========================================================================
@@ -1124,7 +1153,7 @@ def test_preserve_type():
         something = 80
 
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1136,13 +1165,13 @@ def test_preserve_type():
         },
     }
 
-    dct = UserDict({"foo": 10, "bar": {"something": 20}, "baz": [1, 2, 3]})
+    cfg = UserDict({"foo": 10, "bar": {"something": 20}, "baz": [1, 2, 3]})
 
     # when
-    result = resolve(dct, schema, preserve_type=True)
+    result = resolve(cfg, schema, preserve_type=True)
 
     # then
-    assert result == dct
+    assert result == cfg
 
 
 # functions ============================================================================
@@ -1150,11 +1179,11 @@ def test_preserve_type():
 
 def test_function_call_at_root():
     # given
-    schema = {"type": "integer"}
-    dct = {"__double__": 10}
+    schema: Schema = {"type": "integer"}
+    cfg: ConfigurationDict = {"__double__": 10}
 
     # when
-    result = resolve(dct, schema, functions={"double": lambda x: x.input * 2})  # type: ignore
+    result = resolve(cfg, schema, functions={"double": lambda x: x.input * 2})  # type: ignore
 
     # then
     assert result == 20
@@ -1162,17 +1191,21 @@ def test_function_call_at_root():
 
 def test_function_call_at_root_raises_if_circular_reference():
     # given
-    schema = {"type": "integer"}
-    dct = {"__double__": "${x}"}
+    schema: Schema = {"type": "integer"}
+    cfg: ConfigurationDict = {"__double__": "${x}"}
+
+    def double(args: FunctionArgs) -> int:
+        assert isinstance(args.input, int)
+        return args.input * 2
 
     # when
     with raises(exceptions.ResolutionError):
-        resolve(dct, schema, functions={"double": lambda x: x.input * 2})
+        resolve(cfg, schema, functions={"double": double})
 
 
 def test_function_call_at_root_without_circular_reference():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
     }
@@ -1180,7 +1213,7 @@ def test_function_call_at_root_without_circular_reference():
     def make_dict(args):
         return {"x": 10, "y": "${x}"}
 
-    cfg = {"__make_dict__": {}}
+    cfg: ConfigurationDict = {"__make_dict__": {}}
 
     # when
     result = resolve(cfg, schema, functions={"make_dict": make_dict})
@@ -1191,7 +1224,7 @@ def test_function_call_at_root_without_circular_reference():
 
 def test_function_call_in_dictionary():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1199,10 +1232,10 @@ def test_function_call_in_dictionary():
         },
     }
 
-    dct = {"foo": 6, "bar": {"__double__": 10}}
+    cfg: ConfigurationDict = {"foo": 6, "bar": {"__double__": 10}}
 
     # when
-    result = resolve(dct, schema, functions={"double": lambda args: args.input * 2})  # type: ignore
+    result = resolve(cfg, schema, functions={"double": lambda args: args.input * 2})  # type: ignore
 
     # then
     assert result["bar"] == 20
@@ -1210,7 +1243,7 @@ def test_function_call_in_dictionary():
 
 def test_function_call_in_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1218,10 +1251,10 @@ def test_function_call_in_list():
         },
     }
 
-    dct = {"foo": 6, "bar": [1, {"__double__": 10}, 3]}
+    cfg: ConfigurationDict = {"foo": 6, "bar": [1, {"__double__": 10}, 3]}
 
     # when
-    result = resolve(dct, schema, functions={"double": lambda args: args.input * 2})  # type: ignore
+    result = resolve(cfg, schema, functions={"double": lambda args: args.input * 2})  # type: ignore
 
     # then
     assert result["bar"] == [1, 20, 3]
@@ -1229,7 +1262,7 @@ def test_function_call_in_list():
 
 def test_function_call_output_is_resolved_by_default_using_schema():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1237,11 +1270,11 @@ def test_function_call_output_is_resolved_by_default_using_schema():
         },
     }
 
-    dct = {"foo": 6, "bar": {"__add_one_to__": "10"}}
+    cfg: ConfigurationDict = {"foo": 6, "bar": {"__add_one_to__": "10"}}
 
     # when
     result = resolve(
-        dct, schema, functions={"add_one_to": lambda args: str(args.input) + " + 1"}
+        cfg, schema, functions={"add_one_to": lambda args: str(args.input) + " + 1"}
     )
 
     # then
@@ -1250,7 +1283,7 @@ def test_function_call_output_is_resolved_by_default_using_schema():
 
 def test_function_call_input_is_resolved_by_default_using_the_any_schema():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1258,11 +1291,11 @@ def test_function_call_input_is_resolved_by_default_using_the_any_schema():
         },
     }
 
-    dct = {"foo": 6, "bar": {"__add_one_to__": "${foo}"}}
+    cfg: ConfigurationDict = {"foo": 6, "bar": {"__add_one_to__": "${foo}"}}
 
     # when
     result = resolve(
-        dct,
+        cfg,
         schema,
         functions={"add_one_to": lambda args: int(args.input) + 1},  # type: ignore
     )
@@ -1273,7 +1306,7 @@ def test_function_call_input_is_resolved_by_default_using_the_any_schema():
 
 def test_function_call_other_nodes_can_reference_keys_within_dict_computed_by_function():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1281,13 +1314,16 @@ def test_function_call_other_nodes_can_reference_keys_within_dict_computed_by_fu
         },
     }
 
-    dct = {"foo": "${baz.alpha} * 3", "baz": {"__make_numbers__": {}}}
+    cfg: ConfigurationDict = {
+        "foo": "${baz.alpha} * 3",
+        "baz": {"__make_numbers__": {}},
+    }
 
     def make_numbers(_):
         return {"alpha": "6 + 4", "beta": 20}
 
     # when
-    result = resolve(dct, schema, functions={"make_numbers": make_numbers})
+    result = resolve(cfg, schema, functions={"make_numbers": make_numbers})
 
     # then
     assert result["foo"] == 30
@@ -1295,12 +1331,12 @@ def test_function_call_other_nodes_can_reference_keys_within_dict_computed_by_fu
 
 def test_function_call_with_input_not_resolved():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "integer"}},
     }
 
-    dct = {"foo": "4", "bar": {"__myraw__": "${foo} + 1"}}
+    cfg: ConfigurationDict = {"foo": "4", "bar": {"__myraw__": "${foo} + 1"}}
 
     seen = []
 
@@ -1311,7 +1347,7 @@ def test_function_call_with_input_not_resolved():
     function = Function(myraw, resolve_input=False)
 
     # when
-    result = resolve(dct, schema, functions={"myraw": function})
+    result = resolve(cfg, schema, functions={"myraw": function})
 
     # then
     assert seen == ["${foo} + 1"]
@@ -1320,12 +1356,12 @@ def test_function_call_with_input_not_resolved():
 
 def test_function_call_with_input_and_output_not_resolved():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "string"}},
     }
 
-    dct = {"foo": 4, "bar": {"__myraw__": "${foo} + 1"}}
+    cfg: ConfigurationDict = {"foo": 4, "bar": {"__myraw__": "${foo} + 1"}}
 
     seen = []
 
@@ -1336,7 +1372,7 @@ def test_function_call_with_input_and_output_not_resolved():
     function = Function(myraw, resolve_input=False)
 
     # when
-    result = resolve(dct, schema, functions={"myraw": function})
+    result = resolve(cfg, schema, functions={"myraw": function})
 
     # then
     assert seen == ["${foo} + 1"]
@@ -1345,12 +1381,12 @@ def test_function_call_with_input_and_output_not_resolved():
 
 def test_function_call_without_resolving_output_does_not_apply_schema():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "string"}},
     }
 
-    dct = {"foo": 4, "bar": {"__myraw__": "${foo} + 1"}}
+    cfg: ConfigurationDict = {"foo": 4, "bar": {"__myraw__": "${foo} + 1"}}
 
     seen = []
 
@@ -1361,7 +1397,7 @@ def test_function_call_without_resolving_output_does_not_apply_schema():
     function = Function(myraw, resolve_input=False)
 
     # when
-    result = resolve(dct, schema, functions={"myraw": function})
+    result = resolve(cfg, schema, functions={"myraw": function})
 
     # then
     assert seen == ["${foo} + 1"]
@@ -1375,15 +1411,18 @@ def test_function_call_resolve_raises_if_function_call_is_malformed():
     # if there's another key in that dictionary, it is considered a malformed
     # function call and we should raise a ResolutionError
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "integer"}},
     }
 
-    dct = {"foo": 4, "bar": {"__myraw__": "${foo} + 1", "baz": "hello"}}
+    cfg: ConfigurationDict = {
+        "foo": 4,
+        "bar": {"__myraw__": "${foo} + 1", "baz": "hello"},
+    }
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={"mraw": lambda x: x.input})
+        resolve(cfg, schema, functions={"mraw": lambda x: x.input})
 
     # then
     assert "Invalid function call" in str(exc.value)
@@ -1391,15 +1430,15 @@ def test_function_call_resolve_raises_if_function_call_is_malformed():
 
 def test_function_call_with_unknown_function():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {"foo": {"type": "integer"}, "bar": {"type": "integer"}},
     }
 
-    dct = {"foo": 4, "bar": {"__myraw__": "${foo} + 1"}}
+    cfg: ConfigurationDict = {"foo": 4, "bar": {"__myraw__": "${foo} + 1"}}
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, functions={})
+        resolve(cfg, schema, functions={})
 
     # then
     assert "Unknown function" in str(exc.value)
@@ -1407,7 +1446,7 @@ def test_function_call_with_unknown_function():
 
 def test_function_call_is_given_root_as_unresolved_dict_or_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {
@@ -1421,7 +1460,7 @@ def test_function_call_is_given_root_as_unresolved_dict_or_list():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": {
             "a": 1,
             "b": 7,
@@ -1433,7 +1472,7 @@ def test_function_call_is_given_root_as_unresolved_dict_or_list():
         return args.root.get_keypath(args.input)
 
     # when
-    result = resolve(dct, schema, functions={"splice": splice})
+    result = resolve(cfg, schema, functions={"splice": splice})
 
     # then
     assert result["bar"] == {"a": 1, "b": 7}
@@ -1441,7 +1480,7 @@ def test_function_call_is_given_root_as_unresolved_dict_or_list():
 
 def test_function_call_get_keypath_to_function_call_returning_a_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "alpha": {"type": "integer"},
@@ -1452,16 +1491,21 @@ def test_function_call_get_keypath_to_function_call_returning_a_dict():
         },
     }
 
-    def triple(args):
-        return args.root.get_keypath("beta.gamma") * 3
+    def triple(args: FunctionArgs) -> int:
+        x = args.root.get_keypath("beta.gamma")
+        assert isinstance(x, int)
+        return x * 3
 
-    def make_beta(_):
+    def make_beta(_: FunctionArgs) -> ConfigurationDict:
         return {"gamma": 10}
 
-    dct = {"alpha": {"__triple__": {}}, "beta": {"__make_beta__": {}}}
+    cfg: ConfigurationDict = {
+        "alpha": {"__triple__": {}},
+        "beta": {"__make_beta__": {}},
+    }
 
     # when
-    result = resolve(dct, schema, functions={"triple": triple, "make_beta": make_beta})
+    result = resolve(cfg, schema, functions={"triple": triple, "make_beta": make_beta})
 
     # then
     assert result == {"alpha": 30, "beta": {"gamma": 10}}
@@ -1469,7 +1513,7 @@ def test_function_call_get_keypath_to_function_call_returning_a_dict():
 
 def test_function_call_at_root_with_result_producing_references():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1490,7 +1534,7 @@ def test_function_call_at_root_with_result_producing_references():
 def test_function_call_at_root_producing_key_shadowing_builtin():
     # the function call produces a `range` key which shadows the builtin `range`
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1498,11 +1542,13 @@ def test_function_call_at_root_producing_key_shadowing_builtin():
         },
     }
 
-    def myfun(_):
+    def myfun(_: FunctionArgs) -> ConfigurationDict:
         return {"foo": 10, "range": 20}
 
+    cfg: ConfigurationDict = {"__myfun__": {}}
+
     # when
-    result = resolve({"__myfun__": {}}, schema, functions={"myfun": myfun})
+    result = resolve(cfg, schema, functions={"myfun": myfun})
 
     # then
     assert result == {"foo": 10, "range": 20}
@@ -1513,14 +1559,14 @@ def test_function_call_at_root_does_not_produce_key_shadowing_builtin():
     # builtin range
 
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
         },
     }
 
-    def myfun(_):
+    def myfun(_: FunctionArgs) -> ConfigurationDict:
         return {"foo": "${range(10) | length}"}
 
     # when
@@ -1532,7 +1578,7 @@ def test_function_call_at_root_does_not_produce_key_shadowing_builtin():
 
 def test_function_call_with_reference_to_result_of_another_function_call_within_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "alpha": {"type": "integer"},
@@ -1546,10 +1592,10 @@ def test_function_call_with_reference_to_result_of_another_function_call_within_
     def triple(args):
         return args.root["beta"] * 3
 
-    dct = {"alpha": {"__triple__": {}}, "beta": {"__double__": 10}}
+    cfg: ConfigurationDict = {"alpha": {"__triple__": {}}, "beta": {"__double__": 10}}
 
     # when
-    result = resolve(dct, schema, functions={"double": double, "triple": triple})
+    result = resolve(cfg, schema, functions={"double": double, "triple": triple})
 
     # then
     assert result == {"alpha": 60, "beta": 20}
@@ -1557,7 +1603,7 @@ def test_function_call_with_reference_to_result_of_another_function_call_within_
 
 def test_function_call_with_reference_to_result_of_another_function_call_within_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
@@ -1568,10 +1614,10 @@ def test_function_call_with_reference_to_result_of_another_function_call_within_
     def triple(args):
         return args.root[1] * 3
 
-    lst = [{"__triple__": {}}, {"__double__": 10}]
+    cfg: ConfigurationList = [{"__triple__": {}}, {"__double__": 10}]
 
     # when
-    result = resolve(lst, schema, functions={"double": double, "triple": triple})
+    result = resolve(cfg, schema, functions={"double": double, "triple": triple})
 
     # then
     assert result == [60, 20]
@@ -1579,7 +1625,7 @@ def test_function_call_with_reference_to_result_of_another_function_call_within_
 
 def test_function_call_that_returns_a_function_call():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1605,7 +1651,7 @@ def test_function_call_that_returns_a_function_call():
 
 def test_function_call_that_returns_a_function_call_that_returns_a_function_call():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1634,7 +1680,7 @@ def test_function_call_that_returns_a_function_call_that_returns_a_function_call
 
 def test_function_call_with_infinite_recursion():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1651,7 +1697,7 @@ def test_function_call_with_infinite_recursion():
 
 def test_function_with_custom_call_syntax():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1662,11 +1708,11 @@ def test_function_with_custom_call_syntax():
     def add_one(args):
         return args.input + 1
 
-    def check_for_function_call(dct, functions):
-        for key in dct.keys():
+    def check_for_function_call(cfg, functions):
+        for key in cfg.keys():
             if key.startswith("!!"):
                 function_name = key[2:]
-                input = dct[key]
+                input = cfg[key]
                 return functions[function_name], input
 
     # when
@@ -1683,7 +1729,7 @@ def test_function_with_custom_call_syntax():
 
 def test_function_with_disabled_check_for_function_call():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1708,7 +1754,7 @@ def test_function_with_disabled_check_for_function_call():
 
 def test_functions_is_none_means_no_functions():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1728,7 +1774,7 @@ def test_functions_is_none_means_no_functions():
 
 def test_global_variables_are_injected():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1736,10 +1782,10 @@ def test_global_variables_are_injected():
         },
     }
 
-    dct = {"foo": "${ alpha }", "bar": "${ beta }"}
+    cfg: ConfigurationDict = {"foo": "${ alpha }", "bar": "${ beta }"}
 
     # when
-    result = resolve(dct, schema, global_variables={"alpha": 10, "beta": 20})
+    result = resolve(cfg, schema, global_variables={"alpha": 10, "beta": 20})
 
     # then
     assert result == {"foo": 10, "bar": 20}
@@ -1747,7 +1793,7 @@ def test_global_variables_are_injected():
 
 def test_global_variables_are_given_less_priority_when_names_clash():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1755,11 +1801,11 @@ def test_global_variables_are_given_less_priority_when_names_clash():
         },
     }
 
-    dct = {"foo": "${ foo }", "bar": "${ bar }"}
+    cfg: ConfigurationDict = {"foo": "${ foo }", "bar": "${ bar }"}
 
     # when
     with raises(exceptions.ResolutionError) as exc:
-        resolve(dct, schema, global_variables={"foo": 10, "bar": 20})
+        resolve(cfg, schema, global_variables={"foo": 10, "bar": 20})
 
     assert "Circular reference" in str(exc.value)
 
@@ -1769,15 +1815,15 @@ def test_global_variables_are_given_less_priority_when_names_clash():
 
 def test_inject_root_with_top_level_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    lst = [4, 1, "${ root.0 } + 1"]
+    cfg: ConfigurationList = [4, 1, "${ root.0 } + 1"]
 
     # when
-    result = resolve(lst, schema, inject_root_as="root")
+    result = resolve(cfg, schema, inject_root_as="root")
 
     # then
     assert result == [4, 1, 5]
@@ -1785,7 +1831,7 @@ def test_inject_root_with_top_level_list():
 
 def test_inject_root_with_top_level_dict():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1793,10 +1839,10 @@ def test_inject_root_with_top_level_dict():
         },
     }
 
-    dct = {"foo": 42, "bar": "${ myroot.keys() | length }"}
+    cfg: ConfigurationDict = {"foo": 42, "bar": "${ myroot.keys() | length }"}
 
     # when
-    result = resolve(dct, schema, inject_root_as="myroot")
+    result = resolve(cfg, schema, inject_root_as="myroot")
 
     # then
     assert result["bar"] == 2
@@ -1804,7 +1850,7 @@ def test_inject_root_with_top_level_dict():
 
 def test_inject_root_with_dictionary_returned_by_function_node():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "integer"},
@@ -1819,18 +1865,18 @@ def test_inject_root_with_dictionary_returned_by_function_node():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": 42,
         "bar": {"__make_dict__": {}},
         "baz": "${ myroot.bar.foo }",
     }
 
-    def make_dict(_):
+    def make_dict(_: FunctionArgs) -> ConfigurationDict:
         return {"foo": 10, "bar": 20}
 
     # when
     result = resolve(
-        dct, schema, functions={"make_dict": make_dict}, inject_root_as="myroot"
+        cfg, schema, functions={"make_dict": make_dict}, inject_root_as="myroot"
     )
 
     # then
@@ -1839,19 +1885,19 @@ def test_inject_root_with_dictionary_returned_by_function_node():
 
 def test_inject_root_with_function_at_root_level_returning_a_list():
     # given
-    schema = {
+    schema: Schema = {
         "type": "list",
         "element_schema": {"type": "integer"},
     }
 
-    dct = {"__make_list__": {}}
+    cfg: ConfigurationDict = {"__make_list__": {}}
 
     def make_list(_):
         return [1, 2, 3, "${ myroot.1 }"]
 
     # when
     result = resolve(
-        dct, schema, functions={"make_list": make_list}, inject_root_as="myroot"
+        cfg, schema, functions={"make_list": make_list}, inject_root_as="myroot"
     )
 
     # then
@@ -1863,7 +1909,7 @@ def test_inject_root_with_function_at_root_level_returning_a_list():
 
 def test_filter_is_provided_at_interpolation_time():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -1871,13 +1917,13 @@ def test_filter_is_provided_at_interpolation_time():
         },
     }
 
-    dct = {"foo": "this", "bar": "${ foo | myfilter }"}
+    cfg: ConfigurationDict = {"foo": "this", "bar": "${ foo | myfilter }"}
 
     def myfilter(value):
         return value.upper()
 
     # when
-    result = resolve(dct, schema, filters={"myfilter": myfilter})
+    result = resolve(cfg, schema, filters={"myfilter": myfilter})
 
     # then
     assert result["bar"] == "THIS"
@@ -1885,7 +1931,7 @@ def test_filter_is_provided_at_interpolation_time():
 
 def test_filter_overrides_builtin_jinja_filters():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -1893,13 +1939,13 @@ def test_filter_overrides_builtin_jinja_filters():
         },
     }
 
-    dct = {"foo": "this", "bar": "${ foo | length }"}
+    cfg: ConfigurationDict = {"foo": "this", "bar": "${ foo | length }"}
 
     def length(_):
         return 42
 
     # when
-    result = resolve(dct, schema, filters={"length": length})
+    result = resolve(cfg, schema, filters={"length": length})
 
     # then
     assert result["bar"] == "42"
@@ -1907,7 +1953,7 @@ def test_filter_overrides_builtin_jinja_filters():
 
 def test_filter_with_arguments():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "string"},
@@ -1915,13 +1961,13 @@ def test_filter_with_arguments():
         },
     }
 
-    dct = {"foo": "this", "bar": "${ foo | myfilter('that') }"}
+    cfg: ConfigurationDict = {"foo": "this", "bar": "${ foo | myfilter('that') }"}
 
     def myfilter(value, arg1):
         return value + arg1
 
     # when
-    result = resolve(dct, schema, filters={"myfilter": myfilter})
+    result = resolve(cfg, schema, filters={"myfilter": myfilter})
 
     # then
     assert result["bar"] == "thisthat"
@@ -1932,7 +1978,7 @@ def test_filter_with_arguments():
 
 def test_unresolved_dict_values():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "dict", "extra_keys_schema": {"type": "string"}},
@@ -1940,13 +1986,13 @@ def test_unresolved_dict_values():
         },
     }
 
-    dct = {
+    cfg: ConfigurationDict = {
         "foo": {"one": "a", "two": "b"},
         "bar": "{% for s in foo.values() | sort %}${ s } {% endfor %}",
     }
 
     # when
-    result = resolve(dct, schema)
+    result = resolve(cfg, schema)
 
     # then
     assert result["bar"] == "a b "
@@ -1954,7 +2000,7 @@ def test_unresolved_dict_values():
 
 def test_unresolved_list_returns_unresolved_dict():
     # given
-    schema = {
+    schema: Schema = {
         "required_keys": {
             "foo": {
                 "type": "list",
@@ -1972,15 +2018,18 @@ def test_unresolved_list_returns_unresolved_dict():
         assert isinstance(args.root["foo"][0], UnresolvedDict)
         return "ok"
 
-    dct = {"foo": [{"foo": "a"}, {"foo": "b"}], "bar": {"__checker__": {}}}
+    cfg: ConfigurationDict = {
+        "foo": [{"foo": "a"}, {"foo": "b"}],
+        "bar": {"__checker__": {}},
+    }
 
     # when
-    resolve(dct, schema, functions={"checker": checker})
+    resolve(cfg, schema, functions={"checker": checker})
 
 
 def test_unresolved_list_returns_unresolved_list():
     # given
-    schema = {
+    schema: Schema = {
         "required_keys": {
             "foo": {
                 "type": "list",
@@ -1998,15 +2047,15 @@ def test_unresolved_list_returns_unresolved_list():
         assert isinstance(args.root["foo"][0], UnresolvedList)
         return "ok"
 
-    dct = {"foo": [["hi"], ["a", "b"]], "bar": {"__checker__": {}}}
+    cfg: ConfigurationDict = {"foo": [["hi"], ["a", "b"]], "bar": {"__checker__": {}}}
 
     # when
-    resolve(dct, schema, functions={"checker": checker})
+    resolve(cfg, schema, functions={"checker": checker})
 
 
 def test_unresolved_list_resolve():
     # given
-    schema = {
+    schema: Schema = {
         "required_keys": {
             "foo": {
                 "type": "list",
@@ -2024,15 +2073,15 @@ def test_unresolved_list_resolve():
         assert args.root["foo"].resolve() == [["hi"], ["a", "b"]]
         return "ok"
 
-    dct = {"foo": [["hi"], ["a", "b"]], "bar": {"__checker__": {}}}
+    cfg: ConfigurationDict = {"foo": [["hi"], ["a", "b"]], "bar": {"__checker__": {}}}
 
     # when
-    resolve(dct, schema, functions={"checker": checker})
+    resolve(cfg, schema, functions={"checker": checker})
 
 
 def test_unresolved_list_get_keypath():
     # given
-    schema = {
+    schema: Schema = {
         "required_keys": {
             "foo": {
                 "type": "list",
@@ -2050,15 +2099,15 @@ def test_unresolved_list_get_keypath():
         assert args.root["foo"].get_keypath("1") == ["a", "b"]
         return "ok"
 
-    dct = {"foo": [["hi"], ["a", "b"]], "bar": {"__checker__": {}}}
+    cfg: ConfigurationDict = {"foo": [["hi"], ["a", "b"]], "bar": {"__checker__": {}}}
 
     # when
-    resolve(dct, schema, functions={"checker": checker})
+    resolve(cfg, schema, functions={"checker": checker})
 
 
 def test_unresolved_function_get_keypath():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "alpha": {"type": "integer"},
@@ -2075,15 +2124,15 @@ def test_unresolved_function_get_keypath():
         assert isinstance(number, int)
         return number + 1
 
-    dct = {"__outer__": {}}
+    cfg: ConfigurationDict = {"__outer__": {}}
 
     # when
-    resolve(dct, schema, functions={"outer": outer, "inner": inner})
+    resolve(cfg, schema, functions={"outer": outer, "inner": inner})
 
 
 def test_unresolved_dict_get_keypath_deeper_than_container_raises_keyerror():
     # given
-    schema = {
+    schema: Schema = {
         "type": "dict",
         "required_keys": {
             "foo": {"type": "any"},
@@ -2096,7 +2145,215 @@ def test_unresolved_dict_get_keypath_deeper_than_container_raises_keyerror():
         with raises(KeyError):
             args.root.get_keypath("foo.a.bar")
 
-    dct = {"foo": {"a": 1, "b": 2}, "bar": {"__inner__": {}}}
+    cfg: ConfigurationDict = {"foo": {"a": 1, "b": 2}, "bar": {"__inner__": {}}}
 
     # when
-    resolve(dct, schema, functions={"inner": inner})
+    resolve(cfg, schema, functions={"inner": inner})
+
+
+# prototypes ===========================================================================
+
+
+def test_resolve_given_prototype_as_spec():
+    # given
+    class Student(Prototype):
+        name: str
+        age: int
+
+    cfg: ConfigurationDict = {
+        "name": "Alice",
+        "age": "21",
+    }
+
+    # when
+    result = resolve(cfg, Student)
+
+    # then
+    assert isinstance(result, Student)
+    assert result.name == "Alice"
+    assert result.age == 21
+
+
+def test_resolve_with_nested_prototype():
+    # given
+    class Address(Prototype):
+        city: str
+        zip_code: int
+
+    class Person(Prototype):
+        name: str
+        address: Address
+
+    cfg: ConfigurationDict = {
+        "name": "Bob",
+        "address": {"city": "New York", "zip_code": "10001"},
+    }
+
+    # when
+    result = resolve(cfg, Person)
+
+    # then
+    assert isinstance(result, Person)
+    assert isinstance(result.address, Address)
+    assert result.name == "Bob"
+    assert result.address.city == "New York"
+    assert result.address.zip_code == 10001
+
+
+def test_resolve_with_deeply_nested_prototype():
+    # given
+    class Address(Prototype):
+        city: str
+        zip_code: int
+
+    class Person(Prototype):
+        name: str
+        address: Address
+
+    class Company(Prototype):
+        owner: Person
+        address: Address
+
+    cfg: ConfigurationDict = {
+        "owner": {
+            "name": "Charlie",
+            "address": {"city": "San Francisco", "zip_code": "94105"},
+        },
+        "address": {"city": "Seattle", "zip_code": "98101"},
+    }
+
+    # when
+    result = resolve(cfg, Company)
+
+    # then
+    assert isinstance(result, Company)
+    assert isinstance(result.owner, Person)
+    assert isinstance(result.owner.address, Address)
+    assert result.owner.name == "Charlie"
+    assert result.owner.address.city == "San Francisco"
+    assert result.address.city == "Seattle"
+
+
+def test_resolve_with_list_of_prototypes():
+    # given
+    class Address(Prototype):
+        city: str
+        zip_code: int
+
+    class Person(Prototype):
+        name: str
+        address: Address
+
+    class Team(Prototype):
+        members: list[Person]
+
+    cfg: ConfigurationDict = {
+        "members": [
+            {"name": "Member 1", "address": {"city": "A", "zip_code": 1}},
+            {"name": "Member 2", "address": {"city": "B", "zip_code": 2}},
+        ]
+    }
+
+    # when
+    result = resolve(cfg, Team)
+
+    # then
+    assert isinstance(result, Team)
+    assert len(result.members) == 2
+    assert all(isinstance(member, Person) for member in result.members)
+    assert result.members[0].name == "Member 1"
+    assert result.members[1].address.city == "B"
+
+
+def test_resolve_with_dict_of_prototypes():
+    # given
+    class Address(Prototype):
+        city: str
+        zip_code: int
+
+    class Person(Prototype):
+        name: str
+        address: Address
+
+    class Team(Prototype):
+        members: list[Person]
+
+    class Organization(Prototype):
+        teams: dict[str, Team]
+
+    cfg: ConfigurationDict = {
+        "teams": {
+            "alpha": {
+                "members": [{"name": "Alice", "address": {"city": "A", "zip_code": 1}}]
+            },
+            "beta": {
+                "members": [{"name": "Bob", "address": {"city": "B", "zip_code": 2}}]
+            },
+        }
+    }
+
+    # when
+    result = resolve(cfg, Organization)
+
+    # then
+    assert isinstance(result, Organization)
+    assert isinstance(result.teams["alpha"], Team)
+    assert result.teams["alpha"].members[0].name == "Alice"
+    assert result.teams["beta"].members[0].name == "Bob"
+
+
+def test_resolve_with_optional_fields():
+    # given
+    class ConfigWithOptional(Prototype):
+        required: int
+        optional: NotRequired[int]
+
+    cfg_with: ConfigurationDict = {"required": 1, "optional": 2}
+    cfg_without: ConfigurationDict = {"required": 1}
+
+    # when
+    result_with = resolve(cfg_with, ConfigWithOptional)
+    result_without = resolve(cfg_without, ConfigWithOptional)
+
+    # then
+    assert result_with.required == 1
+    assert result_with.optional == 2
+    assert result_without.required == 1
+    # The optional attribute should not be set if the key was missing
+    assert not hasattr(result_without, "optional")
+
+
+def test_resolve_with_nullable_fields():
+    # given
+    class ConfigWithNullable(Prototype):
+        not_nullable: int
+        nullable: int | None
+
+    cfg_val: ConfigurationDict = {"not_nullable": 1, "nullable": 2}
+    cfg_none: ConfigurationDict = {"not_nullable": 1, "nullable": None}
+
+    # when
+    result_val = resolve(cfg_val, ConfigWithNullable)
+    result_none = resolve(cfg_none, ConfigWithNullable)
+
+    # then
+    assert result_val.nullable == 2
+    assert result_none.nullable is None
+
+
+def test_resolve_with_default_values():
+    # given
+    class ConfigWithDefaults(Prototype):
+        no_default: int
+        with_default: int = 42
+
+    cfg_default: ConfigurationDict = {"no_default": 1}
+    cfg_override: ConfigurationDict = {"no_default": 1, "with_default": 100}
+
+    # when
+    result_default = resolve(cfg_default, ConfigWithDefaults)
+    result_override = resolve(cfg_override, ConfigWithDefaults)
+
+    # then
+    assert result_default.with_default == 42
+    assert result_override.with_default == 100

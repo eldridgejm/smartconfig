@@ -1,4 +1,5 @@
 from smartconfig import validate_schema, exceptions
+from smartconfig.types import Schema
 from pytest import raises
 
 
@@ -6,7 +7,7 @@ from pytest import raises
 
 
 def test_raises_if_type_field_is_omitted():
-    schema = {}
+    schema: Schema = {}
 
     with raises(exceptions.InvalidSchemaError):
         validate_schema(schema)
@@ -32,8 +33,10 @@ def test_dict_schema_smoke():
 def test_raises_if_unknown_key_is_provided_for_dict_schema():
     schema = {"type": "dict", "foo": 42}
 
-    with raises(exceptions.InvalidSchemaError):
+    with raises(exceptions.InvalidSchemaError) as excinfo:
         validate_schema(schema)
+
+    assert "Unexpected key." in str(excinfo.value)
 
 
 def test_raises_if_unknown_key_is_provided_for_required_key_spec():
@@ -82,6 +85,16 @@ def test_raises_if_there_are_missing_keys():
         validate_schema(schema)
 
     assert "Missing key." in str(exc.value)
+
+
+def test_does_not_raise_if_default_value_does_not_match_type():
+    # this is the job of resolve, not validate_schema
+    schema = {
+        "type": "dict",
+        "optional_keys": {"foo": {"type": "integer", "default": "not an integer"}},
+    }
+
+    validate_schema(schema)
 
 
 # value schemata =======================================================================

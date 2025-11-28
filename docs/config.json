@@ -1,1 +1,1 @@
-{"app_name": "DataDash", "launch_date": "2025-10-01", "reminder": "2 days before ${launch_date}", "motd": "Welcome to ${app_name}!"}
+{"course_name": "Introduction to Computer Science", "start_date": "2025-09-01", "first_homework_due": "first tuesday after ${start_date}", "welcome_msg": "Welcome to ${course_name}!"}

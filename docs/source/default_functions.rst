@@ -11,6 +11,8 @@ Functions are invoked in configurations using the syntax ``{"__function_name__":
 For example, ``{"__if__": {"condition": "...", "then": ..., "else": ...}}`` calls
 the ``if`` function.
 
+The default functions available to use with :func:`smartconfig.resolve` are summarized in the table below:
+
 .. list-table::
    :widths: 20 80
    :header-rows: 1

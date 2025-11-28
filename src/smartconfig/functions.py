@@ -230,12 +230,8 @@ def loop(args: FunctionArgs) -> Configuration:
 
     element_schema = args.schema["element_schema"]
 
+    assert isinstance(over, list)
     assert isinstance(args.input["variable"], str)
-
-    if not isinstance(over, list):
-        raise ResolutionError(
-            "The value of 'over' in 'loop' must be a list.", args.keypath
-        )
 
     result = []
     for element in over:
@@ -319,11 +315,7 @@ def filter_(args: FunctionArgs) -> ConfigurationList:
         schema={"type": "list", "element_schema": {"type": "any"}},
     )
 
-    if not isinstance(iterable, list):
-        raise ResolutionError(
-            "The value of 'iterable' in 'filter' must be a list.", args.keypath
-        )
-
+    assert isinstance(iterable, list)
     assert isinstance(args.input["variable"], str)
 
     result = []
@@ -401,21 +393,12 @@ def dict_from_items(args: FunctionArgs) -> ConfigurationDict:
         },
     )
 
-    if not isinstance(input_, list):
-        raise ResolutionError(
-            "Input to 'dict_from_items' must be a list of dictionaries with keys 'key' and 'value'.",
-            args.keypath,
-        )
+    assert isinstance(input_, list)
 
     dct = {}
 
     for item in input_:
-        if not isinstance(item, dict) or set(item.keys()) != {"key", "value"}:
-            raise ResolutionError(
-                "Input to 'dict_from_items' must be a list of dictionaries with keys 'key' and 'value'.",
-                args.keypath,
-            )
-
+        assert isinstance(item, dict)
         key = item["key"]
         assert isinstance(key, str)
         dct[key] = item["value"]

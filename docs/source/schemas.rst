@@ -1,16 +1,242 @@
 .. _schemas:
 
-Schemas
-=======
+Schemas and Prototypes
+======================
 
 In order for `smartconfig` to properly resolve a configuration, it first needs
-to know the expected structure and types of the configuration. This is
-specified using a **schema**. A schema is a dictionary defining the expected
-structure of a configuration. Importantly, `smartconfig` uses the schema to
-determine what type a value should have (integer, date, string, etc.) and
-therefore which converter should be used to produce the final value.
+to know the expected structure and types of the configuration. You can specify
+this structure in two ways: **schemas** (standard Python dictionaries)
+or **prototypes** (Python classes with type hints). Prototypes are usually more
+convenient to write and have the benefit of returning instances of your class
+(helpful for type-checking), while schemas are sometimes more convenient for
+specifying deeply-nested structures and remain the most expressive option (for
+example, they support ``extra_keys_schema`` and other fine-grained controls
+that prototypes currently do not).
 
-Concretely, a schema is a dictionary that follows the formal grammar below.
+.. testsetup::
+
+    import smartconfig
+    from pprint import pprint as print
+    from typing import Any
+    from smartconfig import Prototype, NotRequired
+
+Prototypes
+----------
+
+Prototypes let you describe the structure of a configuration using Python class
+syntax. Prototypes are quick to write, but they currently cannot express every
+constraint that schemas can (for example, they do not allow
+``extra_keys_schema``). They can also be somewhat awkward to use when
+describing deeply-nested structures, and so in those cases schemas may be
+preferable.
+
+Prototypes have several useful methods, including
+:meth:`smartconfig.Prototype._as_dict()` which converts the prototype instance
+into a dictionary, :meth:`smartconfig.Prototype._from_dict()`, which creates a
+prototype instance from a dictionary, and
+:meth:`smartconfig.Prototype._schema()`, which returns the schema
+representation of the prototype.
+
+Examples
+~~~~~~~~
+
+Example 1: A simple prototype
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The prototype below describes a student with three fields: ``name``, ``age``,
+and ``enrolled_in``. The type hints tell `smartconfig` what type each field
+should have, and they are used by ``resolve()`` to do type conversion and
+validation. Note that the result of resolution is not a dictionary, but an
+instance of the ``Student`` class.
+
+Input:
+
+.. testcode::
+
+    class Student(Prototype):
+        name: str
+        age: int
+        enrolled_in: list[str]
+
+    config = {
+        "name": "Barack Obama",
+        "age": 63,
+        "enrolled_in": ["Math 100", "History 101", "Physics 200"],
+    }
+    print(smartconfig.resolve(config, Student))
+
+Output:
+
+.. testoutput::
+
+    Student(name='Barack Obama', age=63, enrolled_in=['Math 100', 'History 101', 'Physics 200'])
+
+Example 2: Nullable fields
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To allow a field to be ``None``, use a union with ``None`` (e.g.,
+``str | None``).
+
+Input:
+
+.. testcode::
+
+    class Student(Prototype):
+        name: str
+        nickname: str | None
+
+    print(
+        smartconfig.resolve(
+            {"name": "Barack Obama", "nickname": None},
+            Student,
+        )
+    )
+
+Output:
+
+.. testoutput::
+
+    Student(name='Barack Obama', nickname=None)
+
+Example 3: Optional fields and defaults
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To mark a field as not required, use ``smartconfig.NotRequired`` as its type.
+Fields marked with ``NotRequired`` can be omitted from the configuration
+entirely.
+
+You can also provide a default value for a field by assigning it within the
+class body, as with ``standing`` in the example below. This value will be used
+if the field is missing from the configuration. It is not necessary to use
+``NotRequired`` in this case, as the presence of a default value already
+indicates that the field is optional.
+
+Input:
+
+.. testcode::
+
+    from smartconfig import NotRequired
+
+    class Student(Prototype):
+        name: str
+        email: NotRequired[str]
+        standing: str = "undergraduate"
+
+    print(
+        smartconfig.resolve(
+            {"name": "Barack Obama"},
+            Student,
+        )
+    )
+
+Output:
+
+.. testoutput::
+
+    Student(name='Barack Obama', standing='undergraduate')
+
+Notice that the ``email`` field is simply omitted from the resulting instance,
+while the ``standing`` field is present with its default value of
+``'undergraduate'``.
+
+Example 4: Nested prototypes
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Prototypes can be nested to any depth. In the example below, a ``Roster``
+prototype contains a list of ``Student`` prototypes. When resolving, `smartconfig`
+will recursively resolve each nested prototype into an instance of that prototype.
+
+Input:
+
+.. testcode::
+
+    class Student(Prototype):
+        name: str
+        age: int
+
+    class Roster(Prototype):
+        students: list[Student]
+
+    print(
+        smartconfig.resolve(
+            {
+                "students": [
+                    {"name": "Barack Obama", "age": 63},
+                    {"name": "Kamala Harris", "age": 60},
+                ]
+            },
+            Roster,
+        )
+    )
+
+Output:
+
+.. testoutput::
+
+    Roster(students=[Student(name='Barack Obama', age=63), Student(name='Kamala Harris', age=60)])
+
+Example 5: Any values
+^^^^^^^^^^^^^^^^^^^^^
+
+To allow a field to accept any value, use ``typing.Any`` as its type.
+
+Input:
+
+.. testcode::
+
+    import typing
+
+    class Student(Prototype):
+        name: str
+        metadata: typing.Any
+
+    print(
+        smartconfig.resolve(
+            {"name": "Barack Obama", "metadata": {"favorite": "pineapple pizza"}},
+            Student,
+        )
+    )
+
+Output:
+
+.. testoutput::
+
+    Student(name='Barack Obama', metadata={'favorite': 'pineapple pizza'})
+
+Example 6: Extra keys
+^^^^^^^^^^^^^^^^^^^^^^
+
+Unlike schemas, prototypes do not currently support extra keys.
+An exception will be raised if unknown keys are present in the configuration.
+
+Input:
+
+.. testcode::
+
+    class Person(Prototype):
+        name: str
+
+    config = {"name": "Alice", "unknown": "value"}
+
+    try:
+        smartconfig.resolve(config, Person)
+    except smartconfig.exceptions.ResolutionError as exc:
+        print(type(exc).__name__)
+
+Output:
+
+.. testoutput::
+
+    'ResolutionError'
+
+Schemas
+-------
+
+The most explicit way to describe the expected structure of a configuration is
+via a **schema**. A schema is a dictionary defining the expected structure of a
+configuration, including which keys are required or optional, the types of values,
+and any default values.
+More precisely, a schema dictionary follows the formal grammar below:
 
 .. code:: text
 
@@ -48,35 +274,31 @@ Concretely, a schema is a dictionary that follows the formal grammar below.
     )
 
 The ``DICT_SCHEMA_WITH_DEFAULT``, ``LIST_SCHEMA_WITH_DEFAULT``,
-``VALUE_SCHEMA_WITH_DEFAULT``, and ``ANY_SCHEMA_WITH_DEFAULT`` are the same as
-their non-default counterparts, but with an additional field named `default`
-that specifies the default value should that part of the configuration be
-missing.
+``VALUE_SCHEMA_WITH_DEFAULT``, and ``ANY_SCHEMA_WITH_DEFAULT`` grammars are the
+same as their non-default counterparts, but with an additional field named
+`default` that specifies the default value should that part of the
+configuration be missing.
 
 Schemas can be validated using the :func:`smartconfig.validate_schema`
 function.
 
 Examples
---------
+~~~~~~~~
 
 Example 1: A simple schema
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Suppose a configuration should contain information about a student, including their
-name, age, and a list of the classes they are taking. For example:
+This minimal schema shows required string, integer, and list fields.
 
-.. code:: python
+Input:
+
+.. testcode::
 
     config = {
         "name": "Barack Obama",
         "age": 63,
-        "enrolled_in": ["Math 100", "History 101", "Physics 200"]
+        "enrolled_in": ["Math 100", "History 101", "Physics 200"],
     }
-
-The schema describing this structure is:
-
-.. code:: python
-
     schema = {
         "type": "dict",
         "required_keys": {
@@ -84,10 +306,19 @@ The schema describing this structure is:
             "age": {"type": "integer"},
             "enrolled_in": {
                 "type": "list",
-                "element_schema": {"type": "string"}
-            }
+                "element_schema": {"type": "string"},
+            },
         },
     }
+    print(smartconfig.resolve(config, schema))
+
+Output:
+
+.. testoutput::
+
+    {'age': 63,
+     'enrolled_in': ['Math 100', 'History 101', 'Physics 200'],
+     'name': 'Barack Obama'}
 
 Example 2: Allowing extra keys
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -98,27 +329,16 @@ user to provide "extra" keys that are not specified in the schema. This is most
 often the case when we want to allow the user to define a mapping whose keys
 are not known in advance.
 
-Building off of the previous example, suppose we want to allow the user to
-specify a student's grades in each class as a mapping from class name to letter
-grade. Such a configuration might look like this:
+Input:
 
-.. code:: python
+.. testcode::
 
     config = {
         "name": "Barack Obama",
         "age": 63,
-        "enrolled_in": ["Math 100", "History 101", "Physics 200"],
-        "grades": {
-            "Math 100": "A-",
-            "History 101": "A",
-        }
+        "enrolled_in": ["Math 100", "History 101"],
+        "grades": {"Math 100": "A-", "History 101": "A"},
     }
-
-In this example, the "grades" entry is the mapping that should allow extra
-keys. We can allow for this using the `extra_keys_schema` field in the schema:
-
-.. code:: python
-
     schema = {
         "type": "dict",
         "required_keys": {
@@ -126,50 +346,57 @@ keys. We can allow for this using the `extra_keys_schema` field in the schema:
             "age": {"type": "integer"},
             "enrolled_in": {
                 "type": "list",
-                "element_schema": {"type": "string"}
+                "element_schema": {"type": "string"},
             },
-            "grades": {
-                "type": "dict",
-                "extra_keys_schema": {"type": "string"}
-            }
-        }
+            "grades": {"type": "dict", "extra_keys_schema": {"type": "string"}},
+        },
     }
+    print(smartconfig.resolve(config, schema))
+
+Output:
+
+.. testoutput::
+
+    {'age': 63,
+     'enrolled_in': ['Math 100', 'History 101'],
+     'grades': {'History 101': 'A', 'Math 100': 'A-'},
+     'name': 'Barack Obama'}
 
 Example 3: Allowing nullable values
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-By default, values in a configuration are not allowed to be `None`. However, we
-can allow for `None` values by setting the `nullable` field to `True` in the
-schema. For example, suppose we want to require the user to include the "age"
-key in the configuration, but we want to allow them to give it a value of `None`
-to indicate that the student's age is unknown. We can do this with the following
-schema:
+Mark a field as nullable when ``None`` is an allowed value in the configuration.
 
-.. code:: python
+Input:
 
+.. testcode::
+
+    config = {"name": "Barack Obama", "age": None}
     schema = {
         "type": "dict",
         "required_keys": {
             "name": {"type": "string"},
             "age": {"type": "integer", "nullable": True},
-            "enrolled_in": {
-                "type": "list",
-                "element_schema": {"type": "string"}
-            }
-        }
+        },
     }
+    print(smartconfig.resolve(config, schema))
 
+Output:
+
+.. testoutput::
+
+    {'age': None, 'name': 'Barack Obama'}
 
 Example 4: Optional keys and defaults
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Sometimes we do not want to require the user to specify a key in the
-configuration. For example, we might want to allow the user to specify an
-optional email address. In this case, we can use the `optional_keys` field in
-the schema:
+Optional keys can be omitted entirely, and defaults populate missing values.
 
-.. code:: python
+Input:
 
+.. testcode::
+
+    config = {"name": "Barack Obama", "age": 63, "enrolled_in": []}
     schema = {
         "type": "dict",
         "required_keys": {
@@ -177,75 +404,38 @@ the schema:
             "age": {"type": "integer"},
             "enrolled_in": {
                 "type": "list",
-                "element_schema": {"type": "string"}
-            }
-        },
-        "optional_keys": {
-            "email": {"type": "string"}
-        }
-    }
-
-If the user provides a schema without specifying the "email" key, `smartconfig`
-will not raise an error. Instead, it will simply not include the "email" key in
-the resulting configuration.
-
-Sometimes we want to provide a default value for an optional key. For example,
-suppose we want to allow for a `standing` key specifying whether the student is an
-undergraduate or graduate student. If the user does not specify a `standing`,
-we want to default to "undergraduate". We can do this with the following schema:
-
-.. code:: python
-
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "name": {"type": "string"},
-            "age": {"type": "integer"},
-            "enrolled_in": {
-                "type": "list",
-                "element_schema": {"type": "string"}
-            }
+                "element_schema": {"type": "string"},
+            },
         },
         "optional_keys": {
             "email": {"type": "string"},
-            "standing": {"type": "string", "default": "undergraduate"}
-        }
-    }
-
-An optional key with a default value will always appear in the resulting
-configuration, even if the user does not specify it. A common pattern is to
-specify a default value of `None` for optional keys, so that they key always
-appears in the resulting configuration, but is `None` if the user does not
-specify it. To do this, it is necessary to set the `nullable` field to `True`
-in the schema. For example, to make the `email` key optional with a default
-value of `None`:
-
-.. code:: python
-
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "name": {"type": "string"},
-            "age": {"type": "integer"},
-            "enrolled_in": {
-                "type": "list",
-                "element_schema": {"type": "string"}
-            }
+            "standing": {"type": "string", "default": "undergraduate"},
         },
-        "optional_keys": {
-            "email": {"type": "string", "nullable": True, "default": None}
-        }
     }
+    print(smartconfig.resolve(config, schema))
+
+Output:
+
+.. testoutput::
+
+    {'age': 63,
+     'enrolled_in': [],
+     'name': 'Barack Obama',
+     'standing': 'undergraduate'}
 
 Example 5: Nested containers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The schema can be nested to any depth. For example, suppose we want to allow
-the user to specify a list of students, each with the same structure as in
-Example 1. We can do this with the following schema:
+Schemas can nest lists of dictionaries to any depth.
 
-.. code:: python
+Input:
 
+.. testcode::
+
+    config = [
+        {"name": "Barack Obama", "age": 63, "enrolled_in": ["History 101"]},
+        {"name": "Kamala Harris", "age": 60, "enrolled_in": ["Law 200"]},
+    ]
     schema = {
         "type": "list",
         "element_schema": {
@@ -255,27 +445,41 @@ Example 1. We can do this with the following schema:
                 "age": {"type": "integer"},
                 "enrolled_in": {
                     "type": "list",
-                    "element_schema": {"type": "string"}
-                }
-            }
-        }
+                    "element_schema": {"type": "string"},
+                },
+            },
+        },
     }
+    print(smartconfig.resolve(config, schema))
+
+Output:
+
+.. testoutput::
+
+    [{'age': 63, 'enrolled_in': ['History 101'], 'name': 'Barack Obama'},
+     {'age': 60, 'enrolled_in': ['Law 200'], 'name': 'Kamala Harris'}]
 
 Example 6: "Any" schema
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-Sometimes we do not know in advance what the structure of a configuration will
-be, and we want to allow the user to specify any possible configuration. In
-this case, we can use the `any` schema:
+Use the ``any`` type when a value should be accepted without type checking.
 
-.. code:: python
+Input:
 
+.. testcode::
+
+    config = {"name": "Barack Obama", "metadata": {"favorite": "pineapple pizza"}}
     schema = {
-        "type": "any"
+        "type": "dict",
+        "required_keys": {
+            "name": {"type": "string"},
+            "metadata": {"type": "any"},
+        },
     }
+    print(smartconfig.resolve(config, schema))
 
-This schema will allow any configuration to be read, regardless of its
-structure. However, if the "any" schema is used, `smartconfig` will not be able
-to determine the intended type of the values in the configuration, and will
-therefore do no parsing of the values. String interpolation will still be
-performed.
+Output:
+
+.. testoutput::
+
+    {'metadata': {'favorite': 'pineapple pizza'}, 'name': 'Barack Obama'}

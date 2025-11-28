@@ -1,0 +1,11 @@
+/* Remove backgrounds from Mermaid edge labels */
+foreignObject,
+.edgeLabel,
+.labelBkg {
+    background: transparent !important;
+}
+
+/* Italicize edge label text */
+.edgeLabel {
+    font-style: italic !important;
+}

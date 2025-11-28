@@ -138,6 +138,19 @@ def test_arithmetic_parser_when_given_syntax_error_raises():
         converter("not a number")
 
 
+def test_arithmetic_parser_when_given_non_numeric_constant_raises():
+    """String and other non-numeric constants should raise ConversionError."""
+    # given
+    converter = converters.arithmetic(int)
+
+    # when / then
+    with raises(ConversionError):
+        converter('"hello"')
+
+    with raises(ConversionError):
+        converter("b'bytes'")
+
+
 # logic ================================================================================
 
 
