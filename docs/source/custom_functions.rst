@@ -18,7 +18,9 @@ your application. For this, `smartconfig` allows you to define custom functions.
 There are two ways to define custom functions in `smartconfig`: as simple Python functions
 or as instances of :class:`smartconfig.types.Function`. In either case, the function will
 be called with a single argument: an instance of :class:`smartconfig.types.FunctionArgs`,
-which contains all the information the function needs to perform its task.
+which contains all the information the function needs to perform its task. The function
+should return a :class:`smartconfig.types.Configuration` representing the result of
+the function call.
 
 .. class:: smartconfig.types.FunctionArgs
    :no-index:
