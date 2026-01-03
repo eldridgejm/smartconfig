@@ -6,6 +6,7 @@ done by resolve().
 """
 
 from collections.abc import Set
+from typing import Union
 
 from . import exceptions as _exceptions, types as _types
 
@@ -47,7 +48,10 @@ def _check_keys(
 
 
 def _validate_any_schema(
-    any_schema: _types.Schema, keypath: _types.KeyPath, allow_default: bool
+    any_schema: _types.Schema,
+    keypath: _types.KeyPath,
+    allow_default: bool,
+    allow_dynamic: bool,
 ):
     """Validates an "any" schema.
 
@@ -69,7 +73,10 @@ def _validate_any_schema(
 
 
 def _validate_dict_schema(
-    dict_schema: _types.Schema, keypath: _types.KeyPath, allow_default: bool
+    dict_schema: _types.Schema,
+    keypath: _types.KeyPath,
+    allow_default: bool,
+    allow_dynamic: bool,
 ):
     """Validates a dict schema.
 
@@ -94,23 +101,30 @@ def _validate_dict_schema(
 
     # recursively check the children corresponding to the required keys
     for key, key_schema in dict_schema.get("required_keys", {}).items():
-        validate_schema(key_schema, keypath + ("required_keys", key))
+        validate_schema(
+            key_schema, keypath + ("required_keys", key), allow_dynamic=allow_dynamic
+        )
 
     # recursively check the children corresponding to the optional keys, allowing
     # defaults to be specified
     for key, key_schema in dict_schema.get("optional_keys", {}).items():
         validate_schema(
-            key_schema, keypath + ("optional_keys", key), allow_default=True
+            key_schema,
+            keypath + ("optional_keys", key),
+            allow_default=True,
+            allow_dynamic=allow_dynamic,
         )
 
     # if the schema provides an "extra_keys_schema", check that it is a valid schema
     if "extra_keys_schema" in dict_schema:
         validate_schema(
-            dict_schema["extra_keys_schema"], keypath + ("extra_keys_schema",)
+            dict_schema["extra_keys_schema"],
+            keypath + ("extra_keys_schema",),
+            allow_dynamic=allow_dynamic,
         )
 
 
-def _validate_list_schema(list_schema, keypath, allow_default):
+def _validate_list_schema(list_schema, keypath, allow_default, allow_dynamic: bool):
     """Validates a list schema.
 
     A list schema has the following form:
@@ -132,11 +146,14 @@ def _validate_list_schema(list_schema, keypath, allow_default):
 
     # recursively check the children
     validate_schema(
-        list_schema["element_schema"], keypath + ("element_schema",), allow_default
+        list_schema["element_schema"],
+        keypath + ("element_schema",),
+        allow_default,
+        allow_dynamic=allow_dynamic,
     )
 
 
-def _validate_value_schema(value_schema, keypath, allow_default):
+def _validate_value_schema(value_schema, keypath, allow_default, allow_dynamic: bool):
     """Validates a value schema.
 
     A value schema has the following form:
@@ -166,28 +183,40 @@ def _validate_value_schema(value_schema, keypath, allow_default):
 
 
 def validate_schema(
-    schema: _types.Schema,
+    schema: Union[_types.Schema, _types.DynamicSchema],
     keypath: _types.KeyPath = tuple(),
     allow_default: bool = False,
+    allow_dynamic: bool = True,
 ):
     """Validates a schema.
 
     Parameters
     ----------
-    schema : Schema
-        The schema to validate.
-    keypath : KeyPath
+    schema : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
+        The schema to validate. Can be a schema dictionary or a dynamic schema
+        function.
+    keypath : :class:`types.KeyPath`
         The keypath of the configuration whose schema is being validated. This is useful
-        for recursively validating nested configurations. Defaults to ().
+        for recursively validating nested configurations. Defaults to ``()``.
     allow_default : bool
-        If `True`, the "default" key is allowed in the schema. Defaults to `False`.
+        If ``True``, the "default" key is allowed in the schema. Defaults to ``False``.
+    allow_dynamic : bool
+        If ``True``, dynamic schemas (callables) are allowed. Defaults to ``True``.
 
     Raises
     ------
     InvalidSchemaError
-        If the schema is not valid.
+        If the schema is not valid or if a dynamic schema is provided when
+        ``allow_dynamic`` is ``False``.
 
     """
+    if callable(schema):
+        if not allow_dynamic:
+            raise _exceptions.InvalidSchemaError(
+                "Dynamic schemas are not allowed.", keypath
+            )
+        return
+
     try:
         schema = dict(schema)
     except Exception:
@@ -198,7 +227,7 @@ def validate_schema(
             "Required key missing.", keypath + ("type",)
         )
 
-    args = (schema, keypath, allow_default)
+    args = (schema, keypath, allow_default, allow_dynamic)
 
     if schema["type"] == "any":
         _validate_any_schema(*args)

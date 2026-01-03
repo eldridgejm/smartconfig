@@ -228,6 +228,7 @@ import jinja2
 from . import converters as _converters, functions as _functions, types as _types
 from ._prototypes import Prototype, is_prototype_class
 from .exceptions import Error, ResolutionError
+from ._schemas import validate_schema as _validate_schema
 
 
 # unresolved containers ================================================================
@@ -1293,7 +1294,7 @@ class _FunctionCallNode(_Node):
 
 def _make_node(
     cfg: _types.Configuration,
-    schema: _types.Schema,
+    schema: _types.Schema | _types.DynamicSchema,
     resolution_options: _types.ResolutionOptions,
     parent: Optional[_ConcreteNode] = None,
     keypath: _types.KeyPath = tuple(),
@@ -1315,7 +1316,8 @@ def _make_node(
         A dictionary, list, or non-container type representing the "raw", unresolved
         configuration.
     schema
-        A schema dictionary describing the types of the configuration tree nodes.
+        A schema dictionary, or a dynamic schema function, describing the types of the
+        configuration tree nodes.
     resolution_options
         The settings that control how resolution is performed.
     check_for_function_call
@@ -1335,6 +1337,10 @@ def _make_node(
         The root node of the configuration tree.
 
     """
+    if callable(schema):
+        # dynamic schema: call the function to get the actual schema
+        schema = schema(cfg, keypath)
+        _validate_schema(schema)
 
     class _CommonKwargs(TypedDict):
         """Common keyword arguments passed to node constructors in _make_node."""
@@ -1562,7 +1568,7 @@ def resolve(
 @typing.overload
 def resolve(
     cfg: _types.ConfigurationDict,
-    spec: _types.Schema,
+    spec: _types.Schema | _types.DynamicSchema,
     converters: Mapping[str, Callable] = ...,
     functions: Optional[
         Mapping[
@@ -1584,7 +1590,7 @@ def resolve(
 @typing.overload
 def resolve(
     cfg: _types.ConfigurationList,
-    spec: _types.Schema,
+    spec: _types.Schema | _types.DynamicSchema,
     converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
     functions: Optional[
         Mapping[
@@ -1608,7 +1614,7 @@ def resolve(
 @typing.overload
 def resolve(
     cfg: _types.ConfigurationValue,
-    spec: _types.Schema,
+    spec: _types.Schema | _types.DynamicSchema,
     converters: Mapping[str, Callable] = ...,
     functions: Optional[
         Mapping[
@@ -1632,7 +1638,7 @@ def resolve(
 
 def resolve(
     cfg: _types.Configuration,
-    spec: Union[_types.Schema, type[Prototype]],
+    spec: Union[_types.Schema | _types.DynamicSchema, type[Prototype]],
     converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
     functions: Optional[
         Mapping[
@@ -1656,10 +1662,13 @@ def resolve(
     ----------
     cfg : :class:`types.Configuration`
         The "raw" configuration to resolve.
-    spec : Union[:class:`types.Schema`, :class:`Prototype`]
+    spec : Union[:class:`types.Schema`, :class:`types.DynamicSchema`, :class:`Prototype`]
         The schema describing the structure of the resolved configuration, or a
         :class:`Prototype` subclass. If a :class:`Prototype` subclass is provided, the
-        resolved configuration will be an instance of that :class:`Prototype` class.
+        resolved configuration will be an instance of that :class:`Prototype` class. If
+        a :class:`types.DynamicSchema` is provided (which is a callable), it is called
+        with the configuration and the keypath and should return a
+        :class:`types.Schema`.
     converters : Mapping[str, Callable]
         A dictionary mapping value types to converter functions. The converter functions
         should take the raw value (after interpolation) and convert it to the specified

@@ -10,8 +10,8 @@ or **prototypes** (Python classes with type hints). Prototypes are usually more
 convenient to write and have the benefit of returning instances of your class
 (helpful for type-checking), while schemas are sometimes more convenient for
 specifying deeply-nested structures and remain the most expressive option (for
-example, they support ``extra_keys_schema`` and other fine-grained controls
-that prototypes currently do not).
+example, they support ``extra_keys_schema``, :ref:`dynamic schemas <dynamic_schemas_example>`, and other
+fine-grained controls that prototypes currently do not).
 
 .. testsetup::
 
@@ -279,6 +279,14 @@ same as their non-default counterparts, but with an additional field named
 `default` that specifies the default value should that part of the
 configuration be missing.
 
+Anywhere a schema is expected, you can also provide a **dynamic schema**.
+A dynamic schema is a Python function that takes a configuration and a
+keypath as input and returns a schema dictionary. This allows the schema to be
+determined at runtime based on the configuration itself. This is particularly
+useful for handling polymorphic lists or dictionaries where the schema of an
+element depends on its content (e.g., a "type" field).
+(See :ref:`dynamic_schemas_example` for an example).
+
 Schemas can be validated using the :func:`smartconfig.validate_schema`
 function.
 
@@ -483,3 +491,67 @@ Output:
 .. testoutput::
 
     {'metadata': {'favorite': 'pineapple pizza'}, 'name': 'Barack Obama'}
+
+.. _dynamic_schemas_example:
+
+Example 7: Dynamic schemas
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Dynamic schemas are most useful for validating/resolving the elements of
+containers that can contain multiple types of elements. For example, suppose a
+list can contain both ``Professor`` and ``Student`` entries, each with
+different fields. A dynamic schema can be used to select the appropriate schema
+based on a "type" field in each entry.
+
+Input:
+
+.. testcode::
+
+    def person_schema(element, keypath):
+        if element.get("type") == "student":
+            return {
+                "type": "dict",
+                "required_keys": {
+                    "type": {"type": "string"},
+                    "name": {"type": "string"},
+                    "major": {"type": "string"},
+                },
+            }
+        elif element.get("type") == "professor":
+            return {
+                "type": "dict",
+                "required_keys": {
+                    "type": {"type": "string"},
+                    "name": {"type": "string"},
+                    "department": {"type": "string"},
+                },
+                "optional_keys": {
+                    "rank": {"type": "string", "default": "assistant professor"},
+                },
+            }
+        else:
+            raise smartconfig.exceptions.ResolutionError(
+                f"Unknown person type: {element.get('type')}", keypath
+            )
+
+    config = [
+        {"type": "student", "name": "Alice", "major": "Physics"},
+        {"type": "professor", "name": "Bob", "department": "Math"},
+    ]
+
+    schema = {
+        "type": "list",
+        "element_schema": person_schema,
+    }
+
+    print(smartconfig.resolve(config, schema))
+
+Output:
+
+.. testoutput::
+
+    [{'major': 'Physics', 'name': 'Alice', 'type': 'student'},
+     {'department': 'Math',
+      'name': 'Bob',
+      'rank': 'assistant professor',
+      'type': 'professor'}]

@@ -105,6 +105,11 @@ These types are used for various purposes throughout the package.
 
    Type alias for ``Mapping[str, Any]``.
 
+.. class:: DynamicSchema
+
+   Type alias for ``Callable[[Configuration, KeyPath], Schema]``. A function that
+   returns a schema dictionary based on the configuration value and its keypath.
+
 .. class:: KeyPath
 
    Type alias for ``Tuple[str, ...]``. This represents a path of keys leading to a

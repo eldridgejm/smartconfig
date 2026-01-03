@@ -370,6 +370,10 @@ class RecursiveString(str):
 # a schema is a dictionary that describes the expected structure of a configuration
 type Schema = Mapping[str, Any]
 
+# a dynamic schema is a function that returns a schema based on the configuration
+# and keypath
+type DynamicSchema = Callable[[Configuration, KeyPath], Schema]
+
 # a keypath is a tuple of strings that represents a path through a configuration
 # tree. For example, ("foo", "bar", "baz") would represent the path to the value
 # of the key "baz" in the dictionary {"foo": {"bar": {"baz": 42}}}.

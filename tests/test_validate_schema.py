@@ -150,3 +150,35 @@ def test_raises_if_unknown_key_provided_with_any_type():
 
     with raises(exceptions.InvalidSchemaError):
         validate_schema(schema)
+
+
+# dynamic schemata ====================================================================
+
+
+def test_allows_functions_as_schemata():
+    def dynamic_schema():
+        return {"type": "integer"}
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": dynamic_schema,
+        },
+    }
+
+    validate_schema(schema)
+
+
+def test_raises_if_function_is_provided_and_allow_dynamic_is_false():
+    def dynamic_schema():
+        return {"type": "integer"}
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": dynamic_schema,
+        },
+    }
+
+    with raises(exceptions.InvalidSchemaError):
+        validate_schema(schema, allow_dynamic=False)
