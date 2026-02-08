@@ -614,12 +614,17 @@ def _populate_optional_children(
         if key in dct:
             # key is not missing
             value = dct[key]
-        elif "default" in key_schema:
-            # key is missing and default was provided
-            value = key_schema["default"]
         else:
-            # key is missing and no default was provided
-            continue
+            # key is missing; resolve dynamic schema before checking for default
+            if callable(key_schema):
+                key_schema = key_schema(None, keypath + (key,))
+                _validate_schema(key_schema, keypath + (key,), allow_default=True)
+            if "default" in key_schema:
+                # default was provided
+                value = key_schema["default"]
+            else:
+                # no default was provided
+                continue
 
         existing_children[key] = make_node(
             value,

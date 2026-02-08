@@ -149,6 +149,48 @@ def test_resolve_with_dynamic_schema_based_on_keypath():  # given
     }
 
 
+def test_resolve_with_dynamic_schema_in_optional_keys():
+    # given
+    def value_schema(value, _):
+        return {"type": "integer"}
+
+    schema: Schema = {
+        "type": "dict",
+        "optional_keys": {
+            "foo": value_schema,
+        },
+    }
+
+    cfg: ConfigurationDict = {"foo": "42"}
+
+    # when
+    result = resolve(cfg, schema)
+
+    # then
+    assert result == {"foo": 42}
+
+
+def test_resolve_with_dynamic_schema_in_optional_keys_with_default():
+    # given
+    def value_schema(value, _):
+        return {"type": "integer", "default": 99}
+
+    schema: Schema = {
+        "type": "dict",
+        "optional_keys": {
+            "foo": value_schema,
+        },
+    }
+
+    cfg: ConfigurationDict = {}
+
+    # when
+    result = resolve(cfg, schema)
+
+    # then
+    assert result == {"foo": 99}
+
+
 def test_resolve_with_dynamic_schemas_nested():
     # given
     def address_schema(cfg: Configuration, _: KeyPath) -> Schema:
