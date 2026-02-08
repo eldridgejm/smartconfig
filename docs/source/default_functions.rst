@@ -44,6 +44,8 @@ The default functions are summarized in the tables below:
      - Repeated interpolation until stable
    * - :ref:`__splice__ <func-splice>`
      - Copy another part of the configuration
+   * - :ref:`__template__ <func-template>`
+     - Define a reusable template
    * - :ref:`__use__ <func-use>`
      - Copy a template with optional overrides
 
@@ -368,12 +370,67 @@ This produces:
 
     {'x': {'a': 1, 'b': [1, 2, 3]}, 'y': [1, 2, 3]}
 
+.. _func-template:
+
+template
+~~~~~~~~
+
+Defines a reusable template that survives resolution. Unlike ``__raw__``, which
+unwraps on resolution (producing plain data), ``__template__`` resolves to a
+dictionary ``{"__template__": <contents>}`` that preserves the wrapper. This
+means templates persist across resolution boundaries — if a resolved
+configuration is serialized and then resolved again, templates are still
+recognized. To instantiate a template, use :ref:`__use__ <func-use>`.
+
+**Input**: Any configuration. The input is wrapped in ``{"__template__": ...}``
+and ``${...}`` references are preserved as literal text.
+
+**Example**:
+
+.. testcode:: python
+
+    config = {
+        "service_template": {"__template__": {"host": "localhost", "port": "${port}"}},
+        "port": 8080,
+    }
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "service_template": {"type": "any"},
+            "port": {"type": "integer"},
+        }
+    }
+
+    result = smartconfig.resolve(config, schema)
+    print(result)
+
+This produces:
+
+.. testoutput:: python
+
+    {'port': 8080,
+     'service_template': {'__template__': {'host': 'localhost', 'port': '${port}'}}}
+
+The template wrapper is preserved, and the ``${port}`` reference is kept as
+literal text.
+
+Resolving the output a second time produces the same result — the template is
+idempotent:
+
+.. testcode:: python
+
+    result2 = smartconfig.resolve(result, schema)
+    assert result == result2
+
 .. _func-use:
 
 use
 ~~~
 
-Copies and resolves a template from elsewhere in the configuration, with optional overrides.
+Copies and resolves a template from elsewhere in the configuration, with
+optional overrides. The target keypath must point to a ``__template__`` (or to
+something that resolves to a ``{"__template__": ...}`` dictionary).
 
 **Input**: Either a string keypath (simple form) or a dictionary with the following keys:
 
@@ -389,18 +446,18 @@ Copies and resolves a template from elsewhere in the configuration, with optiona
      - A string keypath pointing to the template to copy.
    * - ``overrides``
      - No
-     - A dictionary that is deep-merged on top of the resolved template.
+     - A dictionary that is deep-merged on top of the template contents before resolution.
 
 **Example (simple)**:
 
-A common pattern is to define a raw template containing ``${...}`` references
-that are not interpolated where the template is defined. When ``__use__`` copies
-the template, the references are resolved in the context of the copy:
+A common pattern is to define a template containing ``${...}`` references.
+When ``__use__`` copies the template, the references are resolved in the context
+of the destination:
 
 .. testcode:: python
 
     config = {
-        "greeting_template": {"__raw__": "Hello, ${name}!"},
+        "greeting_template": {"__template__": "Hello, ${name}!"},
         "name": "Alice",
         "message": {"__use__": "greeting_template"},
     }
@@ -408,7 +465,7 @@ the template, the references are resolved in the context of the copy:
     schema = {
         "type": "dict",
         "required_keys": {
-            "greeting_template": {"type": "string"},
+            "greeting_template": {"type": "any"},
             "name": {"type": "string"},
             "message": {"type": "string"},
         }
@@ -418,20 +475,25 @@ the template, the references are resolved in the context of the copy:
 
 .. testoutput:: python
 
-    {'greeting_template': 'Hello, ${name}!',
+    {'greeting_template': {'__template__': 'Hello, ${name}!'},
      'message': 'Hello, Alice!',
      'name': 'Alice'}
 
-Notice that the template itself remains unresolved (the ``${name}`` reference is
-preserved as-is thanks to ``__raw__``), but the copy produced by ``__use__`` has
-``${name}`` resolved to ``"Alice"``.
+Notice that the template itself remains wrapped (the ``${name}`` reference is
+preserved inside the ``__template__`` wrapper), but the copy produced by
+``__use__`` has ``${name}`` resolved to ``"Alice"``.
 
 **Example (with overrides)**:
+
+When the template resolves to a dictionary, ``__use__`` accepts an ``overrides``
+key that is deep-merged on top of the template contents before resolution. This
+lets you define shared defaults in one place and selectively override individual
+fields at each use site:
 
 .. testcode:: python
 
     config = {
-        "defaults": {"__raw__": {"host": "localhost", "port": 8080}},
+        "defaults": {"__template__": {"host": "localhost", "port": 8080}},
         "server": {
             "__use__": {
                 "template": "defaults",
@@ -443,13 +505,7 @@ preserved as-is thanks to ``__raw__``), but the copy produced by ``__use__`` has
     schema = {
         "type": "dict",
         "required_keys": {
-            "defaults": {
-                "type": "dict",
-                "required_keys": {
-                    "host": {"type": "string"},
-                    "port": {"type": "integer"},
-                }
-            },
+            "defaults": {"type": "any"},
             "server": {
                 "type": "dict",
                 "required_keys": {
@@ -464,7 +520,7 @@ preserved as-is thanks to ``__raw__``), but the copy produced by ``__use__`` has
 
 .. testoutput:: python
 
-    {'defaults': {'host': 'localhost', 'port': 8080},
+    {'defaults': {'__template__': {'host': 'localhost', 'port': 8080}},
      'server': {'host': 'localhost', 'port': 9090}}
 
 

@@ -20,6 +20,7 @@ _let = CORE_FUNCTIONS["let"]
 _resolve_fn = CORE_FUNCTIONS["resolve"]
 _fully_resolve = CORE_FUNCTIONS["fully_resolve"]
 _if = CORE_FUNCTIONS["if"]
+_template = CORE_FUNCTIONS["template"]
 _use = CORE_FUNCTIONS["use"]
 
 # raw ==================================================================================
@@ -1365,22 +1366,152 @@ def test_fully_resolve_scalar_with_interpolation_and_conversion():
     assert result == {"x": 3, "y": 4, "result": 7}
 
 
+# template =============================================================================
+
+
+def test_template_resolves_to_itself():
+    """__template__ should resolve to a dict {"__template__": <contents>}, preserving
+    any ${...} references in the contents as literal text."""
+    # given
+    template = CORE_FUNCTIONS["template"]
+
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "any"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "foo": {"__template__": "Hello ${name}!"},
+    }
+
+    # when
+    result = resolve(cfg, schema, functions={"template": template})
+
+    # then
+    assert result == {"foo": {"__template__": "Hello ${name}!"}}
+
+
+def test_template_survives_multiple_resolutions():
+    """Resolving a __template__ and then resolving the output again should produce
+    the same result — the template wrapper persists across resolution boundaries."""
+    # given
+    template = CORE_FUNCTIONS["template"]
+
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "any"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "foo": {"__template__": "Hello ${name}!"},
+    }
+
+    # when — resolve twice
+    first = resolve(cfg, schema, functions={"template": template})
+    second = resolve(first, schema, functions={"template": template})
+
+    # then
+    assert first == second == {"foo": {"__template__": "Hello ${name}!"}}
+
+
+def test_template_with_content_schema():
+    """The schema can describe what a template must contain by using a dict schema
+    with a __template__ required key whose value schema specifies the expected
+    structure of the template contents."""
+    # given
+    template = CORE_FUNCTIONS["template"]
+
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "my_template": {
+                "type": "dict",
+                "required_keys": {
+                    "__template__": {
+                        "type": "dict",
+                        "required_keys": {
+                            "host": {"type": "string"},
+                            "port": {"type": "string"},
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "my_template": {
+            "__template__": {"host": "localhost", "port": "${default_port}"}
+        },
+    }
+
+    # when
+    result = resolve(cfg, schema, functions={"template": template})
+
+    # then — structure is validated, ${...} references are preserved
+    assert result == {
+        "my_template": {
+            "__template__": {"host": "localhost", "port": "${default_port}"}
+        },
+    }
+
+
 # use ==================================================================================
 
 
-def test_use_resolves_raw_template():
+def test_use_works_when_keypath_resolves_to_a_template():
+    # given — a custom function that returns a template dict
+    @Function.new()
+    def make_template(args):
+        return {"__template__": {"greeting": "Hello ${name}!", "farewell": "Bye!"}}
+
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "name": {"type": "string"},
+            "source": {"type": "any"},
+            "result": {
+                "type": "dict",
+                "required_keys": {
+                    "greeting": {"type": "string"},
+                    "farewell": {"type": "string"},
+                },
+            },
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "name": "world",
+        "source": {"__make_template__": {}},
+        "result": {"__use__": "source"},
+    }
+
+    # when
+    result = resolve(
+        cfg,
+        schema,
+        functions={"use": _use, "template": _template, "make_template": make_template},
+    )
+
+    # then — __use__ resolves "source", gets the template dict, unwraps and resolves it
+    assert result == {
+        "name": "world",
+        "source": {"__template__": {"greeting": "Hello ${name}!", "farewell": "Bye!"}},
+        "result": {"greeting": "Hello world!", "farewell": "Bye!"},
+    }
+
+
+def test_use_resolves_template():
     # given
     schema: Schema = {
         "type": "dict",
         "required_keys": {
             "timeout": {"type": "integer"},
-            "template": {
-                "type": "dict",
-                "required_keys": {
-                    "timeout": {"type": "string"},
-                    "health_check": {"type": "string"},
-                },
-            },
+            "template": {"type": "any"},
             "service": {
                 "type": "dict",
                 "required_keys": {
@@ -1394,7 +1525,7 @@ def test_use_resolves_raw_template():
     cfg: ConfigurationDict = {
         "timeout": 30,
         "template": {
-            "__raw__": {
+            "__template__": {
                 "timeout": "${timeout}",
                 "health_check": "/health",
             }
@@ -1403,47 +1534,93 @@ def test_use_resolves_raw_template():
     }
 
     # when
-    result = resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+    result = resolve(cfg, schema, functions={"use": _use, "template": _template})
 
-    # then — splice gets the raw data, then resolve interpolates it.
-    # Note: template uses "any" schema because its raw values (e.g. "${timeout}")
-    # haven't been interpolated yet and can't pass type conversion.
+    # then — __use__ unwraps the template and resolves it with interpolation.
     assert result == {
         "timeout": 30,
-        "template": {"timeout": "${timeout}", "health_check": "/health"},
+        "template": {
+            "__template__": {"timeout": "${timeout}", "health_check": "/health"}
+        },
         "service": {"timeout": 30, "health_check": "/health"},
     }
 
 
-def test_use_performs_only_one_resolve():
-    # given
+def test_use_applies_destination_schema_for_type_conversion():
+    # given — the template stores everything as strings, but the destination
+    # schema expects integers and booleans. Type conversion should be applied
+    # according to the destination schema, not the template's.
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "name": {"type": "string"},
-            "greeting_template": {"type": "string"},
-            "message_template": {"type": "string"},
+            "template": {"type": "any"},
+            "result": {
+                "type": "dict",
+                "required_keys": {
+                    "port": {"type": "integer"},
+                    "debug": {"type": "boolean"},
+                    "name": {"type": "string"},
+                },
+            },
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "template": {
+            "__template__": {
+                "port": "8080",
+                "debug": "True",
+                "name": "my-service",
+            }
+        },
+        "result": {"__use__": "template"},
+    }
+
+    # when
+    result = resolve(cfg, schema, functions={"use": _use, "template": _template})
+
+    # then — strings are converted per the destination schema
+    assert result == {
+        "template": {
+            "__template__": {"port": "8080", "debug": "True", "name": "my-service"}
+        },
+        "result": {"port": 8080, "debug": True, "name": "my-service"},
+    }
+
+
+def test_use_performs_only_one_resolve():
+    # given — y is a raw value containing "${x}"; the template references y.
+    # Standard (single-pass) interpolation means "${y}" expands to "${x}"
+    # but does not expand further.
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {"type": "string"},
+            "y": {"type": "string"},
+            "template": {"type": "any"},
             "result": {"type": "string"},
         },
     }
 
     cfg: ConfigurationDict = {
-        "name": "world",
-        "greeting_template": {"__raw__": "hello ${name}"},
-        "message_template": {"__raw__": "${greeting_template}"},
-        "result": {"__use__": "message_template"},
+        "x": "world",
+        "y": {"__raw__": "${x}"},
+        "template": {"__template__": "${y}"},
+        "result": {"__use__": "template"},
     }
 
     # when
-    result = resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+    result = resolve(
+        cfg, schema, functions={"use": _use, "template": _template, "raw": _raw}
+    )
 
-    # then — splice gets "${greeting_template}", resolve interpolates once:
-    # "${greeting_template}" → "hello ${name}" and stops.
+    # then — __use__ unwraps "${y}", standard interpolation expands it once
+    # to "${x}", but does not expand "${x}" to "world".
     assert result == {
-        "name": "world",
-        "greeting_template": "hello ${name}",
-        "message_template": "${greeting_template}",
-        "result": "hello ${name}",
+        "x": "world",
+        "y": "${x}",
+        "template": {"__template__": "${y}"},
+        "result": "${x}",
     }
 
 
@@ -1455,7 +1632,7 @@ def test_use_with_nested_keypath():
             "templates": {
                 "type": "dict",
                 "required_keys": {
-                    "greeting": {"type": "string"},
+                    "greeting": {"type": "any"},
                 },
             },
             "name": {"type": "string"},
@@ -1464,17 +1641,17 @@ def test_use_with_nested_keypath():
     }
 
     cfg: ConfigurationDict = {
-        "templates": {"greeting": {"__raw__": "hello ${name}"}},
+        "templates": {"greeting": {"__template__": "hello ${name}"}},
         "name": "world",
         "result": {"__use__": "templates.greeting"},
     }
 
     # when
-    result = resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+    result = resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     # then
     assert result == {
-        "templates": {"greeting": "hello ${name}"},
+        "templates": {"greeting": {"__template__": "hello ${name}"}},
         "name": "world",
         "result": "hello world",
     }
@@ -1493,18 +1670,68 @@ def test_use_raises_if_input_is_not_a_string_or_dict():
     assert "string" in str(exc.value)
 
 
+def test_use_raises_if_target_is_not_a_template():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "not_a_template": {"type": "string"},
+            "result": {"type": "string"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "not_a_template": "just a string",
+        "result": {"__use__": "not_a_template"},
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"use": _use, "template": _template})
+
+    # then
+    assert "__template__" in str(exc.value)
+
+
+def test_use_dict_form_raises_if_target_is_not_a_template():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "not_a_template": {"type": "string"},
+            "result": {"type": "string"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "not_a_template": "just a string",
+        "result": {
+            "__use__": {
+                "template": "not_a_template",
+            }
+        },
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"use": _use, "template": _template})
+
+    # then
+    assert "__template__" in str(exc.value)
+
+
 def test_use_raises_if_keypath_does_not_exist():
     # given
     schema: Schema = {"type": "any"}
 
     cfg: ConfigurationDict = {
-        "foo": {"__raw__": {"a": 1}},
+        "foo": {"__template__": {"a": 1}},
         "result": {"__use__": "nonexistent"},
     }
 
     # when / then
     with pytest.raises(exceptions.ResolutionError) as exc:
-        resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+        resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     assert "nonexistent" in str(exc.value).lower()
 
@@ -1518,13 +1745,7 @@ def test_use_with_overrides_replaces_template_key():
         "type": "dict",
         "required_keys": {
             "name": {"type": "string"},
-            "template": {
-                "type": "dict",
-                "required_keys": {
-                    "greeting": {"type": "string"},
-                    "farewell": {"type": "string"},
-                },
-            },
+            "template": {"type": "any"},
             "messages": {
                 "type": "dict",
                 "required_keys": {
@@ -1538,7 +1759,7 @@ def test_use_with_overrides_replaces_template_key():
     cfg: ConfigurationDict = {
         "name": "Alice",
         "template": {
-            "__raw__": {
+            "__template__": {
                 "greeting": "Hello ${name}!",
                 "farewell": "Goodbye ${name}!",
             }
@@ -1554,12 +1775,17 @@ def test_use_with_overrides_replaces_template_key():
     }
 
     # when
-    result = resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+    result = resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     # then
     assert result == {
         "name": "Alice",
-        "template": {"greeting": "Hello ${name}!", "farewell": "Goodbye ${name}!"},
+        "template": {
+            "__template__": {
+                "greeting": "Hello ${name}!",
+                "farewell": "Goodbye ${name}!",
+            }
+        },
         "messages": {"greeting": "Hi Alice!", "farewell": "Goodbye Alice!"},
     }
 
@@ -1570,12 +1796,7 @@ def test_use_with_overrides_adds_new_key():
         "type": "dict",
         "required_keys": {
             "name": {"type": "string"},
-            "template": {
-                "type": "dict",
-                "required_keys": {
-                    "greeting": {"type": "string"},
-                },
-            },
+            "template": {"type": "any"},
             "messages": {
                 "type": "dict",
                 "required_keys": {
@@ -1589,7 +1810,7 @@ def test_use_with_overrides_adds_new_key():
     cfg: ConfigurationDict = {
         "name": "Alice",
         "template": {
-            "__raw__": {
+            "__template__": {
                 "greeting": "Hello ${name}!",
             }
         },
@@ -1604,12 +1825,12 @@ def test_use_with_overrides_adds_new_key():
     }
 
     # when
-    result = resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+    result = resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     # then
     assert result == {
         "name": "Alice",
-        "template": {"greeting": "Hello ${name}!"},
+        "template": {"__template__": {"greeting": "Hello ${name}!"}},
         "messages": {"greeting": "Hello Alice!", "farewell": "Goodbye Alice!"},
     }
 
@@ -1620,12 +1841,7 @@ def test_use_with_overrides_interpolates_override_values():
         "type": "dict",
         "required_keys": {
             "name": {"type": "string"},
-            "template": {
-                "type": "dict",
-                "required_keys": {
-                    "greeting": {"type": "string"},
-                },
-            },
+            "template": {"type": "any"},
             "result": {
                 "type": "dict",
                 "required_keys": {
@@ -1638,7 +1854,7 @@ def test_use_with_overrides_interpolates_override_values():
     cfg: ConfigurationDict = {
         "name": "Bob",
         "template": {
-            "__raw__": {
+            "__template__": {
                 "greeting": "Hello!",
             }
         },
@@ -1653,12 +1869,12 @@ def test_use_with_overrides_interpolates_override_values():
     }
 
     # when
-    result = resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+    result = resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     # then
     assert result == {
         "name": "Bob",
-        "template": {"greeting": "Hello!"},
+        "template": {"__template__": {"greeting": "Hello!"}},
         "result": {"greeting": "Hi Bob!"},
     }
 
@@ -1669,12 +1885,7 @@ def test_use_with_empty_overrides_is_noop():
         "type": "dict",
         "required_keys": {
             "name": {"type": "string"},
-            "template": {
-                "type": "dict",
-                "required_keys": {
-                    "greeting": {"type": "string"},
-                },
-            },
+            "template": {"type": "any"},
             "result": {
                 "type": "dict",
                 "required_keys": {
@@ -1687,7 +1898,7 @@ def test_use_with_empty_overrides_is_noop():
     cfg: ConfigurationDict = {
         "name": "Alice",
         "template": {
-            "__raw__": {
+            "__template__": {
                 "greeting": "Hello ${name}!",
             }
         },
@@ -1700,12 +1911,12 @@ def test_use_with_empty_overrides_is_noop():
     }
 
     # when
-    result = resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+    result = resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     # then
     assert result == {
         "name": "Alice",
-        "template": {"greeting": "Hello ${name}!"},
+        "template": {"__template__": {"greeting": "Hello ${name}!"}},
         "result": {"greeting": "Hello Alice!"},
     }
 
@@ -1716,12 +1927,7 @@ def test_use_dict_form_without_overrides_key():
         "type": "dict",
         "required_keys": {
             "name": {"type": "string"},
-            "template": {
-                "type": "dict",
-                "required_keys": {
-                    "greeting": {"type": "string"},
-                },
-            },
+            "template": {"type": "any"},
             "result": {
                 "type": "dict",
                 "required_keys": {
@@ -1734,7 +1940,7 @@ def test_use_dict_form_without_overrides_key():
     cfg: ConfigurationDict = {
         "name": "Alice",
         "template": {
-            "__raw__": {
+            "__template__": {
                 "greeting": "Hello ${name}!",
             }
         },
@@ -1746,28 +1952,28 @@ def test_use_dict_form_without_overrides_key():
     }
 
     # when
-    result = resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+    result = resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     # then
     assert result == {
         "name": "Alice",
-        "template": {"greeting": "Hello ${name}!"},
+        "template": {"__template__": {"greeting": "Hello ${name}!"}},
         "result": {"greeting": "Hello Alice!"},
     }
 
 
-def test_use_with_overrides_raises_if_template_is_not_dict():
+def test_use_with_overrides_raises_if_template_contents_is_not_dict():
     # given
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "template": {"type": "string"},
+            "template": {"type": "any"},
             "result": {"type": "string"},
         },
     }
 
     cfg: ConfigurationDict = {
-        "template": {"__raw__": "just a string"},
+        "template": {"__template__": "just a string"},
         "result": {
             "__use__": {
                 "template": "template",
@@ -1778,7 +1984,7 @@ def test_use_with_overrides_raises_if_template_is_not_dict():
 
     # when
     with pytest.raises(exceptions.ResolutionError) as exc:
-        resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+        resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     assert "dictionary" in str(exc.value).lower()
 
@@ -1811,7 +2017,7 @@ def test_use_raises_if_dict_has_extra_keys():
     }
 
     cfg: ConfigurationDict = {
-        "t": {"__raw__": {"a": "1"}},
+        "t": {"__template__": {"a": "1"}},
         "result": {
             "__use__": {
                 "template": "t",
@@ -1823,7 +2029,7 @@ def test_use_raises_if_dict_has_extra_keys():
 
     # when
     with pytest.raises(exceptions.ResolutionError) as exc:
-        resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+        resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     assert "foo" in str(exc.value).lower()
 
@@ -1856,7 +2062,7 @@ def test_use_raises_if_overrides_value_is_not_dict():
     }
 
     cfg: ConfigurationDict = {
-        "t": {"__raw__": {"a": "1"}},
+        "t": {"__template__": {"a": "1"}},
         "result": {
             "__use__": {
                 "template": "t",
@@ -1867,7 +2073,7 @@ def test_use_raises_if_overrides_value_is_not_dict():
 
     # when
     with pytest.raises(exceptions.ResolutionError) as exc:
-        resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+        resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     assert "dictionary" in str(exc.value).lower()
 
@@ -1878,18 +2084,7 @@ def test_use_with_overrides_deep_merge():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "template": {
-                "type": "dict",
-                "required_keys": {
-                    "server": {
-                        "type": "dict",
-                        "required_keys": {
-                            "host": {"type": "string"},
-                            "port": {"type": "integer"},
-                        },
-                    },
-                },
-            },
+            "template": {"type": "any"},
             "result": {
                 "type": "dict",
                 "required_keys": {
@@ -1907,7 +2102,7 @@ def test_use_with_overrides_deep_merge():
 
     cfg: ConfigurationDict = {
         "template": {
-            "__raw__": {
+            "__template__": {
                 "server": {
                     "host": "localhost",
                     "port": "8080",
@@ -1927,11 +2122,11 @@ def test_use_with_overrides_deep_merge():
     }
 
     # when
-    result = resolve(cfg, schema, functions={"use": _use, "raw": _raw})
+    result = resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     # then — deep merge should preserve "host" while overriding "port"
     assert result == {
-        "template": {"server": {"host": "localhost", "port": 8080}},
+        "template": {"__template__": {"server": {"host": "localhost", "port": "8080"}}},
         "result": {"server": {"host": "localhost", "port": 9090}},
     }
 
@@ -2092,7 +2287,7 @@ def test_if_with_dates_in_comparison():
 
 
 def test_use_and_previous_with_multiple_templates():
-    """Integration test combining __use__, __raw__, and __let__ with __previous__.
+    """Integration test combining __use__, __template__, and __let__ with __previous__.
 
     A list of items shares the same structure (number, topic, two artifacts).
     Three templates reduce repetition:
@@ -2116,16 +2311,8 @@ def test_use_and_previous_with_multiple_templates():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            # Templates are __raw__, so their values stay as strings.
-            "slides_template": {
-                "type": "dict",
-                "required_keys": {
-                    "path": {"type": "string"},
-                    "ready": {"type": "string"},
-                    "missing_ok": {"type": "string"},
-                },
-            },
-            "number_template": {"type": "string"},
+            "slides_template": {"type": "any"},
+            "number_template": {"type": "any"},
             "lectures": {
                 "type": "list",
                 "element_schema": {
@@ -2142,10 +2329,10 @@ def test_use_and_previous_with_multiple_templates():
     }
 
     cfg: ConfigurationDict = {
-        # Reusable artifact template — __raw__ prevents premature interpolation.
+        # Reusable artifact template — __template__ preserves ${...} references.
         # Defaults: not ready, missing is OK.
         "slides_template": {
-            "__raw__": {
+            "__template__": {
                 "path": "slides.pdf",
                 "ready": "False",
                 "missing_ok": "True",
@@ -2153,7 +2340,7 @@ def test_use_and_previous_with_multiple_templates():
         },
         # Reusable number template — auto-increments from the previous item.
         # Assumes "prev" is bound via __let__ with __previous__.
-        "number_template": {"__raw__": "${prev.number + 1}"},
+        "number_template": {"__template__": "${prev.number + 1}"},
         "lectures": [
             # Item 1: explicitly defined (no previous to reference).
             {
@@ -2216,17 +2403,19 @@ def test_use_and_previous_with_multiple_templates():
     result = resolve(
         cfg,
         schema,
-        functions={"use": _use, "let": _let, "raw": _raw},
+        functions={"use": _use, "let": _let, "template": _template},
     )
 
     # then
     assert result == {
         "slides_template": {
-            "path": "slides.pdf",
-            "ready": "False",
-            "missing_ok": "True",
+            "__template__": {
+                "path": "slides.pdf",
+                "ready": "False",
+                "missing_ok": "True",
+            }
         },
-        "number_template": "${prev.number + 1}",
+        "number_template": {"__template__": "${prev.number + 1}"},
         "lectures": [
             {
                 "number": 1,

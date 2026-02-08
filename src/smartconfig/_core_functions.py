@@ -108,6 +108,25 @@ def _fully_resolve(args: _types.FunctionArgs) -> _ConcreteNode:
 
 
 @_types.Function.new(resolve_input=False)
+def _template(args: _types.FunctionArgs) -> _ConcreteNode:
+    """Return a dict wrapping the input as a template that survives resolution.
+
+    Builds ``{"__template__": <input>}`` in RAW mode so that ``${...}``
+    references are preserved and the wrapper dict is not detected as a
+    function call.
+
+    """
+    node = make_node(
+        {"__template__": args.input},
+        args.schema,
+        args.resolution_context,
+        keypath=args.keypath,
+        mode=ResolutionMode.RAW,
+    )
+    return node
+
+
+@_types.Function.new(resolve_input=False)
 def _use(args: _types.FunctionArgs) -> _ConcreteNode:
     """Copy a template from elsewhere in the configuration, with optional overrides.
 
@@ -150,14 +169,24 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
             "Input to 'use' must be a string or a dictionary.", args.keypath
         )
 
-    # Splice: look up the node at the keypath and resolve it to get raw data.
+    # Look up the node at the keypath and resolve it.
     root = args._root_node
     assert isinstance(root, (_DictNode, _ListNode, _FunctionCallNode))
     try:
         source_node = root.get_keypath(keypath_str)
     except KeyError:
         raise ResolutionError(f"Keypath '{keypath_str}' does not exist.", args.keypath)
-    spliced_data = source_node.resolve()
+    resolved = source_node.resolve()
+
+    # The target must be a __template__ function call.
+    if not isinstance(resolved, dict) or "__template__" not in resolved:
+        raise ResolutionError(
+            "The target of 'use' must be a '__template__' function call.",
+            args.keypath,
+        )
+
+    # Unwrap the template contents.
+    spliced_data = resolved["__template__"]
 
     # Apply overrides (deep merge).
     if overrides is not None:
@@ -316,5 +345,6 @@ CORE_FUNCTIONS: _types.FunctionMapping = {
     "raw": _raw,
     "resolve": _resolve,
     "splice": _splice,
+    "template": _template,
     "use": _use,
 }
