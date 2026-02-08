@@ -1,6 +1,6 @@
 # smartconfig
 
-`smartconfig` is a Python library for enhancing standard configuration formats (JSON, YAML, TOML) with dynamic features like interpolation, natural language parsing, and type validation, allowing you to build powerful configuration systems for your applications.
+`smartconfig` is a Python library for enhancing standard configuration formats (JSON, YAML, TOML) with dynamic features like interpolation, type conversion, and function evaluation, allowing you to build powerful configuration systems for your applications.
 
 See the [documentation](https://eldridgejm.github.io/smartconfig/) for more information.
 
@@ -16,12 +16,12 @@ Python programs that require user configuration often use simple configuration f
 {
     "course_name": "Introduction to Computer Science",
     "start_date": "2025-09-01",
-    "first_homework_due": "first tuesday after ${start_date}",
+    "first_homework_due": {"__datetime.parse__": "first tuesday after ${start_date}"},
     "welcome_msg": "Welcome to ${course_name}!"
 }
 ```
 
-Notice the use of `${...}` for interpolation and natural language date expressions. Of course, the JSON parser will not "resolve" these values automatically. This is where `smartconfig` comes in:
+This configuration uses `${...}` for string interpolation and the `__datetime.parse__` function to compute a date from natural language. Of course, the JSON parser will not "resolve" these values automatically. This is where `smartconfig` comes in:
 
 **Python Code**
 
@@ -43,7 +43,7 @@ class Course(smartconfig.Prototype):
 
 # 3. Resolve to a Prototype instance
 resolved = smartconfig.resolve(raw_config, Course)
-print(resolved)
+print(resolved._as_dict())
 ```
 
 The resolved configuration is an instance of `Course` with all values computed:
@@ -51,7 +51,10 @@ The resolved configuration is an instance of `Course` with all values computed:
 **Output**
 
 ```python
-Course(course_name='Introduction to Computer Science', start_date=datetime.date(2025, 9, 1), first_homework_due=datetime.date(2025, 9, 2), welcome_msg='Welcome to Introduction to Computer Science!')
+{'course_name': 'Introduction to Computer Science',
+ 'first_homework_due': datetime.date(2025, 9, 2),
+ 'start_date': datetime.date(2025, 9, 1),
+ 'welcome_msg': 'Welcome to Introduction to Computer Science!'}
 ```
 
 ## Features
@@ -59,10 +62,9 @@ Course(course_name='Introduction to Computer Science', start_date=datetime.date(
 `smartconfig` supports extending configuration formats with the following features:
 
 - **String interpolation**: Use `${...}` to refer to other values in the configuration file. This helps avoid tedious duplication and the errors that can arise from it.
-- **Natural language parsers**: `smartconfig` includes natural language parsers for dates, numbers, and boolean values. When combined with string interpolation, this allows you to define values relative to other values in the configuration file. For example, you can define a value as `7 days after ${start_date}`, or `${previous_lecture_number} + 1`.
+- **Type conversion and validation**: `smartconfig` includes converters that parse string values into Python types like `int`, `float`, `bool`, `datetime.date`, and `datetime.datetime`. Converters also validate that values match the expected type.
 - **Default values**: default values can be provided, so that the user can save typing and highlight what's important by only specifying the values that are different from the default.
-- **Basic type checking**: `smartconfig` can check that values in the configuration file are of the expected type. For example, you can specify that a value should be a date, a number, or a boolean, and `smartconfig` will raise an error if the value is not of the expected type.
-- **Function calls**: `smartconfig` defines a syntax for calling functions in the configuration file. This allows the user to specify complex values that are calculated at runtime. Functions are provided for merging dictionaries, concatenating lists, etc., and developers can define their own functions as well.
+- **Function calls**: `smartconfig` defines a syntax for calling functions in the configuration file. This allows the user to specify complex values that are calculated at runtime. Default functions are provided for conditional logic, list operations, dictionary merging, date manipulation, and more. Developers can also define their own functions.
 - **Complex control flow**: the Jinja2 templating engine is used under the hood, which means that you can use Jinja2's control flow constructs like `if` statements, `for` loops, and more to define complex values in your configuration file. You can also use Jinja2 filters to transform values in your configuration file, as in `${value | capitalize}` to capitalize a string.
 
 Additionally, `smartconfig` provides the following features to developers:
