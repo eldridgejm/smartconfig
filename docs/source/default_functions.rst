@@ -219,6 +219,8 @@ raw
 ~~~
 
 Prevents interpolation of ``${...}`` references, preserving them as literal text.
+Note that the raw wrapper is removed upon resolution — if you need a template
+that survives resolution boundaries, see :ref:`__template__ <func-template>`.
 
 **Input**: Any configuration. The input is returned as-is without interpolation.
 
