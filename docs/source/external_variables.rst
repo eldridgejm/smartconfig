@@ -88,11 +88,9 @@ As an example of this, consider the following configuration:
     config = {
         "course_name": "Introduction to Python",
         "date_of_first_lecture": "${ vars.date_of_first_lecture }",
-        "date_of_first_discussion": "7 days after ${this.date_of_first_lecture}",
         "message": [
             "Welcome to ${this.course_name}!",
             "The first lecture is on ${this.date_of_first_lecture}.",
-            "The first discussion is on ${this.date_of_first_discussion}."
         ]
     }
 
@@ -114,7 +112,6 @@ As an example of this, consider the following configuration:
                 "required_keys": {
                     "course_name": {"type": "string"},
                     "date_of_first_lecture": {"type": "date"},
-                    "date_of_first_discussion": {"type": "date"},
                     "message": {"type": "list", "element_schema": {"type": "string"}}
                 }
             },
@@ -135,11 +132,9 @@ The result will be:
 .. testoutput:: python
 
     {'this': {'course_name': 'Introduction to Python',
-              'date_of_first_discussion': datetime.date(2025, 1, 17),
               'date_of_first_lecture': datetime.date(2025, 1, 10),
               'message': ['Welcome to Introduction to Python!',
-                          'The first lecture is on 2025-01-10.',
-                          'The first discussion is on 2025-01-17.']},
+                          'The first lecture is on 2025-01-10.']},
      'vars': {'date_of_first_lecture': '2025-01-10'}}
 
 Note that under this convention, the external variables are also resolved, which means

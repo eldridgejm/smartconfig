@@ -1,35 +1,92 @@
 Functions
 =========
 
-.. module:: smartconfig.functions
+Default functions are organized into **core functions** and **standard library
+(stdlib) functions**. Core functions handle control flow, interpolation modes,
+and structural operations. Stdlib functions are namespaced and provide list,
+dictionary, and datetime operations.
 
-The :mod:`smartconfig.functions` module provides built-in functions that can be
-called within a configuration using the function call syntax.
 See :doc:`default_functions` for usage examples and details on how to invoke
 functions in configurations.
 
-.. autofunction:: raw
+Core Functions
+--------------
 
-.. autofunction:: recursive
+Core functions are available as top-level names (e.g., ``__if__``, ``__let__``).
 
-.. autofunction:: splice
+.. list-table::
+   :widths: 20 80
+   :header-rows: 1
 
-.. autofunction:: update_shallow
+   * - Function
+     - Description
+   * - ``if``
+     - Conditional logic: evaluates ``condition``, returns ``then`` or ``else``
+   * - ``let``
+     - Define local variables and/or references within a subtree
+   * - ``raw``
+     - Prevent interpolation of ``${...}`` references
+   * - ``resolve``
+     - Single-pass interpolation (override inherited raw/fully_resolve mode)
+   * - ``fully_resolve``
+     - Repeated interpolation until the string stabilizes
+   * - ``splice``
+     - Copy a subtree from elsewhere in the configuration
+   * - ``use``
+     - Copy a template with optional deep-merge overrides
 
-.. autofunction:: update
+Standard Library Functions
+--------------------------
 
-.. autofunction:: if_
+Stdlib functions use dotted names (e.g., ``__list.loop__``, ``__dict.update__``).
 
-.. autofunction:: let
+**List Functions** (``smartconfig.stdlib.list``)
 
-.. autofunction:: loop
+.. list-table::
+   :widths: 20 80
+   :header-rows: 1
 
-.. autofunction:: concatenate
+   * - Function
+     - Description
+   * - ``list.concatenate``
+     - Concatenate lists
+   * - ``list.filter``
+     - Filter a list by condition
+   * - ``list.loop``
+     - Generate a list by iteration
+   * - ``list.range``
+     - Generate a list of numbers
+   * - ``list.zip``
+     - Zip lists together
 
-.. autofunction:: zip_
+**Dictionary Functions** (``smartconfig.stdlib.dict``)
 
-.. autofunction:: filter_
+.. list-table::
+   :widths: 20 80
+   :header-rows: 1
 
-.. autofunction:: range_
+   * - Function
+     - Description
+   * - ``dict.from_items``
+     - Create a dictionary from key-value pairs
+   * - ``dict.update``
+     - Deep merge dictionaries
+   * - ``dict.update_shallow``
+     - Shallow merge dictionaries
 
-.. autofunction:: dict_from_items
+**Datetime Functions** (``smartconfig.stdlib.datetime``)
+
+.. list-table::
+   :widths: 20 80
+   :header-rows: 1
+
+   * - Function
+     - Description
+   * - ``datetime.at``
+     - Combine a date with a time
+   * - ``datetime.first``
+     - Find the first weekday before/after a date
+   * - ``datetime.offset``
+     - Offset a date by a given amount
+   * - ``datetime.parse``
+     - Parse a natural language date/datetime string

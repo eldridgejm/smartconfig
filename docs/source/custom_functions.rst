@@ -10,7 +10,7 @@ Custom Functions
 Defining Custom Functions
 -------------------------
 
-As discussed in :doc:`default_functions`, `smartconfig` comes with several built-in
+As discussed in :doc:`default_functions`, `smartconfig` comes with several default
 functions that handle common configuration needs out of the box. However, you may
 find that you need to define your own functions to perform operations specific to
 your application. For this, `smartconfig` allows you to define custom functions.
@@ -66,15 +66,15 @@ the function call.
       dynamic behavior such as evaluating loop bodies or conditionally resolving
       values. See :class:`smartconfig.types.Resolver` for the signature.
 
-   .. attribute:: resolution_options
-      :type: ResolutionOptions
+   .. attribute:: resolution_context
+      :type: ResolutionContext
       :no-index:
 
       The full resolution context, including converters, functions, and other
       options passed to :func:`smartconfig.resolve`. Rarely needed in practice.
 
 
-:data:`smartconfig.DEFAULT_FUNCTIONS` is dictionary containing the built-in functions;
+:data:`smartconfig.DEFAULT_FUNCTIONS` is a dictionary containing the default functions;
 to override, remove, or add new custom functions, copy this dictionary first, make
 modifications to the copy, and then pass the modified copy to :func:`smartconfig.resolve`
 via the ``functions`` keyword argument.
@@ -116,44 +116,39 @@ The result will be:
 Approach #2: Using :class:`smartconfig.types.Function`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The second way to define a function is to create a :class:`smartconfig.types.Function`
+The second way to define a function is to create :class:`smartconfig.types.Function`
 instances. This is preferable if you need to control whether the function's input is
 resolved before being passed to the function. The :class:`smartconfig.types.Function`
 class provides a convenience class method for this, called
 :meth:`smartconfig.types.Function.new`. This class method can be used as a decorator.
 
-For example, the below custom function implements "raw" strings that are not interpolated
-or processed in any way. To achieve this, we set ``resolve_input=False`` when defining
-the function. Note that there is a built-in :func:`smartconfig.functions.raw` function
-that does exactly this; we are re-implementing it here for demonstration purposes only.
+For example, the below custom function wraps its input in a list without resolving
+the input first. To achieve this, we set ``resolve_input=False`` when defining
+the function.
 
 .. testcode:: python
 
-    from smartconfig.types import Function, FunctionArgs, Configuration, RawString
+    from smartconfig.types import Function, FunctionArgs, Configuration
 
     @Function.new(resolve_input=False)
-    def raw(args: FunctionArgs) -> Configuration:
-        return RawString(args.input)
+    def wrap_list(args: FunctionArgs) -> Configuration:
+        return [args.input]
 
     schema = {
-        "type": "dict",
-        "required_keys": {
-            "message": {"type": "string"},
-        }
+        "type": "list",
+        "element_schema": {"type": "string"},
     }
 
-    dct = {
-        "message": {"__raw__": "${x}"},
-    }
+    dct = {"__wrap_list__": "hello"}
 
-    result = smartconfig.resolve(dct, schema, functions={"raw": raw})
+    result = smartconfig.resolve(dct, schema, functions={"wrap_list": wrap_list})
     print(result)
 
 The result will be:
 
 .. testoutput:: python
 
-    {'message': '${x}'}
+    ['hello']
 
 Examples
 --------
@@ -199,7 +194,7 @@ We get:
 Example 2: Implementing loops
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`smartconfig` comes with a built-in :func:`smartconfig.functions.loop` function
+`smartconfig` comes with a default ``list.loop`` function
 that implements a simple loop construct. However, for pedagogical purposes,
 let's implement our own version, as this will demonstrate the flexibility of
 the function system.
@@ -355,16 +350,18 @@ The result will be:
 Customizing Function Call Syntax
 --------------------------------
 
-By default, `smartconfig` assumes that function calls are dictionaries with a single key
-of the form ``__<function_name>__``. If you want to use a different syntax, you can
-provide a custom function call checker via the ``check_for_function_call`` keyword
-argument to :func:`resolve`. This should be a callable matching the
-:class:`types.FunctionCallChecker` signature. That is, the function should take two
-arguments: a :class:`types.ConfigurationDict` that is possibly a function call and a
-mapping of function names to available functions. If the dictionary is a function call,
-it should return a 2-tuple of the :class:`types.Function` to call and the input to the
-function. If the dictionary is not a function call, it should return None. If the
-dictionary is an invalid function call, it should raise a :class:`ValueError`.
+By default, :func:`smartconfig.resolve` looks for function calls that are
+dictionaries with a single key of the form ``__<function_name>__``. If you want
+to use a different syntax, you can provide a custom function call checker via
+the ``check_for_function_call`` keyword argument to :func:`resolve`. This
+should be a callable matching the :data:`~smartconfig.types.FunctionCallChecker` signature.
+That is, the function should take two arguments: a
+:data:`~smartconfig.types.ConfigurationDict` that is possibly a function call and a mapping
+of function names to available functions. If the dictionary is a function call,
+it should return a 2-tuple of the :class:`~smartconfig.types.Function` to call and the input
+to the function. If the dictionary is not a function call, it should return
+None. If the dictionary is an invalid function call, it should raise a
+:class:`ValueError`.
 
 Function calls can be disabled entirely by setting ``check_for_function_call`` to
 None in the call to :func:`resolve`.

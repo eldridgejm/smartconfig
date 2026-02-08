@@ -9,10 +9,12 @@ See :doc:`default_converters` for usage examples and details on how converters
 are applied during resolution.
 
 
-.. autofunction:: arithmetic
+.. autofunction:: integer
 
-.. autofunction:: logic
+.. autofunction:: float_
 
-.. autofunction:: smartdate
+.. autofunction:: boolean
 
-.. autofunction:: smartdatetime
+.. autofunction:: date
+
+.. autofunction:: datetime

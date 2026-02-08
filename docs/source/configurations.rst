@@ -3,8 +3,8 @@ Configurations
 
 Using `smartconfig` involves three steps:
 
-1. Read a **"raw" configuration** (usually from JSON, YAML, or TOML) into a Python dictionary.
-2. Specify the expected structure and types of the configuration using either a **schema** or a **prototype**.
+1. Specify the expected structure and types of the configuration using either a **schema** or a **prototype**.
+2. Read a **"raw" configuration** (usually from JSON, YAML, or TOML) into a Python dictionary.
 3. Call :func:`smartconfig.resolve()` to produce a **"resolved" configuration** where all dynamic values have been computed.
 
 This section introduces the first concept: the **configuration**. For the others, see :doc:`schemas` and :doc:`resolution`.
@@ -36,12 +36,8 @@ The input to `smartconfig` is a "raw" configuration. It typically comes directly
     config = {
         "course_name": "Introduction to Python",
         "date_of_first_lecture": "2025-01-10",
-        "date_of_first_discussion": "7 days after ${this.first_lecture}",
-        "message": [
-            "Welcome to ${this.course_name}!",
-            "The first lecture is on ${this.first_lecture}.",
-            "The first discussion is on ${this.first_discussion}."
-        ]
+        "welcome_message": "Welcome to ${course_name}!",
+        "lecture_info": "The first lecture is on ${date_of_first_lecture}.",
     }
 
 A **resolved configuration** is the output of `smartconfig`. It is a configuration where all dynamic values have been computed, all interpolations have been performed, and all values have been converted to their final Python types. For example, after resolving the above configuration, we would get:
@@ -51,12 +47,8 @@ A **resolved configuration** is the output of `smartconfig`. It is a configurati
     resolved = {
         "course_name": "Introduction to Python",
         "date_of_first_lecture": datetime.date(2025, 1, 10),
-        "date_of_first_discussion": datetime.date(2025, 1, 17),
-        "message": [
-            "Welcome to Introduction to Python!",
-            "The first lecture is on 2025-01-10.",
-            "The first discussion is on 2025-01-17."
-        ]
+        "welcome_message": "Welcome to Introduction to Python!",
+        "lecture_info": "The first lecture is on 2025-01-10.",
     }
 
 In order to resolve a raw configuration, `smartconfig` needs to know what

@@ -1,38 +1,30 @@
 """Types and type aliases."""
 
 from typing import (
-    Dict,
-    List,
-    Union,
+    TYPE_CHECKING,
     Mapping,
     Any,
-    Tuple,
     Callable,
     Iterable,
-    Optional,
     Protocol,
 )
 import abc
 import dataclasses
 import datetime
 
-# configuration type aliases ===========================================================
+# configurations =======================================================================
 
-# configurations are "raw" dictionaries, lists, or non-container types; a
-# configuration tree can be built from configurations, and a resolved
-# configuration is again a configuration.
+# these type aliases define a "configuration", which is the type of both the input
+# and output of resolve().
 
-# as of Feb. 2025, using the "type" keyword in the type alias causes the type
-# checker to throw a fit, so we'll use the old way for now
+type ConfigurationValue = (
+    str | int | float | bool | datetime.datetime | datetime.date | None
+)
+type ConfigurationContainer = ConfigurationDict | ConfigurationList
+type ConfigurationList = list[ConfigurationContainer | ConfigurationValue]
+type ConfigurationDict = dict[str, ConfigurationContainer | ConfigurationValue]
 
-ConfigurationValue = Union[
-    str, int, float, bool, datetime.datetime, datetime.date, None
-]
-ConfigurationContainer = Union["ConfigurationDict", "ConfigurationList"]
-ConfigurationList = List[Union[ConfigurationContainer, ConfigurationValue]]
-ConfigurationDict = Dict[str, Union[ConfigurationContainer, ConfigurationValue]]
-
-Configuration = Union[ConfigurationContainer, ConfigurationValue]
+type Configuration = ConfigurationContainer | ConfigurationValue
 
 # unresolved containers ================================================================
 
@@ -49,9 +41,7 @@ class UnresolvedDict(abc.ABC):
     """
 
     @abc.abstractmethod
-    def __getitem__(
-        self, key: str
-    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]:
+    def __getitem__(self, key: str) -> UnresolvedDict | UnresolvedList | Configuration:
         """Get an item from the dictionary.
 
         The semantics of this depend on the type of object being retrieved. If the
@@ -85,7 +75,7 @@ class UnresolvedDict(abc.ABC):
     @abc.abstractmethod
     def values(
         self,
-    ) -> Iterable[Union["UnresolvedDict", "UnresolvedList", Configuration]]:
+    ) -> Iterable[UnresolvedDict | UnresolvedList | Configuration]:
         """Get the values of the dictionary.
 
         This will trigger the resolution of leaf values and function nodes.
@@ -97,7 +87,7 @@ class UnresolvedDict(abc.ABC):
         """Recursively resolves the dictionary."""
 
     @abc.abstractmethod
-    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration:
+    def get_keypath(self, keypath: KeyPath | str) -> Configuration:
         """Return the resolved configuration at the given keypath.
 
         This drills down through nested containers to find the part of the configuration
@@ -114,9 +104,7 @@ class UnresolvedList(abc.ABC):
     """
 
     @abc.abstractmethod
-    def __getitem__(
-        self, ix
-    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]:
+    def __getitem__(self, ix) -> UnresolvedDict | UnresolvedList | Configuration:
         """Get an item from the list.
 
         The semantics of this depend on the type of object being retrieved. If the
@@ -136,7 +124,7 @@ class UnresolvedList(abc.ABC):
     @abc.abstractmethod
     def __iter__(
         self,
-    ) -> Iterable[Union["UnresolvedDict", "UnresolvedList", Configuration]]:
+    ) -> Iterable[UnresolvedDict | UnresolvedList | Configuration]:
         """Iterate over the items in the list.
 
         This will trigger the resolution of leaf values and function nodes.
@@ -152,7 +140,7 @@ class UnresolvedList(abc.ABC):
         """Recursively resolves the list."""
 
     @abc.abstractmethod
-    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration:
+    def get_keypath(self, keypath: KeyPath | str) -> Configuration:
         """Return the resolved configuration at the given keypath.
 
         This drills down through nested containers to find the part of the configuration
@@ -175,17 +163,17 @@ class UnresolvedFunctionCall(abc.ABC):
     Because of this, :class:`UnresolvedFunctionCall` does not provide a :meth:`resolve`
     method. There is never a need to resolve an unresolved function call explicitly --
     it will always be resolved implicitly when it is indexed into, accessed as a child
-    of another container, or when its :meth:`get_keypath` method is called. Since the
-    user will only see an :class:`UnresolvedFunctionCall` instance when the call is the
-    root of the configuration, calling a ``.resolve()`` on it would result in infinite
-    recursion.
+    of another container, or when its :meth:`get_keypath` method is called.
+
+    Furthermore, resolving an :class:`UnresolvedFunctionCall` would always be a circular
+    reference. The only way to obtain a reference to one is during the evaluation of that
+    same function call (via ``args.root``), at which point the call is already in progress.
+    Attempting to resolve it again would be detected as a circular reference.
 
     """
 
     @abc.abstractmethod
-    def __getitem__(
-        self, key: str
-    ) -> Union["UnresolvedDict", "UnresolvedList", Configuration]:
+    def __getitem__(self, key: str) -> UnresolvedDict | UnresolvedList | Configuration:
         """Get an item from the result of the function call.
 
         The result of the function call might not be a container. If it isn't, this
@@ -197,7 +185,7 @@ class UnresolvedFunctionCall(abc.ABC):
         """
 
     @abc.abstractmethod
-    def get_keypath(self, keypath: Union["KeyPath", str]) -> Configuration:
+    def get_keypath(self, keypath: KeyPath | str) -> Configuration:
         """Return the resolved configuration at the given keypath.
 
         This drills down through nested containers to find the part of the configuration
@@ -252,7 +240,7 @@ class Resolver(Protocol):
         The schema that the configuration is expected to conform to. If provided, the
         resolved configuration will be validated against the schema. Defaults to
         `None`.
-    local_variables : Optional[Mapping[str, Configuration]]
+    local_variables : Mapping[str, Configuration] | None
         Local variables that are made available during string interpolation. Defaults to
         `None`, in which case no local variables are available.
 
@@ -261,9 +249,24 @@ class Resolver(Protocol):
     def __call__(
         self,
         configuration: Configuration,
-        schema: Optional["Schema"] = None,
-        local_variables: Optional[Mapping[str, Configuration]] = None,
+        schema: Schema | None = None,
+        local_variables: Mapping[str, Configuration] | None = None,
     ) -> Configuration: ...
+
+
+# According to the public interface, functions should return Configuration. However,
+# internal functions may return node types (defined in _resolve.py) instead of
+# Configuration, as this allows for more expressivity. At runtime, _FunctionResult
+# equals Configuration so that documentation generators display the public type. At
+# type-check time, we use the wider union to allow internal node types without requiring
+# # type: ignore comments.
+
+if TYPE_CHECKING:
+    from ._internals import _ConcreteNode, _FunctionCallNode
+
+    type _FunctionResult = Configuration | _ConcreteNode
+else:
+    type _FunctionResult = Configuration
 
 
 @dataclasses.dataclass
@@ -274,19 +277,27 @@ class FunctionArgs:
     input: Configuration
 
     #: The root of the configuration tree.
-    root: Union[UnresolvedDict, UnresolvedList, UnresolvedFunctionCall]
+    root: UnresolvedDict | UnresolvedList | UnresolvedFunctionCall
 
     #: The keypath to the function being evaluated.
-    keypath: "KeyPath"
+    keypath: KeyPath
 
     #: The context in which the function is being evaluated.
-    resolution_options: "ResolutionOptions"
+    resolution_context: ResolutionContext
 
     #: A function that resolves a configuration.
     resolve: Resolver
 
     #: The schema that the result of the function is expected to conform to.
-    schema: "Schema"
+    schema: Schema
+
+    # the below are undocumented; used internally by core functions
+
+    # Root node of the configuration tree.
+    _root_node: _ConcreteNode
+
+    # The node corresponding to the function call being evaluated.
+    _function_call_node: _FunctionCallNode
 
 
 class Function:
@@ -302,11 +313,13 @@ class Function:
 
     """
 
-    def __init__(self, fn: Callable[[FunctionArgs], Configuration], resolve_input=True):
+    def __init__(
+        self, fn: Callable[[FunctionArgs], _FunctionResult], resolve_input: bool = True
+    ):
         self.fn = fn
         self.resolve_input = resolve_input
 
-    def __call__(self, args: FunctionArgs) -> Configuration:
+    def __call__(self, args: FunctionArgs) -> _FunctionResult:
         """Call the function.
 
         If :attr:`resolve_input` is `True`, the input will be resolved before being
@@ -318,7 +331,7 @@ class Function:
     @classmethod
     def new(
         cls, resolve_input: bool = True
-    ) -> Callable[[Callable[[FunctionArgs], Configuration]], "Function"]:
+    ) -> Callable[[Callable[[FunctionArgs], _FunctionResult]], Function]:
         """Decorator for creating a new Function object.
 
         Parameters
@@ -333,12 +346,12 @@ class Function:
 
             # define a function whose input is not resolved
             @Function.new(resolve_input=False)
-            def raw(args: FunctionArgs):
-                return RawString(args.input)
+            def verbatim(args: FunctionArgs):
+                return args.input
 
         """
 
-        def decorator(fn: Callable[[FunctionArgs], Configuration]) -> "Function":
+        def decorator(fn: Callable[[FunctionArgs], _FunctionResult]) -> Function:
             result = cls(fn, resolve_input)
             result.__doc__ = fn.__doc__
             return result
@@ -346,26 +359,25 @@ class Function:
         return decorator
 
 
-# special strings ======================================================================
+# a function that can be called from within a configuration, either as a
+# Function instance or a plain callable
+type FunctionOrCallable = Function | Callable[[FunctionArgs], _FunctionResult]
+
+# a mapping from function names to functions or nested FunctionMapping instances,
+# allowing namespaced function organization
+type FunctionMapping = Mapping[str, FunctionOrCallable | FunctionMapping]
+
+# a callable that inspects a ConfigurationDict and determines whether it represents a
+# function call. Returns a (function, input) tuple if so, or None if not. Should raise
+# ValueError for invalid function calls.
+type FunctionCallChecker = Callable[
+    [ConfigurationDict, Mapping[str, Function]],
+    tuple[Function, Configuration] | None,
+]
 
 
-class RawString(str):
-    """If this appears in a configuration, it will not be interpolated or converted.
+# schemas ==============================================================================
 
-    A subclass of :class:`str`.
-
-    """
-
-
-class RecursiveString(str):
-    """If this appears in a configuration, it will be interpolated recursively.
-
-    A subclass of :class:`str`.
-
-    """
-
-
-# misc. type aliases ===================================================================
 
 # a schema is a dictionary that describes the expected structure of a configuration
 type Schema = Mapping[str, Any]
@@ -374,19 +386,16 @@ type Schema = Mapping[str, Any]
 # and keypath
 type DynamicSchema = Callable[[Configuration, KeyPath], Schema]
 
+# misc. type aliases ===================================================================
+
 # a keypath is a tuple of strings that represents a path through a configuration
 # tree. For example, ("foo", "bar", "baz") would represent the path to the value
 # of the key "baz" in the dictionary {"foo": {"bar": {"baz": 42}}}.
-type KeyPath = Tuple[str, ...]
-
-FunctionCallChecker = Callable[
-    [ConfigurationDict, Mapping[str, Function]],
-    Union[tuple[Function, Configuration], None],
-]
+type KeyPath = tuple[str, ...]
 
 
 @dataclasses.dataclass
-class ResolutionOptions:
+class ResolutionContext:
     """Holds information available at the time that a node is resolved.
 
     Attributes
@@ -415,5 +424,5 @@ class ResolutionOptions:
     functions: Mapping[str, Function]
     global_variables: Mapping[str, Any]
     filters: Mapping[str, Callable]
-    inject_root_as: Optional[str]
+    inject_root_as: str | None
     check_for_function_call: FunctionCallChecker

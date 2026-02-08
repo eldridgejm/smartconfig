@@ -1,4 +1,4 @@
-"""Provides the exceptions used by smartconfig."""
+"""Exceptions raised by smartconfig."""
 
 from . import types as _types
 
@@ -10,25 +10,25 @@ class Error(Exception):
 
 
 class InvalidSchemaError(Error):
-    """An error while validating an smartconfig schema."""
+    """An error while validating a smartconfig schema."""
 
     def __init__(self, reason: str, keypath: _types.KeyPath):
         self.reason = reason
         self.keypath = keypath
 
-    def __str__(self):
+    def __str__(self) -> str:
         dotted = _join_dotted(self.keypath)
         return f'Invalid schema at keypath: "{dotted}". {self.reason}'
 
 
 class ResolutionError(Error):
-    """An error while resolving an smartconfig."""
+    """An error while resolving a configuration."""
 
     def __init__(self, reason: str, keypath: _types.KeyPath):
         self.reason = reason
         self.keypath = keypath
 
-    def __str__(self):
+    def __str__(self) -> str:
         dotted = _join_dotted(self.keypath)
         return f'Cannot resolve keypath "{dotted}": {self.reason}'
 
@@ -40,6 +40,6 @@ class ConversionError(Error):
 # helpers ==============================================================================
 
 
-def _join_dotted(keypath: _types.KeyPath):
+def _join_dotted(keypath: _types.KeyPath) -> str:
     """Joins a keypath into a dotted string."""
     return ".".join(str(x) for x in keypath)

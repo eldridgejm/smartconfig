@@ -30,7 +30,7 @@ resolved values. During the interpolation step, all of the referenced entries
 in the configuration are first resolved if they haven't been already. The
 result of interpolation is always a string.
 
-Interpolation is performed recursively by default. That is, if after one iteration of interpolation the resulting string still contains placeholders, those are also resolved. For example:
+When a string references another value via ``${...}``, that referenced value is automatically resolved first (if it hasn't been already). This means references can chain through multiple levels. For example:
 
 .. testcode:: python
 
@@ -90,36 +90,11 @@ resulting string into a Python object of the appropriate type (e.g., converting
 
 Several built-in converters are provided by `smartconfig`; the defaults are discussed in :doc:`default_converters`. Custom converters can also be defined; see :doc:`custom_converters` for more information.
 
-Some of the built-in converters, like the `smartdatetime` converter, are
-"smart" in the sense that they can parse natural language strings into Python
-objects. For example:
-
-.. code:: python
-
-   config = {
-        "assignment_released": "2025-09-01 09:00",
-        "assignment_due": "7 days after ${assignment_released}"
-    }
-
-    class Assignment(smartconfig.Prototype):
-        assignment_released: datetime.datetime
-        assignment_due: datetime.datetime
-
-    resolved = smartconfig.resolve(config, Assignment)
-    pprint(resolved)
-
-This would output:
-
-.. testoutput::
-
-    {'assignment_due': datetime.datetime(2025, 9, 8, 9, 0),
-     'assignment_released': datetime.datetime(2025, 9, 1, 9, 0)}
-
-.. testsetup::
-
-    from pprint import pprint
-    import datetime
-
+The built-in converters parse ISO format strings into the appropriate Python
+types. For example, the ``date`` converter parses ``"2025-01-10"`` into a
+``datetime.date`` object, and the ``datetime`` converter parses
+``"2025-09-01 09:00:00"`` into a ``datetime.datetime`` object. See
+:doc:`default_converters` for full details.
 
 The converters also act as type validators: if the value cannot be converted to
 the expected type, an error is raised.
@@ -128,7 +103,7 @@ Function Evaluation
 ~~~~~~~~~~~~~~~~~~~
 
 A configuration can also contain **function calls**. `smartconfig` provides a
-number of built-in functions implementing control flow, string manipulation,
+number of default functions implementing control flow, string manipulation,
 list operations, and more; see :doc:`default_functions` for details. At the same time, custom functions can also be defined; see :doc:`custom_functions` for more information.
 
 A function call is represented by a dictionary with a special format: by
@@ -136,7 +111,7 @@ default, it is a dictionary with a single key of the form
 ``__<function_name>__``. The value of the key is the argument that is passed to
 the function.
 
-For example, consider the built-in :code:`if` function, implementing conditional
+For example, consider the default :code:`if` function, implementing conditional
 logic. It takes a dictionary with three keys: ``condition``, ``then``, and
 ``else``, as shown below:
 

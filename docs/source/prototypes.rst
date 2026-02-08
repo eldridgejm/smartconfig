@@ -1,5 +1,8 @@
+.. _prototypes:
+
 Prototypes
 ==========
+
 
 Prototypes provide a class-based way to describe configuration structure using
 Python type hints. Instead of writing a schema dictionary, you subclass

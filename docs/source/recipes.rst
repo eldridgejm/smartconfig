@@ -30,10 +30,10 @@ like this:
        json.dump({"name": "Barack Obama"}, f)
 
    # write main.json
-       with open(dirpath / 'main.json', 'w') as f:
-           json.dump({
-               "message": "Hello ${student.name}",
-               "student": {
+   with open(dirpath / 'main.json', 'w') as f:
+       json.dump({
+           "message": "Hello ${student.name}",
+           "student": {
                "__include__": "person.json"
            }
        }, f)
@@ -169,9 +169,9 @@ The result will be:
 Recipe 3: Using YAML tags as syntactic sugar for function calls
 ---------------------------------------------------------------
 
-`smartconfig` uses the ``{"__function_name__": argument}`` syntax for function calls.
-While explicit, this can be verbose. If you are using YAML, you can use YAML tags
-to provide a cleaner syntax.
+By default, :func:`~smartconfig.resolve` uses the ``{"__function_name__":
+argument}`` syntax for function calls. While explicit, this can be verbose. If
+you are using YAML, you can use YAML tags to provide a cleaner syntax.
 
 For example, instead of writing:
 

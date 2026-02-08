@@ -27,15 +27,12 @@ Prototypes let you describe the structure of a configuration using Python class
 syntax. Prototypes are quick to write, but they currently cannot express every
 constraint that schemas can (for example, they do not allow
 ``extra_keys_schema``). They can also be somewhat awkward to use when
-describing deeply-nested structures, and so in those cases schemas may be
+describing deeply-nested structures, and in those cases schemas may be
 preferable.
 
-Prototypes have several useful methods, including
-:meth:`smartconfig.Prototype._as_dict()` which converts the prototype instance
-into a dictionary, :meth:`smartconfig.Prototype._from_dict()`, which creates a
-prototype instance from a dictionary, and
-:meth:`smartconfig.Prototype._schema()`, which returns the schema
-representation of the prototype.
+Below, we'll demonstrate the basics of Prototypes using several simple
+examples. For more details on how to define prototypes and the features they
+support, see the :ref:`prototypes` section of the documentation.
 
 Examples
 ~~~~~~~~

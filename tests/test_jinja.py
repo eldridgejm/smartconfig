@@ -1,4 +1,4 @@
-"""Tests that the Jinja2 template engine works as expected."""
+"""Tests checking that the Jinja2 template engine works as expected."""
 
 import jinja2
 

@@ -7,169 +7,151 @@ type validators, ensuring that the resulting value is of the correct type.
 
 """
 
-from typing import Optional, Any
-import ast
 import datetime as datetimelib
-import enum
-import operator as op
 import re
 
 from . import exceptions
 
-# the AST code in this module is based on:
-# https://stackoverflow.com/questions/2371436/evaluating-a-mathematical-expression-in-a-string
-
-# arithmetic ===========================================================================
+# numeric ==============================================================================
 
 
-def arithmetic(type_):
-    """A factory that creates an arithmetic expression converter.
+def integer(value: int | float | str) -> int:
+    """Convert a value to an integer.
 
-    The resulting function parses things like "(7 + 3) / 5" into the specified
-    numeric type.
-
-    If the integer converter is given an integer value (instead of a string) it leaves
-    it alone. Same for the float converter. If the integer converter is given a float
-    value or a string that evaluates to a float, it will convert it to an integer only
-    if it represents a whole number (e.g., ``3.0`` becomes ``3``, ``"6.0 / 3"`` becomes
-    ``2``). Otherwise, it raises a :class:`ConversionError`. If the float converter is
-    given an integer value, it will convert it to a float.
+    Accepts ``int`` values (pass-through), whole-number ``float`` values
+    (coerced to ``int``), and numeric strings. Rejects ``bool`` values,
+    non-whole floats, and non-numeric strings.
 
     Parameters
     ----------
-    type_
-        The end type that the resulting value should be converted to.
+    value
+        The value to convert.
+
+    Returns
+    -------
+    int
+        The converted integer.
 
     Example
     -------
 
-    >>> from smartconfig.converters import arithmetic
-    >>> converter = arithmetic(int)
-    >>> converter('(7 + 3) / 5')
-    2
-    >>> converter(42)
+    >>> from smartconfig.converters import integer
+    >>> integer('42')
     42
+    >>> integer(3.0)
+    3
 
     """
+    if isinstance(value, bool):
+        raise exceptions.ConversionError(f"Cannot convert bool to integer: {value!r}.")
 
-    def _eval(node):
-        operators = {
-            ast.Add: op.add,
-            ast.Sub: op.sub,
-            ast.Mult: op.mul,
-            ast.Div: op.truediv,
-            ast.Pow: op.pow,
-            ast.BitXor: op.xor,
-            ast.USub: op.neg,
-        }
+    if isinstance(value, int):
+        return value
 
-        if isinstance(node, ast.Constant):  # <number>
-            return node.value
-        elif type(node.op) not in operators:
-            raise TypeError(node)
+    if isinstance(value, float):
+        if value.is_integer():
+            return int(value)
+        raise exceptions.ConversionError(
+            f"Cannot convert float {value} to integer: value is not a whole number.",
+        )
 
-        if isinstance(node, ast.BinOp):  # <left> <operator> <right>
-            assert isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow))
-            return operators[type(node.op)](_eval(node.left), _eval(node.right))
-        elif isinstance(node, ast.UnaryOp):  # <operator> <operand> e.g., -1
-            assert isinstance(node.op, (ast.BitXor, ast.USub))
-            return operators[type(node.op)](_eval(node.operand))
-
-    def converter(value: Any):
-        if isinstance(value, type_):
-            return value
-
-        if type_ is float and isinstance(value, int):
-            return float(value)
-
-        if type_ is int and isinstance(value, float):
-            if value.is_integer():
-                return int(value)
-            raise exceptions.ConversionError(
-                f"Cannot convert float {value} to integer: value is not a whole number.",
-                value,
-            )
-
+    if isinstance(value, str):
         try:
-            number = _eval(ast.parse(value, mode="eval").body)
-
-            # at this point, number should be an int or a float, and we'll recursively
-            # convert it to the desired type. If it is not, raise an error.
-
-            if not isinstance(number, (int, float)):
-                raise ValueError("Result is not a number.")
-
-            return converter(number)
-
-        except Exception:
+            return int(value)
+        except ValueError:
             raise exceptions.ConversionError(
-                f"Cannot parse into {type_.__name__}: '{value}'."
+                f"Cannot convert to integer: '{value}'.",
             )
 
-    return converter
+    raise exceptions.ConversionError(f"Cannot convert to integer: {value!r}.")
+
+
+def float_(value: int | float | str) -> float:
+    """Convert a value to a float.
+
+    Accepts ``float`` values (pass-through), ``int`` values (coerced to
+    ``float``), and numeric strings. Rejects ``bool`` values and non-numeric
+    strings.
+
+    Parameters
+    ----------
+    value
+        The value to convert.
+
+    Returns
+    -------
+    float
+        The converted float.
+
+    Example
+    -------
+
+    >>> from smartconfig.converters import float_
+    >>> float_('4.5')
+    4.5
+    >>> float_(3)
+    3.0
+
+    """
+    if isinstance(value, bool):
+        raise exceptions.ConversionError(f"Cannot convert bool to float: {value!r}.")
+
+    if isinstance(value, float):
+        return value
+
+    if isinstance(value, (int, str)):
+        try:
+            return float(value)
+        except ValueError, TypeError:
+            raise exceptions.ConversionError(
+                f"Cannot convert to float: '{value}'.",
+            )
+
+    raise exceptions.ConversionError(f"Cannot convert to float: {value!r}.")
 
 
 # logical ==============================================================================
 
 
-def logic(value: Any) -> bool:
-    """Converts boolean logic expressions.
+def boolean(value: bool | str) -> bool:
+    """Convert a value to a boolean.
 
-    If the converter is given a boolean value, it leaves it alone. If it is given a
-    string, it parses the string as a boolean expression. If given another type, like an
-    integer, it raises a :class:`ConversionError`.
+    Accepts ``bool`` values (pass-through) and the strings ``"True"`` and
+    ``"False"``. Rejects all other types and string values.
+
+    Parameters
+    ----------
+    value
+        The value to convert.
+
+    Returns
+    -------
+    bool
+        The converted boolean.
 
     Example
     -------
 
-    >>> from smartconfig.converters import logic
-    >>> logic('True and (False or True)')
+    >>> from smartconfig.converters import boolean
+    >>> boolean('True')
     True
+    >>> boolean(False)
+    False
 
     """
     if isinstance(value, bool):
         return value
 
-    if not isinstance(value, str):
-        raise exceptions.ConversionError(f"Cannot convert type {type(value)} to bool.")
+    if isinstance(value, str):
+        if value == "True":
+            return True
+        if value == "False":
+            return False
 
-    def _eval(node):
-        operators = {ast.Or: op.or_, ast.And: op.and_, ast.Not: op.not_}
-
-        if isinstance(node, ast.Constant):
-            return node.value
-        elif type(node.op) not in operators:
-            raise exceptions.ConversionError(
-                f"Cannot parse: '{value}'. Unknown operator."
-            )
-
-        if isinstance(node, ast.UnaryOp):  # <operator> <operand> e.g., -1
-            assert isinstance(node.op, ast.Not)
-            return operators[type(node.op)](_eval(node.operand))
-        elif isinstance(node, ast.BoolOp):
-            assert isinstance(node.op, (ast.Or, ast.And))
-            return operators[type(node.op)](*[_eval(v) for v in node.values])
-
-    try:
-        return bool(_eval(ast.parse(value, mode="eval").body))
-    except Exception:
-        raise exceptions.ConversionError(f"Cannot parse into bool: '{value}'.")
+    raise exceptions.ConversionError(f"Cannot convert to bool: {value!r}.")
 
 
 # dates / datetimes ====================================================================
-
-
-class _DateMatchError(Exception):
-    """Raised if a parse fails because the string does not match.
-
-    This is used in control flow: parsers are tried one after another until one
-    succeeds. If a parser fails because the string does not match, this is raised so
-    that the process can move on to the next parser.
-
-    """
-
-
-# helpers ------------------------------------------------------------------------------
 
 
 def _contains_time_component(s: str) -> bool:
@@ -177,270 +159,92 @@ def _contains_time_component(s: str) -> bool:
     return bool(re.search(r"\d{2}:\d{2}", s))
 
 
-def _parse_datetime_from_explicit(s: str) -> datetimelib.datetime:
-    """Parses a datetime from a string of the form "YYYY-MM-DD HH:MM:SS"."""
-    s, at_time = _parse_and_remove_time(s)
-    try:
-        parsed = datetimelib.datetime.fromisoformat(s)
-    except ValueError:
-        raise _DateMatchError
+def date(value: str | datetimelib.date | datetimelib.datetime) -> datetimelib.date:
+    """Convert a value to a date object.
 
-    if at_time is not None:
-        parsed = datetimelib.datetime.combine(parsed, at_time)
-
-    return parsed
-
-
-def _parse_and_remove_time(s: str) -> tuple[str, Optional[datetimelib.time]]:
-    """Looks for a time at the end of the smart date string.
-
-    A time is of the form "at 23:59:00"
+    Accepts ``datetime.date`` objects (pass-through), ``datetime.datetime``
+    objects (simplified to date by discarding the time), ISO format date
+    strings, and ISO format datetime strings (the time component is discarded).
 
     Parameters
     ----------
-    s : str
-        The smart date string
+    value
+        The value to convert.
 
     Returns
     -------
-    str
-        The input, ``s``, but without a time at the end (if there was one in the first
-        place).
-
-    Union[datetime.time, None]
-        The time, if there was one; otherwise this is ``None``.
-
-    Raises
-    ------
-    ConversionError
-        If there is a time string, but it's an invalid time (like 55:00:00).
-
-    """
-    time_pattern = r" at (\d{2}):(\d{2}):(\d{2})$"
-    match = re.search(time_pattern, s, flags=re.IGNORECASE)
-
-    if match:
-        hours, minutes, seconds = [int(s) for s in match.groups()]
-        try:
-            time = datetimelib.time(hours, minutes, seconds)
-        except ValueError:
-            raise exceptions.ConversionError(f"Invalid time: {s}.")
-
-        s = re.sub(time_pattern, "", s, flags=re.IGNORECASE)
-    else:
-        time = None
-
-    return s, time
-
-
-def _parse_timedelta_before_or_after(s: str) -> datetimelib.datetime:
-    """Converts a string of the form "<n> days (before|after) <date(time)> [at HH:MM:SS]".
-
-    This will always return a datetime object.
-
-    """
-    s, at_time = _parse_and_remove_time(s)
-
-    match = re.match(
-        r"^(\d+) (day|hour)[s]{0,1} (after|before) (.*)?$",
-        s,
-        flags=re.IGNORECASE,
-    )
-
-    if not match:
-        raise _DateMatchError("Did not match.")
-
-    number, hours_or_days, before_or_after, reference_date = match.groups()
-    factor = -1 if before_or_after.lower() == "before" else 1
-
-    if hours_or_days.lower() == "hour":
-        timedelta_kwargs = {"hours": factor * int(number)}
-    else:
-        timedelta_kwargs = {"days": factor * int(number)}
-
-    try:
-        reference_date = datetimelib.datetime.fromisoformat(reference_date.strip())
-    except ValueError:
-        raise _DateMatchError(f"Reference date {reference_date} not in ISO format.")
-
-    delta = datetimelib.timedelta(**timedelta_kwargs)
-
-    parsed_date = reference_date + delta
-
-    if at_time is not None:
-        parsed_date = datetimelib.datetime.combine(parsed_date, at_time)
-
-    return parsed_date
-
-
-class _DaysOfTheWeek(enum.IntEnum):
-    MONDAY = 0
-    TUESDAY = 1
-    WEDNESDAY = 2
-    THURSDAY = 3
-    FRIDAY = 4
-    SATURDAY = 5
-    SUNDAY = 6
-
-
-def _get_day_of_the_week(s: str) -> _DaysOfTheWeek:
-    """Take a day of the week string, like "Monday", and turn it into a _DaysOfTheWeek.
-
-    Parameters
-    ----------
-    s : str
-        Day of the week as a string. Must be the full name, e.g., "Wednesday". Case
-        insensitive.
-
-    Returns
-    -------
-    _DaysOfTheWeek
-        The day of the week.
-
-    Raises
-    ------
-    ValidationError
-        If ``s`` was not a valid day name.
-
-    """
-    try:
-        return getattr(_DaysOfTheWeek, s.upper())
-    except AttributeError:
-        raise _DateMatchError(f"Invalid day of week: {s}")
-
-
-def _parse_first_available_day(s: str) -> datetimelib.datetime:
-    """Convert a string of the form "first monday before 2021-10-01 [at HH:MM:SS]".
-
-    Always returns a datetime object.
-
-    """
-    s = s.replace(",", " ")
-    s = s.replace(" or ", " ")
-
-    s, at_time = _parse_and_remove_time(s)
-
-    match = re.match(r"^first ([\w ]+) (after|before) (.*)$", s, flags=re.IGNORECASE)
-
-    if not match:
-        raise _DateMatchError("Did not match.")
-
-    day_of_the_week_raw, before_or_after, relative_to = match.groups()
-    day_of_the_week = {_get_day_of_the_week(x) for x in day_of_the_week_raw.split()}
-
-    relative_to = datetimelib.datetime.fromisoformat(relative_to)
-
-    sign = 1 if before_or_after.lower() == "after" else -1
-    delta = datetimelib.timedelta(days=sign)
-
-    cursor_date = relative_to + delta
-
-    while cursor_date.weekday() not in day_of_the_week:
-        cursor_date += delta
-
-    if at_time is not None:
-        cursor_date = datetimelib.datetime.combine(cursor_date, at_time)
-
-    return cursor_date
-
-
-# converter implementations ---------------------------------------------------------------
-
-
-def smartdate(value: Any) -> datetimelib.date:
-    """Converts natural language relative dates into date objects.
-
-    Input strings can be in one of three forms:
-
-        1. Dates in ISO format, e.g.: "2021-10-01".
-        2. Relative dates of the form :code:`"<n> day(s) (before|after) <ISO date>"`,
-           e.g., "3 days before 2021-10-10"
-        3. Relative dates of the form :code:`"first
-           <day_of_week>[,<day_of_week>,...,<day_of_week>] (before|after) <ISO date>"`,
-           e.g., "first monday, wednesday after 2021-10-10"
-
-    If the input is already a date, it is returned as-is. If the input is a datetime, it
-    is simplified to a date by discarding the time.
+    datetime.date
+        The converted date.
 
     Example
     -------
 
     >>> import datetime
-    >>> from smartconfig.converters import smartdate
-    >>> smartdate('2021-10-01')
+    >>> from smartconfig.converters import date
+    >>> date('2021-10-01')
     datetime.date(2021, 10, 1)
-    >>> smartdate('1 day after 2021-10-01')
-    datetime.date(2021, 10, 2)
-    >>> smartdate('3 days before 2021-10-05')
-    datetime.date(2021, 10, 2)
-    >>> smartdate('first monday after 2021-09-10')
-    datetime.date(2021, 9, 13)
-    >>> smartdate('first monday, friday after 2021-09-10')
-    datetime.date(2021, 9, 13)
-    >>> smartdate(datetime.datetime(2021, 10, 1, 23, 59, 59))
+    >>> date('2021-10-01 23:59:59')
+    datetime.date(2021, 10, 1)
+    >>> date(datetime.datetime(2021, 10, 1, 23, 59, 59))
     datetime.date(2021, 10, 1)
 
     """
-    # this must come before the check for isinstance(value, date), because datetime
-    # is a subclass of date
+    # datetime is a subclass of date, so check it first
     if isinstance(value, datetimelib.datetime):
         return value.date()
 
     if isinstance(value, datetimelib.date):
         return value
 
-    try:
-        return datetimelib.datetime.fromisoformat(value).date()
-    except ValueError:
-        # the date was not in ISO format
-        pass
+    if isinstance(value, str):
+        try:
+            return datetimelib.date.fromisoformat(value)
+        except ValueError:
+            pass
+        # Also accept datetime strings, discarding the time component.
+        try:
+            return datetimelib.datetime.fromisoformat(value).date()
+        except ValueError:
+            pass
 
-    try:
-        return _parse_timedelta_before_or_after(value).date()
-    except _DateMatchError:
-        # the string does not match the pattern, move on
-        pass
-
-    try:
-        return _parse_first_available_day(value).date()
-    except _DateMatchError:
-        # the string does not match the pattern, move on
-        pass
-
-    raise exceptions.ConversionError(f"Cannot parse into date: '{value}'.")
+    raise exceptions.ConversionError(f"Cannot convert to date: '{value}'.")
 
 
-def smartdatetime(value: Any) -> datetimelib.datetime:
-    """Converts natural language relative dates into datetime objects.
+def datetime(
+    value: str | datetimelib.date | datetimelib.datetime,
+) -> datetimelib.datetime:
+    """Convert a value to a datetime object.
 
-    The forms of the input are the same as for :func:`smartdate`, except ISO times
-    are permitted. For instance: :code:`3 days after 2021-10-05 23:59:00`.
+    Accepts ``datetime.datetime`` objects (pass-through) and ISO format
+    datetime strings. Rejects bare ``datetime.date`` objects and date-only
+    strings to avoid an implicit midnight assumption.
 
-    If the input is already a datetime, it is returned as-is. If the input is a date, it
-    raises a :class:`ConversionError` in order to avoid possible unexpected loss of
-    precision.
+    Parameters
+    ----------
+    value
+        The value to convert.
 
-    Examples
-    --------
+    Returns
+    -------
+    datetime.datetime
+        The converted datetime.
 
-    >>> import datetime
-    >>> from smartconfig.converters import smartdatetime
-    >>> smartdatetime('2021-10-01 23:59:59')
+    Example
+    -------
+
+    >>> import datetime as dt
+    >>> from smartconfig.converters import datetime
+    >>> datetime('2021-10-01 23:59:59')
     datetime.datetime(2021, 10, 1, 23, 59, 59)
-    >>> smartdatetime('3 days after 2021-10-05 23:59:00')
-    datetime.datetime(2021, 10, 8, 23, 59)
-    >>> smartdatetime('first monday after 2021-09-10 23:59:00')
-    datetime.datetime(2021, 9, 13, 23, 59)
-    >>> smartdatetime('2021-10-01 at 12:00:00')
-    datetime.datetime(2021, 10, 1, 12, 0)
-    >>> smartdatetime('2021-10-01')
+    >>> datetime('2021-10-01')
     Traceback (most recent call last):
     ...
     smartconfig.exceptions.ConversionError: Cannot implicitly convert date string '2021-10-01' into datetime. Please include a time component.
-    >>> smartdatetime(datetime.date(2021, 10, 1))
+    >>> datetime(dt.date(2021, 10, 1))
     Traceback (most recent call last):
     ...
     smartconfig.exceptions.ConversionError: Cannot implicitly convert date '2021-10-01' into datetime.
+
     """
     if isinstance(value, datetimelib.datetime):
         return value
@@ -450,31 +254,17 @@ def smartdatetime(value: Any) -> datetimelib.datetime:
             f"Cannot implicitly convert date '{value}' into datetime.",
         )
 
-    if not _contains_time_component(value):
-        raise exceptions.ConversionError(
-            f"Cannot implicitly convert date string '{value}' into datetime. "
-            "Please include a time component.",
-        )
+    if isinstance(value, str):
+        if not _contains_time_component(value):
+            raise exceptions.ConversionError(
+                f"Cannot implicitly convert date string '{value}' into datetime. "
+                "Please include a time component.",
+            )
+        try:
+            return datetimelib.datetime.fromisoformat(value)
+        except ValueError:
+            raise exceptions.ConversionError(
+                f"Cannot convert to datetime: '{value}'.",
+            )
 
-    try:
-        return datetimelib.datetime.fromisoformat(value)
-    except ValueError:
-        # the date was not in ISO format
-        pass
-
-    try:
-        return _parse_datetime_from_explicit(value)
-    except _DateMatchError:
-        pass
-
-    try:
-        return _parse_timedelta_before_or_after(value)
-    except _DateMatchError:
-        pass
-
-    try:
-        return _parse_first_available_day(value)
-    except _DateMatchError:
-        pass
-
-    raise exceptions.ConversionError(f"Cannot parse into datetime: '{value}'.")
+    raise exceptions.ConversionError(f"Cannot convert to datetime: '{value}'.")

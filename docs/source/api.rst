@@ -19,11 +19,13 @@ checking the validity of schemas.
     ----------
     cfg : :class:`types.Configuration`
         The "raw" configuration to resolve.
-    spec : :class:`types.Schema` or :class:`Prototype`
+    spec : :class:`types.Schema` or :class:`types.DynamicSchema` or :class:`Prototype`
         Either a schema dictionary describing the structure of the resolved
-        configuration, or a :class:`Prototype` subclass to use as a typed
-        target. When a prototype is provided, the return value is an instance
-        of that class instead of a plain dictionary.
+        configuration, a :class:`types.DynamicSchema` (a callable that returns
+        a schema based on the configuration and keypath), or a
+        :class:`Prototype` subclass to use as a typed target. When a prototype
+        is provided, the return value is an instance of that class instead of
+        a plain dictionary.
         See: :ref:`schemas`.
     converters : Mapping[str, Callable]
         A dictionary mapping value types (as strings) to converter functions.
@@ -33,16 +35,17 @@ checking the validity of schemas.
         If this argument is not provided, the default converters in
         :data:`DEFAULT_CONVERTERS` are used. See :doc:`default_converters` for more information
         on the built-in converters. See :doc:`custom_converters` for how to define custom converters.
-    functions : Mapping[str, Union[Callable, :class:`types.Function`]]
+    functions : :class:`types.FunctionMapping` | None
         A mapping of function names to functions. The functions should either be basic
         Python functions accepting an instance of :class:`types.FunctionArgs` as input
         and returning a :class:`types.Configuration`, or they should be
-        :class:`smartconfig.types.Function` instances.
+        :class:`smartconfig.types.Function` instances. Function mappings can be
+        nested to provide namespaced functions (e.g., ``{"list": {"loop": loop_fn}}``
+        becomes callable as ``__list.loop__``).
 
-        If this argument is not provided, the
-        default functions in :data:`DEFAULT_FUNCTIONS` are used. If it is ``None``, no
-        functions are made available.
-        See :doc:`default_functions` for more information on the built-in functions.
+        Defaults to :data:`DEFAULT_FUNCTIONS`. Pass ``None`` to disable
+        function calls entirely.
+        See :doc:`default_functions` for more information on the default functions.
         See :doc:`custom_functions` for how to define custom functions.
     global_variables : Optional[Mapping[str, Any]]
         A dictionary of global variables to make available during string interpolation.
@@ -98,3 +101,28 @@ checking the validity of schemas.
 
 
 .. autofunction:: validate_schema
+
+Constants
+---------
+
+.. data:: DEFAULT_CONVERTERS
+
+    A dictionary mapping schema type strings (``"integer"``, ``"float"``,
+    ``"boolean"``, ``"date"``, ``"datetime"``) to the default converter
+    functions in the :mod:`smartconfig.converters` module.
+
+.. data:: DEFAULT_FUNCTIONS
+
+    A dictionary containing all default functions (both core functions
+    and standard library functions). Pass this as the ``functions``
+    argument to :func:`resolve` to enable all default functions.
+
+.. data:: CORE_FUNCTIONS
+
+    A dictionary containing only the core functions (``if``, ``let``,
+    ``raw``, ``resolve``, ``fully_resolve``, ``splice``, ``use``).
+
+.. data:: STDLIB_FUNCTIONS
+
+    A dictionary containing the standard library functions, organized
+    by namespace (``datetime``, ``dict``, ``list``).

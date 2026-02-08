@@ -2,10 +2,11 @@ Resolution in Detail
 ====================
 
 The behavior of :func:`smartconfig.resolve` can be customized in several ways:
-you can define custom converters, custom functions, and even change how function
-calls are detected. To effectively customize resolution, it helps to understand
-how it works under the hood. This page provides a detailed explanation of the
-resolution process.
+you can define custom converters, custom functions, and even change how
+function calls are detected. These will all be covered in later sections.
+However, to effectively customize resolution, it helps to first understand how
+:func:`smartconfig.resolve` works under the hood. This page provides a detailed
+explanation of the resolution process.
 
 Configuration Graphs
 --------------------
@@ -199,8 +200,7 @@ appropriate Python type as specified by the schema.
 
 Converters are flexible: they accept values of any type and return the converted
 result. If the input is a string, the converter typically parses it. For example,
-:func:`converters.smartdate` can parse strings like ``"2025-01-10"`` or even
-natural language expressions like ``"7 days after 2025-01-10"`` into
+:func:`converters.date` can parse ISO format strings like ``"2025-01-10"`` into
 ``datetime.date`` objects.
 
 If the input is already the correct type (e.g., an integer where an integer is

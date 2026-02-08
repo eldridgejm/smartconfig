@@ -1,1 +1,1 @@
-{"course_name": "Introduction to Computer Science", "start_date": "2025-09-01", "first_homework_due": "first tuesday after ${start_date}", "welcome_msg": "Welcome to ${course_name}!"}
+{"course_name": "Introduction to Computer Science", "start_date": "2025-09-01", "first_homework_due": {"__datetime.parse__": "first tuesday after ${start_date}"}, "welcome_msg": "Welcome to ${course_name}!"}

@@ -6,8 +6,6 @@ done by resolve().
 """
 
 from collections.abc import Set
-from typing import Union
-
 from . import exceptions as _exceptions, types as _types
 
 # helpers ==============================================================================
@@ -183,7 +181,7 @@ def _validate_value_schema(value_schema, keypath, allow_default, allow_dynamic: 
 
 
 def validate_schema(
-    schema: Union[_types.Schema, _types.DynamicSchema],
+    schema: _types.Schema | _types.DynamicSchema,
     keypath: _types.KeyPath = tuple(),
     allow_default: bool = False,
     allow_dynamic: bool = True,

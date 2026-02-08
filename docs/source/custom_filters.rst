@@ -15,7 +15,8 @@ interpolation. This means you can use Jinja2 filters to transform values within 
 configuration strings. For example, ``${name | upper}`` would convert the value of
 ``name`` to uppercase.
 
-While Jinja2 comes with many built-in filters, you may want to define your own to
+While Jinja2 comes with many `built-in filters
+<https://jinja.palletsprojects.com/en/stable/templates/#builtin-filters>`_, you may want to define your own to
 handle specific transformation logic required by your application.
 
 A Jinja2 filter is simply a Python function that takes the value to be filtered as

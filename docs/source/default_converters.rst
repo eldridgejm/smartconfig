@@ -15,32 +15,36 @@ or more schema types.
     from pprint import pprint as print
 
 
-Arithmetic
-----------
+Integer and Float
+-----------------
 
-By default, the Arithmetic converter is applied to any configuration value
-whose schema type is ``integer`` or ``float``. It evaluates arithmetic
-expressions written in strings. For example:
+The integer converter is applied to any configuration value whose schema type
+is ``integer``, and the float converter is applied to values with schema type
+``float``. These converters accept numeric values and numeric strings:
 
-- ``"2 + 2"`` evaluates to ``4``
-- ``"(7 + 3) / 5"`` evaluates to ``2``
+- Integer values pass through unchanged.
+- Whole-number floats (e.g., ``3.0``) are coerced to ``int``.
+- The float converter accepts ``int`` values, coercing them to ``float``.
+- Numeric strings (e.g., ``"42"``, ``"4.5"``) are parsed with ``int()`` or
+  ``float()``.
 
-If the schema calls for an integer but the value is a float (or evaluates to a
-float), it will be converted to an integer only if it represents a whole number.
-Otherwise, a :class:`~smartconfig.exceptions.ConversionError` is raised.
+.. note::
 
-For example:
+   Arithmetic expressions like ``"2 + 2"`` are **not** evaluated by the
+   converter. Use Jinja2 interpolation instead: ``"${2 + 2}"``.
 
 .. testcode:: python
 
     config = {
-        "value": "6.0 / 3"
+        "count": "42",
+        "ratio": "3.14",
     }
 
     schema = {
         "type": "dict",
         "required_keys": {
-            "value": {"type": "integer"}
+            "count": {"type": "integer"},
+            "ratio": {"type": "float"},
         }
     }
 
@@ -49,58 +53,31 @@ For example:
 
 .. testoutput:: python
 
-    {'value': 2}
+    {'count': 42, 'ratio': 3.14}
 
-On the other hand:
+
+Boolean
+-------
+
+The boolean converter is applied to any configuration value whose schema type
+is ``boolean``. It accepts ``bool`` values (pass-through) and the strings
+``"True"`` and ``"False"``. All other values are rejected.
+
+.. note::
+
+   Boolean expressions like ``"True and False"`` are **not** evaluated by
+   the converter. Use Jinja2 interpolation instead: ``"${True and False}"``.
 
 .. testcode:: python
 
     config = {
-        "value": "7 / 3"
+        "enabled": "True",
     }
 
     schema = {
         "type": "dict",
         "required_keys": {
-            "value": {"type": "integer"}
-        }
-    }
-
-    resolved = smartconfig.resolve(config, schema)
-    print(resolved)
-
-.. testoutput:: python
-
-    Traceback (most recent call last):
-      ...
-    smartconfig.exceptions.ResolutionError: Cannot resolve keypath "value": Cannot parse into int: '7 / 3'.
-
-
-Logic
------
-
-By default, the Logic converter is applied to any configuration value whose
-schema type is ``boolean``. It evaluates boolean logic expressions written in
-strings. For example:
-
-- ``"True and False"`` evaluates to ``False``
-- ``"True or False"`` evaluates to ``True``
-- ``"not False"`` evaluates to ``True``
-- ``"True and (False or True)"`` evaluates to ``True``
-
-The supported operators are ``and``, ``or``, and ``not``. If the value is
-already a boolean, it is returned unchanged.
-
-.. testcode:: python
-
-    config = {
-        "enabled": "True and not False"
-    }
-
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "enabled": {"type": "boolean"}
+            "enabled": {"type": "boolean"},
         }
     }
 
@@ -112,74 +89,42 @@ already a boolean, it is returned unchanged.
     {'enabled': True}
 
 
-Smartdate and Smartdatetime
----------------------------
+Date and Datetime
+-----------------
 
-By default, the smartdate converter is applied to any configuration value whose
-schema type is ``date``, and the smartdatetime converter is applied to values
-with schema type ``datetime``. These converters parse natural language date
-expressions into Python :class:`datetime.date` and :class:`datetime.datetime`
-objects, respectively.
+By default, the date converter is applied to any configuration value whose
+schema type is ``date``, and the datetime converter is applied to values with
+schema type ``datetime``. These converters parse ISO format date strings into
+Python :class:`datetime.date` and :class:`datetime.datetime` objects,
+respectively.
 
-The supported input formats are:
+The date converter accepts:
 
-- ISO format dates: ``"2021-10-01"`` or ``"2021-10-01 23:59:00"``
-- Relative dates: ``"3 days before 2021-10-05"`` or ``"2 days after 2021-10-01"``
-- Day-of-week expressions: ``"first monday after 2021-09-10"`` or ``"first monday, friday before 2021-10-01"``
+- ISO format date strings: ``"2021-10-01"``
+- ISO format datetime strings (time is discarded): ``"2021-10-01 23:59:00"``
+- :class:`datetime.date` objects (pass-through)
+- :class:`datetime.datetime` objects (simplified to date)
 
-The Smartdatetime converter additionally supports ISO times (e.g.,
-``"2021-10-01 23:59:00"``) and explicit time overrides using the ``at`` keyword
-(e.g., ``"3 days after 2021-10-01 at 15:00:00"``).
+The datetime converter accepts:
 
-.. note::
+- ISO format datetime strings: ``"2021-10-01 23:59:00"``
+- :class:`datetime.datetime` objects (pass-through)
 
-   Currently, the natural language parser only supports day-based offsets (e.g.,
-   ``"3 days before"``), not hour-based offsets.
-
-If the smartdate converter is given a datetime string (e.g., ``"2021-10-01
-23:59:00"``), the time component is silently discarded. Conversely, the
-smartdatetime converter requires a time component and raises an error if given a
-date-only string (e.g., ``"2021-10-01"``) or a :class:`datetime.date` object.
-
-When combined with string interpolation, this allows you to define dates
-relative to other values in the configuration.
+The datetime converter rejects date-only strings (e.g., ``"2021-10-01"``) and
+bare :class:`datetime.date` objects to avoid an implicit midnight assumption.
 
 .. testcode:: python
 
     config = {
         "start": "2021-10-01",
-        "reminder": "3 days before ${start}"
+        "deadline": "2021-10-01 23:59:00",
     }
 
     schema = {
         "type": "dict",
         "required_keys": {
             "start": {"type": "date"},
-            "reminder": {"type": "date"}
-        }
-    }
-
-    resolved = smartconfig.resolve(config, schema)
-    print(resolved)
-
-.. testoutput:: python
-
-    {'reminder': datetime.date(2021, 9, 28), 'start': datetime.date(2021, 10, 1)}
-
-The Smartdatetime converter also supports times:
-
-.. testcode:: python
-
-    config = {
-        "deadline": "2021-10-01 23:59:00",
-        "warning": "1 day before ${deadline}"
-    }
-
-    schema = {
-        "type": "dict",
-        "required_keys": {
             "deadline": {"type": "datetime"},
-            "warning": {"type": "datetime"}
         }
     }
 
@@ -189,4 +134,10 @@ The Smartdatetime converter also supports times:
 .. testoutput:: python
 
     {'deadline': datetime.datetime(2021, 10, 1, 23, 59),
-     'warning': datetime.datetime(2021, 9, 30, 23, 59)}
+     'start': datetime.date(2021, 10, 1)}
+
+.. note::
+
+   For more advanced date manipulation — such as relative dates, day-of-week
+   lookups, and time offsets — use the ``datetime`` stdlib functions
+   (``datetime.offset``, ``datetime.first``, ``datetime.at``, ``datetime.parse``).

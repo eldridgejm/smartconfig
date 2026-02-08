@@ -1,13 +1,11 @@
 """Prototype: Define configuration schemas using Python class syntax."""
 
-from typing import Generic, TypeVar, Self
+from typing import Self
 import typing
 import types
 import datetime
 
 from smartconfig.types import Schema
-
-T = TypeVar("T")
 
 # sentinel for missing default values
 _MISSING = object()
@@ -23,7 +21,7 @@ _TYPE_MAP = {
 }
 
 
-class NotRequired(Generic[T]):
+class NotRequired[T]:
     """Marker for optional fields in a Prototype.
 
     Annotating a field with ``NotRequired[T]`` will cause it to be placed in the
@@ -57,9 +55,8 @@ class Prototype:
 
     .. warning::
 
-       The initializer does **not** perform any type checking or coercion. It also does
-       not validate that required fields are present or that values match the
-       nullability of the field. Type conversion and validation are the jobs of
+       The initializer does **not** perform any type checking, coercion, or
+       nullability validation. Type conversion and validation are the jobs of
        :func:`resolve`. Generally, you should not instantiate Prototype subclasses
        directly; instead, use :func:`resolve` to create instances from configuration
        data.
@@ -80,15 +77,16 @@ class Prototype:
         assert isinstance(person, Person)
         assert person.name == "Alice"
 
-
     """
 
     def __init_subclass__(cls) -> None:
         """Validate the fields defined in the Prototype subclass.
 
-        This is called automatically when a subclass is defined.
-        It checks that type hints are supported and that all class attributes
-        correspond to annotated fields.
+        This checks that the types used in type hints are supported and that all class
+        attributes have annotations.
+
+        This function is called automatically when a subclass is defined.
+
         """
         for field_name, (type_hint, _) in cls._defined_fields().items():
             if not _is_supported_type_hint(type_hint):
@@ -116,14 +114,16 @@ class Prototype:
         - If a field is provided in ``kwargs``, its value is set on the instance.
         - If a field is missing from ``kwargs`` but has a default value, the default
           value is set.
-        - If a field is missing from ``kwargs`` and has no default value, the attribute
-          is left uninitialized.
-        - Extra keyword arguments that do not correspond to a defined field are ignored.
+        - If a field is ``NotRequired`` and missing from ``kwargs``, it is skipped
+          (the attribute is left unset).
+        - If a required field is missing from ``kwargs`` and has no default value,
+          a ``TypeError`` is raised.
+        - Extra keyword arguments that do not correspond to a defined field are ignored
+          (they are not set as attributes, and no error is raised).
 
-        **Important:** This initializer does **not** perform any type checking or
-        coercion. It also does not validate that required fields are present or that
-        values match the nullability of the field. Type conversion and validation
-        are the jobs of :func:`resolve`.
+        **Important:** This initializer does **not** perform any type checking,
+        coercion, or nullability validation. Type conversion and validation are
+        the jobs of :func:`resolve`.
 
         Parameters
         ----------
@@ -165,7 +165,11 @@ class Prototype:
             return False
 
         for field_name in self._defined_fields().keys():
-            if getattr(self, field_name) != getattr(other, field_name):
+            self_has = hasattr(self, field_name)
+            other_has = hasattr(other, field_name)
+            if self_has != other_has:
+                return False
+            if self_has and getattr(self, field_name) != getattr(other, field_name):
                 return False
 
         # handle "extra" fields that are not defined in the Prototype
@@ -179,10 +183,13 @@ class Prototype:
     def __repr__(self) -> str:
         """Get a string representation of the Prototype instance.
 
-        Returns
-        -------
-        str
-            A string representation of the Prototype instance.
+        Examples
+        --------
+        >>> class Person(Prototype):
+        ...     name: str
+        ...     age: int
+        >>> Person(name='Alice', age=30)
+        Person(name='Alice', age=30)
 
         """
         field_strs = []
@@ -194,7 +201,7 @@ class Prototype:
         return f"{self.__class__.__name__}({', '.join(field_strs)})"
 
     @classmethod
-    def _defined_fields(cls) -> typing.Dict[str, typing.Any]:
+    def _defined_fields(cls) -> dict[str, typing.Any]:
         """Get the fields defined in the Prototype subclass.
 
         This is a privately used helper method.
@@ -258,6 +265,9 @@ class Prototype:
     def _as_dict(self) -> dict[str, typing.Any]:
         """Convert this Prototype instance to a dictionary.
 
+        This is a public method. The leading underscore is used to avoid name
+        clashes with user-defined attributes on Prototype subclasses.
+
         Returns
         -------
         dict
@@ -284,6 +294,9 @@ class Prototype:
     @classmethod
     def _from_dict(cls, data: dict[str, typing.Any]) -> Self:
         """Create a Prototype instance from a dictionary.
+
+        This is a public method; the leading underscore is to avoid name clashes
+        with user-defined fields.
 
         This will recursively create nested Prototype instances as needed.
 
@@ -470,7 +483,7 @@ def _type_to_schema(type_hint: type) -> Schema:
 
     Returns
     -------
-    dict
+    Schema
         A schema type specification.
 
     Raises
@@ -529,7 +542,7 @@ def is_prototype_class(
     """Check if a type is a Prototype subclass (but not Prototype itself).
 
     Uses ``TypeGuard`` so static type checkers know that when this returns True,
-    ``type_hint`` can be treated as ``type[Prototype]`` (excluding the base
+    ``type_`` can be treated as ``type[Prototype]`` (excluding the base
     Prototype class itself). This enables safe recursive handling of nested
     prototype types elsewhere in the codebase.
 
