@@ -373,7 +373,7 @@ This produces:
 use
 ~~~
 
-Copies a template from elsewhere in the configuration, with optional overrides.
+Copies and resolves a template from elsewhere in the configuration, with optional overrides.
 
 **Input**: Either a string keypath (simple form) or a dictionary with the following keys:
 
