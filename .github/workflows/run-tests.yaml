@@ -28,7 +28,7 @@ jobs:
         version: '0.5.27'
 
     - name: Set up Python
-      run: uv python install
+      run: uv python install 3.14
 
     - name: Run the tests
       run: uv run pytest

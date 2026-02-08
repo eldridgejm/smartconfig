@@ -41,7 +41,7 @@ jobs:
           version: '0.5.27'
 
       - name: Set up Python
-        run: uv python install
+        run: uv python install 3.14
 
       - name: Build the docs
         run: cd docs && uv run make html
