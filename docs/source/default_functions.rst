@@ -393,30 +393,24 @@ Copies and resolves a template from elsewhere in the configuration, with optiona
 
 **Example (simple)**:
 
+A common pattern is to define a raw template containing ``${...}`` references
+that are not interpolated where the template is defined. When ``__use__`` copies
+the template, the references are resolved in the context of the copy:
+
 .. testcode:: python
 
     config = {
-        "template": {"a": 1, "b": 2},
-        "copy": {"__use__": "template"}
+        "greeting_template": {"__raw__": "Hello, ${name}!"},
+        "name": "Alice",
+        "message": {"__use__": "greeting_template"},
     }
 
     schema = {
         "type": "dict",
         "required_keys": {
-            "template": {
-                "type": "dict",
-                "required_keys": {
-                    "a": {"type": "integer"},
-                    "b": {"type": "integer"}
-                }
-            },
-            "copy": {
-                "type": "dict",
-                "required_keys": {
-                    "a": {"type": "integer"},
-                    "b": {"type": "integer"}
-                }
-            }
+            "greeting_template": {"type": "string"},
+            "name": {"type": "string"},
+            "message": {"type": "string"},
         }
     }
 
@@ -424,34 +418,45 @@ Copies and resolves a template from elsewhere in the configuration, with optiona
 
 .. testoutput:: python
 
-    {'copy': {'a': 1, 'b': 2}, 'template': {'a': 1, 'b': 2}}
+    {'greeting_template': 'Hello, ${name}!',
+     'message': 'Hello, Alice!',
+     'name': 'Alice'}
+
+Notice that the template itself remains unresolved (the ``${name}`` reference is
+preserved as-is thanks to ``__raw__``), but the copy produced by ``__use__`` has
+``${name}`` resolved to ``"Alice"``.
 
 **Example (with overrides)**:
 
 .. testcode:: python
 
     config = {
-        "template": {"a": 1, "b": 2},
-        "modified": {"__use__": {"template": "template", "overrides": {"b": 99}}}
+        "defaults": {"__raw__": {"host": "localhost", "port": 8080}},
+        "server": {
+            "__use__": {
+                "template": "defaults",
+                "overrides": {"port": 9090}
+            }
+        },
     }
 
     schema = {
         "type": "dict",
         "required_keys": {
-            "template": {
+            "defaults": {
                 "type": "dict",
                 "required_keys": {
-                    "a": {"type": "integer"},
-                    "b": {"type": "integer"}
+                    "host": {"type": "string"},
+                    "port": {"type": "integer"},
                 }
             },
-            "modified": {
+            "server": {
                 "type": "dict",
                 "required_keys": {
-                    "a": {"type": "integer"},
-                    "b": {"type": "integer"}
+                    "host": {"type": "string"},
+                    "port": {"type": "integer"},
                 }
-            }
+            },
         }
     }
 
@@ -459,7 +464,8 @@ Copies and resolves a template from elsewhere in the configuration, with optiona
 
 .. testoutput:: python
 
-    {'modified': {'a': 1, 'b': 99}, 'template': {'a': 1, 'b': 2}}
+    {'defaults': {'host': 'localhost', 'port': 8080},
+     'server': {'host': 'localhost', 'port': 9090}}
 
 
 List Operations
