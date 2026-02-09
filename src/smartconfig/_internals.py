@@ -618,7 +618,9 @@ def _populate_optional_children(
             # key is missing; resolve dynamic schema before checking for default
             if callable(key_schema):
                 key_schema = key_schema(None, keypath + (key,))
-                _validate_schema(key_schema, keypath + (key,), allow_default=True)
+                _validate_schema(
+                    key_schema, keypath + (key,), allow_default=True, allow_dynamic=True
+                )
             if "default" in key_schema:
                 # default was provided
                 value = key_schema["default"]
@@ -1463,7 +1465,7 @@ def make_node(
     if callable(schema):
         # dynamic schema: call the function to get the actual schema
         schema = schema(cfg, keypath)
-        _validate_schema(schema)
+        _validate_schema(schema, allow_default=True, allow_dynamic=True)
 
     class _CommonKwargs(TypedDict):
         """Common keyword arguments passed to node constructors in make_node."""
