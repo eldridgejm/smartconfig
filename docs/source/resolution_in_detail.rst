@@ -140,6 +140,28 @@ follows a specific search order:
    This makes them useful for injecting Python functions or constants that should
    be available during interpolation.
 
+A reference inserts a single value into the string: a string, a number, a date,
+and so on. **Inserting a whole dict or list is an error**, raising
+:class:`exceptions.ResolutionError`; its text would be a Python representation,
+which is almost never what's meant. Instead, insert one of its keys or
+elements, turn it into text with a filter, or, to copy the whole value
+elsewhere in the configuration, use :ref:`__splice__ <func-splice>`:
+
+.. code:: python
+
+   {
+       "course": {"name": "DSC 40B", "topics": ["Sorting", "Graphs"]},
+
+       "bad": "${course}",                         # error: course is a dict
+       "title": "${course.name}",                  # "DSC 40B"
+       "first": "${course.topics[0]}",             # "Sorting"
+       "topics": "${course.topics | join(', ')}",  # "Sorting, Graphs"
+       "copy": {"__splice__": "course"},           # the whole dict
+   }
+
+The same holds for a template made with :ref:`__template__ <func-template>`:
+insert it with ``__use__``, not with ``${...}``.
+
 Unresolved Configurations and Lazy Resolution
 ---------------------------------------------
 

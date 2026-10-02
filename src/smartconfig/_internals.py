@@ -318,6 +318,61 @@ class StrictUndefined(jinja2.StrictUndefined):
         return message + (_did_you_mean(name, attributes) or "")
 
 
+class _InsertedContainer(Exception):
+    """A dict or list was inserted into a string with ``${...}``."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+def _key_reference(where: str, key: str) -> str:
+    """A reference to *key* of the dict at *where*, as in ``${ where.key }``."""
+    if key.isidentifier():
+        return f"${{ {where}.{key} }}"
+    return f'${{ {where}["{key}"] }}'
+
+
+def _refuse_containers(value: typing.Any) -> typing.Any:
+    """Raise if *value*, the value of a ``${...}``, is a dict or a list.
+
+    Inserted into a string, a dict or list would become its Python repr (or, for
+    an unresolved one, the repr of an internal object), which is almost never
+    what's meant. Used as the ``finalize`` of the Jinja environment.
+
+    """
+    cant = "can't be inserted into a string"
+    if isinstance(value, _UnresolvedDict):
+        where = ".".join(str(k) for k in getattr(value.dict_node, "keypath", ()))
+        keys = [str(k) for k in getattr(value.dict_node, "children", {})]
+        if keys == ["__template__"]:
+            raise _InsertedContainer(
+                f'"{where}" is a template, which {cant}. Use it with __use__ instead.'
+            )
+        example = f", as in {_key_reference(where, keys[0])}," if keys else ""
+        raise _InsertedContainer(
+            f'"{where}" is a dict, which {cant}. Use one of its keys{example} or copy '
+            f"the whole value with __splice__."
+        )
+    if isinstance(value, _UnresolvedList):
+        where = ".".join(str(k) for k in getattr(value.list_node, "keypath", ()))
+        raise _InsertedContainer(
+            f'"{where}" is a list, which {cant}. Use one of its elements, as in '
+            f"${{ {where}[0] }}, or copy the whole value with __splice__."
+        )
+    if isinstance(value, typing.Mapping):
+        described = _describe_value(dict(value))
+        raise _InsertedContainer(
+            f"{described[0].upper()}{described[1:]} {cant}. Use one of its keys "
+            f"instead."
+        )
+    if isinstance(value, (list, tuple)):
+        raise _InsertedContainer(
+            f"A {type(value).__name__} {cant}. Use one of its elements instead."
+        )
+    return value
+
+
 class _UnresolvedDict(_types.UnresolvedDict):
     """Implements UnresolvedDict using a _DictNode as the backing data structure."""
 
@@ -1218,7 +1273,10 @@ class _ValueNode(_Node):
 
         """
         environment = jinja2.Environment(
-            variable_start_string="${", variable_end_string="}"
+            variable_start_string="${",
+            variable_end_string="}",
+            # inserting a dict or list into a string is an error
+            finalize=_refuse_containers,
         )
 
         # create a custom jinja context for resolving references. This will first look
@@ -1247,6 +1305,8 @@ class _ValueNode(_Node):
             result = template.render()
         except jinja2.exceptions.UndefinedError as exc:
             raise ResolutionError(str(exc), self.keypath)
+        except _InsertedContainer as exc:
+            raise ResolutionError(exc.message, self.keypath) from None
 
         if full and result != s:
             # if the string changed, we need to interpolate again

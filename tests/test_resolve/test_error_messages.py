@@ -302,3 +302,78 @@ def test_strict_undefined_can_be_used_in_other_jinja_environments():
         template.render(meta={"topic": "Sorting"})
 
     assert str(excinfo.value) == 'The dict has no key "topc". Did you mean "topic"?'
+
+
+# dicts and lists can't be inserted into strings =======================================
+
+_ANY: Schema = {"type": "dict", "extra_keys_schema": {"type": "any"}}
+
+
+def _reason(cfg, **kwargs) -> str:
+    with raises(exceptions.ResolutionError) as excinfo:
+        resolve(cfg, _ANY, **kwargs)
+    return excinfo.value.reason
+
+
+def test_a_dict_inserted_into_a_string_is_an_error():
+    reason = _reason({"vars": {"d": {"a": 1, "b": 2}}, "x": "value: ${ vars.d }"})
+
+    assert reason == (
+        '"vars.d" is a dict, which can\'t be inserted into a string. Use one of '
+        "its keys, as in ${ vars.d.a }, or copy the whole value with __splice__."
+    )
+
+
+def test_the_error_names_the_keypath_of_the_string():
+    with raises(exceptions.ResolutionError) as excinfo:
+        resolve({"vars": {"d": {"a": 1}}, "x": "value: ${ vars.d }"}, _ANY)
+
+    assert excinfo.value.keypath == ("x",)
+
+
+def test_a_key_that_is_not_a_name_is_shown_with_brackets():
+    reason = _reason({"files": {"hw.pdf": "a"}, "x": "${ files }"})
+
+    assert 'as in ${ files["hw.pdf"] }' in reason
+
+
+def test_a_list_inserted_into_a_string_is_an_error():
+    reason = _reason({"vars": {"l": [1, 2]}, "x": "${ vars.l }"})
+
+    assert reason == (
+        '"vars.l" is a list, which can\'t be inserted into a string. Use one of '
+        "its elements, as in ${ vars.l[0] }, or copy the whole value with "
+        "__splice__."
+    )
+
+
+def test_a_template_inserted_into_a_string_is_an_error():
+    reason = _reason(
+        {
+            "templates": {"recipe": {"__template__": "make ${ this.n }"}},
+            "this": {"n": 1, "recipe": "${ templates.recipe }"},
+        }
+    )
+
+    assert reason == (
+        '"templates.recipe" is a template, which can\'t be inserted into a '
+        "string. Use it with __use__ instead."
+    )
+
+
+def test_a_dict_from_global_variables_inserted_into_a_string_is_an_error():
+    reason = _reason({"x": "${ meta }"}, global_variables={"meta": {"a": 1}})
+
+    assert reason == (
+        'A dict with key "a" can\'t be inserted into a string. Use one of its '
+        "keys instead."
+    )
+
+
+def test_values_from_dicts_and_lists_can_still_be_inserted():
+    cfg: ConfigurationDict = {
+        "vars": {"d": {"a": 1}, "l": ["x", "y"]},
+        "x": "${ vars.d.a } ${ vars.l[1] } ${ vars.l | join(', ') }",
+    }
+
+    assert resolve(cfg, _ANY)["x"] == "1 y x, y"
