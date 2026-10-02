@@ -217,6 +217,7 @@ from typing import (
     TypedDict,
 )
 import abc
+import difflib
 import enum
 import typing
 
@@ -252,11 +253,33 @@ class ResolutionMode(enum.Enum):
 # _UnresolvedDict ----------------------------------------------------------------------
 
 
-class _StrictUndefined(jinja2.StrictUndefined):
-    """StrictUndefined whose messages name configuration keys, not internal classes.
+def _did_you_mean(name: str, candidates: typing.Iterable[str]) -> str | None:
+    """A ' Did you mean "x"?' suggestion of a close candidate, or None."""
+    matches = difflib.get_close_matches(name, list(candidates), n=1)
+    return f' Did you mean "{matches[0]}"?' if matches else None
+
+
+def _describe_keys(keys: list[str], limit: int = 10) -> str:
+    """A sentence listing a mapping's keys, for an undefined key's message."""
+    if not keys:
+        return " It is empty."
+    listed = ", ".join(f'"{key}"' for key in keys[:limit])
+    if len(keys) > limit:
+        listed += f", and {len(keys) - limit} more"
+    return f" Its keys are {listed}."
+
+
+class StrictUndefined(jinja2.StrictUndefined):
+    """A StrictUndefined whose messages say what is missing and suggest a fix.
 
     Without this, a reference like ``${ vars.nope }`` reports
-    ``'smartconfig._internals._UnresolvedDict object' has no attribute 'nope'``.
+    ``'smartconfig._internals._UnresolvedDict object' has no attribute 'nope'``,
+    and one like ``${ meta.topc }`` reports ``'dict object' has no attribute
+    'topc'``. With it, the message names the configuration key when there is
+    one, and suggests a close key or attribute (or lists the keys).
+
+    It is used when resolving configurations, and can be used as the
+    ``undefined`` class of other Jinja environments.
 
     """
 
@@ -266,17 +289,33 @@ class _StrictUndefined(jinja2.StrictUndefined):
         # Undefined.__getattr__, which asks for this message again, forever
         obj = self._undefined_obj
         name = self._undefined_name
+        if obj is jinja2.utils.missing or not isinstance(name, str):
+            return super()._undefined_message
+
         if isinstance(obj, _UnresolvedDict):
             keypath = getattr(obj.dict_node, "keypath", ())
             where = ".".join(str(k) for k in keypath)
-            if where:
-                return f'"{where}" has no key "{name}".'
-            return f'The configuration has no key "{name}".'
+            message = (
+                f'"{where}" has no key "{name}".'
+                if where
+                else f'The configuration has no key "{name}".'
+            )
+            keys = [str(k) for k in getattr(obj.dict_node, "children", {})]
+            return message + (_did_you_mean(name, keys) or "")
+
         if isinstance(obj, _UnresolvedList):
             keypath = getattr(obj.list_node, "keypath", ())
             where = ".".join(str(k) for k in keypath) or "The list"
             return f'"{where}" has no element "{name}".'
-        return super()._undefined_message
+
+        if isinstance(obj, typing.Mapping):
+            keys = [str(k) for k in obj]
+            message = f'The {type(obj).__name__} has no key "{name}".'
+            return message + (_did_you_mean(name, keys) or _describe_keys(keys))
+
+        attributes = [a for a in dir(obj) if not a.startswith("_")]
+        message = f'The {type(obj).__name__} object has no attribute "{name}".'
+        return message + (_did_you_mean(name, attributes) or "")
 
 
 class _UnresolvedDict(_types.UnresolvedDict):
@@ -1195,7 +1234,7 @@ class _ValueNode(_Node):
         environment.filters.update(self.resolution_context.filters)
 
         # make undefined references raise an error
-        environment.undefined = _StrictUndefined
+        environment.undefined = StrictUndefined
 
         try:
             template = environment.from_string(s)

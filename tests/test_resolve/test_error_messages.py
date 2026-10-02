@@ -219,3 +219,86 @@ def test_undefined_key_of_an_unresolved_dict_names_the_dict():
 
     assert message == 'Cannot resolve keypath "title": "vars" has no key "nope".'
     assert "_UnresolvedDict" not in message
+
+
+def test_undefined_key_of_an_unresolved_dict_suggests_a_close_key():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "vars": {"type": "dict", "extra_keys_schema": {"type": "any"}},
+            "title": {"type": "string"},
+        },
+    }
+
+    message = _resolve_error(
+        {"vars": {"course": "DSC 40B"}, "title": "${ vars.cours }"}, schema
+    )
+
+    assert message == (
+        'Cannot resolve keypath "title": "vars" has no key "cours". '
+        'Did you mean "course"?'
+    )
+
+
+def test_undefined_key_of_a_global_dict_suggests_a_close_key():
+    schema: Schema = {"type": "dict", "required_keys": {"title": {"type": "string"}}}
+
+    with raises(exceptions.ResolutionError) as excinfo:
+        resolve(
+            {"title": "${ meta.topc }"},
+            schema,
+            global_variables={"meta": {"topic": "Sorting", "number": 1}},
+        )
+
+    assert excinfo.value.reason == 'The dict has no key "topc". Did you mean "topic"?'
+
+
+def test_undefined_key_of_a_global_dict_lists_the_keys():
+    schema: Schema = {"type": "dict", "required_keys": {"title": {"type": "string"}}}
+
+    with raises(exceptions.ResolutionError) as excinfo:
+        resolve(
+            {"title": "${ meta.zzz }"},
+            schema,
+            global_variables={"meta": {"topic": "Sorting", "number": 1}},
+        )
+
+    assert excinfo.value.reason == (
+        'The dict has no key "zzz". Its keys are "topic", "number".'
+    )
+
+
+def test_undefined_attribute_of_an_object_suggests_a_close_attribute():
+    class Publication:
+        def __init__(self):
+            self.metadata = {"title": "Lecture"}
+
+    schema: Schema = {"type": "dict", "required_keys": {"title": {"type": "string"}}}
+
+    with raises(exceptions.ResolutionError) as excinfo:
+        resolve(
+            {"title": "${ publication.metdata.title }"},
+            schema,
+            global_variables={"publication": Publication()},
+        )
+
+    assert excinfo.value.reason == (
+        'The Publication object has no attribute "metdata". Did you mean "metadata"?'
+    )
+
+
+# StrictUndefined in other templates ===================================================
+
+
+def test_strict_undefined_can_be_used_in_other_jinja_environments():
+    import jinja2
+
+    from smartconfig import StrictUndefined
+
+    environment = jinja2.Environment(undefined=StrictUndefined)
+    template = environment.from_string("{{ meta.topc }}")
+
+    with raises(jinja2.UndefinedError) as excinfo:
+        template.render(meta={"topic": "Sorting"})
+
+    assert str(excinfo.value) == 'The dict has no key "topc". Did you mean "topic"?'

@@ -7,6 +7,7 @@ from ._schemas import validate_schema
 from ._prototypes import Prototype, NotRequired, is_prototype_class
 from .stdlib import STDLIB_FUNCTIONS
 from ._core_functions import CORE_FUNCTIONS
+from ._internals import StrictUndefined
 
 __all__ = [
     "exceptions",
@@ -22,4 +23,5 @@ __all__ = [
     "Prototype",
     "NotRequired",
     "is_prototype_class",
+    "StrictUndefined",
 ]
