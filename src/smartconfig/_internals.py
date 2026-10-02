@@ -660,10 +660,11 @@ def _populate_extra_children(
 
     optional_keys = dict_schema.get("optional_keys", {})
     expected_keys = set(required_keys) | set(optional_keys)
-    extra_keys = dct.keys() - expected_keys
+    # a list, not a set difference, so that extra keys keep their input order
+    extra_keys = [key for key in dct if key not in expected_keys]
 
     if extra_keys and "extra_keys_schema" not in dict_schema:
-        key = extra_keys.pop()
+        key = extra_keys[0]
         raise ResolutionError(
             f'Dictionary contains unexpected extra key "{key}".', keypath + (key,)
         )

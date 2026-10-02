@@ -89,6 +89,38 @@ def test_allows_extra_keys_with_extra_keys_schema():
     assert result["foo"] == 42
 
 
+def test_extra_keys_keep_their_input_order():
+    # given: enough keys that an arbitrary (e.g. set) order would not match
+    keys = [f"key{i}" for i in range(50)]
+    schema: Schema = {"type": "dict", "extra_keys_schema": {"type": "integer"}}
+    cfg: ConfigurationDict = {key: i for i, key in enumerate(keys)}
+
+    # when
+    result = resolve(cfg, schema)
+
+    # then
+    assert list(result) == keys
+
+
+def test_dicts_of_type_any_keep_their_input_order():
+    keys = [f"key{i}" for i in range(50)]
+    cfg: ConfigurationDict = {"outer": {key: i for i, key in enumerate(keys)}}
+
+    result = resolve(cfg, {"type": "any"})
+
+    assert list(result["outer"]) == keys
+
+
+def test_unexpected_extra_keys_error_names_the_first_one():
+    schema: Schema = {"type": "dict", "required_keys": {}}
+    cfg: ConfigurationDict = {f"key{i}": i for i in range(50)}
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema)
+
+    assert 'unexpected extra key "key0"' in str(exc.value)
+
+
 def test_fills_in_missing_value_with_default_if_provided():
     # given
     schema: Schema = {
