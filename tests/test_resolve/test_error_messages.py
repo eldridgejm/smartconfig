@@ -94,3 +94,128 @@ def test_exception_raised_when_schema_includes_default_value_that_doesnt_match_t
         resolve(cfg, schema)
 
     assert "Cannot convert to integer" in str(excinfo.value)
+
+
+# values of the wrong shape ============================================================
+
+
+def _resolve_error(cfg, schema) -> str:
+    with raises(exceptions.ResolutionError) as excinfo:
+        resolve(cfg, schema)
+    return str(excinfo.value)
+
+
+def test_list_where_a_dict_is_expected():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "vars": {"type": "dict", "extra_keys_schema": {"type": "any"}}
+        },
+    }
+
+    message = _resolve_error({"vars": [1, 2]}, schema)
+
+    assert message == 'Cannot resolve keypath "vars": Expected a dict, but got a list.'
+
+
+def test_dict_where_a_list_is_expected():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "extensions": {"type": "list", "element_schema": {"type": "string"}}
+        },
+    }
+
+    message = _resolve_error({"extensions": {"a": 1}}, schema)
+
+    assert message == (
+        'Cannot resolve keypath "extensions": Expected a list, but got a dict with '
+        'key "a".'
+    )
+
+
+def test_string_where_a_list_is_expected():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "extensions": {"type": "list", "element_schema": {"type": "string"}}
+        },
+    }
+
+    message = _resolve_error({"extensions": "foo"}, schema)
+
+    assert message == (
+        'Cannot resolve keypath "extensions": Expected a list, but got the string '
+        '"foo".'
+    )
+
+
+def test_list_where_a_string_is_expected():
+    schema: Schema = {
+        "type": "dict",
+        "optional_keys": {"base_path": {"type": "string", "default": "/"}},
+    }
+
+    message = _resolve_error({"base_path": [1]}, schema)
+
+    assert message == (
+        'Cannot resolve keypath "base_path": Expected a string, but got a list.'
+    )
+
+
+def test_number_where_a_dict_is_expected_in_a_list():
+    schema: Schema = {
+        "type": "list",
+        "element_schema": {"type": "dict", "extra_keys_schema": {"type": "any"}},
+    }
+
+    message = _resolve_error([{"a": 1}, 42], schema)
+
+    assert (
+        message == 'Cannot resolve keypath "1": Expected a dict, but got the number 42.'
+    )
+
+
+def test_any_accepts_every_shape():
+    schema: Schema = {"type": "dict", "extra_keys_schema": {"type": "any"}}
+
+    result = resolve({"a": [1], "b": {"c": 2}, "d": "e"}, schema)
+
+    assert result == {"a": [1], "b": {"c": 2}, "d": "e"}
+
+
+def test_function_calls_are_not_mistaken_for_dicts():
+    schema: Schema = {"type": "dict", "required_keys": {"x": {"type": "string"}}}
+
+    result = resolve({"x": {"__raw__": "${ not interpolated }"}}, schema)
+
+    assert result == {"x": "${ not interpolated }"}
+
+
+# template errors ======================================================================
+
+
+def test_template_syntax_error_names_the_keypath():
+    schema: Schema = {"type": "dict", "required_keys": {"course": {"type": "string"}}}
+
+    message = _resolve_error({"course": "${ vars. }"}, schema)
+
+    assert message.startswith('Cannot resolve keypath "course": ')
+    assert "${ vars. }" in message
+
+
+def test_undefined_key_of_an_unresolved_dict_names_the_dict():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "vars": {"type": "dict", "extra_keys_schema": {"type": "any"}},
+            "title": {"type": "string"},
+        },
+    }
+
+    message = _resolve_error(
+        {"vars": {"course": "DSC 40B"}, "title": "${ vars.nope }"}, schema
+    )
+
+    assert message == 'Cannot resolve keypath "title": "vars" has no key "nope".'
+    assert "_UnresolvedDict" not in message

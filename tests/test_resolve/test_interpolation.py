@@ -465,7 +465,7 @@ def test_interpolate_entire_dict_raises_exception():
 
     assert (
         str(exc.value)
-        == 'Cannot resolve keypath "bar": No converter provided for type: "dict".'
+        == 'Cannot resolve keypath "bar": Expected a dict, but got the string "${foo}".'
     )
 
 
@@ -498,7 +498,7 @@ def test_interpolate_entire_dict_indirectly_raises_exception():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema)
 
-    assert 'No converter provided for type: "dict"' in str(exc.value)
+    assert "Expected a dict, but got the string" in str(exc.value)
 
 
 def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
@@ -536,7 +536,7 @@ def test_interpolate_entire_dict_indirectly_reverse_order_raises_exception():
         resolve(cfg, schema)
 
     # then
-    assert 'No converter provided for type: "dict"' in str(exc.value)
+    assert "Expected a dict, but got the string" in str(exc.value)
 
 
 def test_interpolate_entire_list_raises_exception():
@@ -565,4 +565,4 @@ def test_interpolate_entire_list_raises_exception():
         resolve(cfg, schema)
 
     # then
-    assert 'No converter provided for type: "list"' in str(exc.value)
+    assert "Expected a list, but got the string" in str(exc.value)

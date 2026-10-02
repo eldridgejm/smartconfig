@@ -252,6 +252,33 @@ class ResolutionMode(enum.Enum):
 # _UnresolvedDict ----------------------------------------------------------------------
 
 
+class _StrictUndefined(jinja2.StrictUndefined):
+    """StrictUndefined whose messages name configuration keys, not internal classes.
+
+    Without this, a reference like ``${ vars.nope }`` reports
+    ``'smartconfig._internals._UnresolvedDict object' has no attribute 'nope'``.
+
+    """
+
+    @property
+    def _undefined_message(self) -> str:
+        # this must never raise AttributeError: Python would then fall back to
+        # Undefined.__getattr__, which asks for this message again, forever
+        obj = self._undefined_obj
+        name = self._undefined_name
+        if isinstance(obj, _UnresolvedDict):
+            keypath = getattr(obj.dict_node, "keypath", ())
+            where = ".".join(str(k) for k in keypath)
+            if where:
+                return f'"{where}" has no key "{name}".'
+            return f'The configuration has no key "{name}".'
+        if isinstance(obj, _UnresolvedList):
+            keypath = getattr(obj.list_node, "keypath", ())
+            where = ".".join(str(k) for k in keypath) or "The list"
+            return f'"{where}" has no element "{name}".'
+        return super()._undefined_message
+
+
 class _UnresolvedDict(_types.UnresolvedDict):
     """Implements UnresolvedDict using a _DictNode as the backing data structure."""
 
@@ -708,6 +735,8 @@ class _DictNode(_Node):
         super().__init__(parent, local_variables)
         self.resolution_context = resolution_context
         self.children: dict[str, _ConcreteNode] = {} if children is None else children
+        # set by from_configuration; used in error messages
+        self.keypath: _types.KeyPath = ()
 
     @classmethod
     def from_configuration(
@@ -742,6 +771,7 @@ class _DictNode(_Node):
 
         """
         node = cls(resolution_context, parent=parent, local_variables=local_variables)
+        node.keypath = keypath
 
         if schema["type"] == "any":
             schema = {
@@ -829,6 +859,8 @@ class _ListNode(_Node):
         super().__init__(parent, local_variables)
         self.resolution_context = resolution_context
         self.children: list[_ConcreteNode] = [] if children is None else children
+        # set by from_configuration; used in error messages
+        self.keypath: _types.KeyPath = ()
 
     @classmethod
     def from_configuration(
@@ -863,6 +895,7 @@ class _ListNode(_Node):
 
         """
         node = cls(resolution_context, parent=parent, local_variables=local_variables)
+        node.keypath = keypath
 
         if schema["type"] == "any":
             schema = {
@@ -1162,9 +1195,14 @@ class _ValueNode(_Node):
         environment.filters.update(self.resolution_context.filters)
 
         # make undefined references raise an error
-        environment.undefined = jinja2.StrictUndefined
+        environment.undefined = _StrictUndefined
 
-        template = environment.from_string(s)
+        try:
+            template = environment.from_string(s)
+        except jinja2.exceptions.TemplateSyntaxError as exc:
+            raise ResolutionError(
+                f'Invalid template "{s}": {exc.message}', self.keypath
+            ) from None
 
         try:
             result = template.render()
@@ -1521,17 +1559,72 @@ def make_node(
                 input=result[1],
             )
         else:
+            _check_shape(cfg, schema, keypath)
             return _DictNode.from_configuration(
                 cfg,
                 **common_kwargs,
             )
     elif isinstance(cfg, list):
+        _check_shape(cfg, schema, keypath)
         return _ListNode.from_configuration(
             cfg,
             **common_kwargs,
         )
     else:
+        _check_shape(cfg, schema, keypath)
         return _ValueNode.from_configuration(
             cfg,
             **common_kwargs,
         )
+
+
+def _check_shape(
+    cfg: _types.Configuration, schema: _types.Schema, keypath: _types.KeyPath
+) -> None:
+    """Raise a ResolutionError if a dict, list, or value doesn't match the schema.
+
+    A dict must have a dict schema and a list a list schema; any other value must
+    have a value schema. Schemas of type "any" accept every shape.
+
+    """
+    expected = schema.get("type")
+    if expected == "any":
+        return
+
+    if isinstance(cfg, dict):
+        matches = expected == "dict"
+    elif isinstance(cfg, list):
+        matches = expected == "list"
+    else:
+        matches = expected not in ("dict", "list")
+
+    if not matches:
+        raise ResolutionError(
+            f"Expected {_a(str(expected))}, but got {_describe_value(cfg)}.", keypath
+        )
+
+
+def _a(noun: str) -> str:
+    """The noun with an indefinite article: "a dict", "an integer"."""
+    return f"an {noun}" if noun[:1] in "aeiou" else f"a {noun}"
+
+
+def _describe_value(value: _types.Configuration) -> str:
+    """A short description of a configuration value, for error messages."""
+    if isinstance(value, dict):
+        if not value:
+            return "an empty dict"
+        keys = [f'"{key}"' for key in list(value)[:3]]
+        more = ", ..." if len(value) > 3 else ""
+        label = "key" if len(value) == 1 else "keys"
+        return f"a dict with {label} {', '.join(keys)}{more}"
+    if isinstance(value, list):
+        return "a list"
+    if isinstance(value, bool):
+        return f"the boolean {value}"
+    if isinstance(value, (int, float)):
+        return f"the number {value}"
+    if isinstance(value, str):
+        shown = value if len(value) <= 40 else value[:37] + "..."
+        return f'the string "{shown}"'
+    return _a(type(value).__name__)
