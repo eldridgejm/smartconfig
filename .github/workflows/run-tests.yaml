@@ -28,10 +28,14 @@ jobs:
         version: '0.9.18'
 
     - name: Set up Python
-      run: uv python install 3.14
+      run: uv python install 3.13 3.14
 
     - name: Run the tests
       run: uv run pytest
+
+    # the oldest Python supported (requires-python in pyproject.toml)
+    - name: Run the tests on Python 3.13
+      run: uv run --python 3.13 pytest
 
     - name: Build coverage file
       run: |

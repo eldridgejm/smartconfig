@@ -102,7 +102,7 @@ def float_(value: int | float | str) -> float:
     if isinstance(value, (int, str)):
         try:
             return float(value)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             raise exceptions.ConversionError(
                 f"Cannot convert to float: '{value}'.",
             )

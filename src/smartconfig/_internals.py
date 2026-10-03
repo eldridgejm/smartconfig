@@ -210,6 +210,8 @@ When resolve() is called on this configuration, the following major steps occur:
 
 """
 
+from __future__ import annotations
+
 from typing import (
     Any,
     Callable,
@@ -1239,7 +1241,7 @@ class _ValueNode(_Node):
                 # then try the root of the configuration tree
                 try:
                     return root_container[key]
-                except KeyError, IndexError:
+                except (KeyError, IndexError):
                     pass
 
                 # then try the global variables
