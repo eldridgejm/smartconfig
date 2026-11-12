@@ -351,13 +351,14 @@ def _refuse_containers(value: typing.Any) -> typing.Any:
 
     """
     cant = "can't be inserted into a string"
+    if isinstance(value, Template):
+        where = ".".join(value.keypath)
+        raise _InsertedContainer(
+            f'"{where}" is a template, which {cant}. Use it with __use__ instead.'
+        )
     if isinstance(value, _UnresolvedDict):
         where = ".".join(str(k) for k in getattr(value.dict_node, "keypath", ()))
         keys = [str(k) for k in getattr(value.dict_node, "children", {})]
-        if keys == ["__template__"]:
-            raise _InsertedContainer(
-                f'"{where}" is a template, which {cant}. Use it with __use__ instead.'
-            )
         example = f", as in {_key_reference(where, keys[0])}," if keys else ""
         raise _InsertedContainer(
             f'"{where}" is a dict, which {cant}. Use one of its keys{example} or copy '

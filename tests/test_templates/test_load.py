@@ -493,13 +493,18 @@ def test_wrapper_at_the_root_that_is_not_a_template_is_unexpected():
     assert exc.value.keypath == ()
 
 
-def test_wrapper_on_an_any_field_is_kept_as_a_dict():
+def test_wrapper_on_an_any_field_is_a_template():
     schema = {"type": "dict", "required_keys": {"x": {"type": "any"}}}
     cfg: ConfigurationDict = {"x": {"__template__": {"a": "Hi ${ name }"}}}
 
     result = resolve(cfg, schema)
 
-    assert result == {"x": {"__template__": {"a": "Hi ${ name }"}}}
+    t = result["x"]
+    assert isinstance(t, Template)
+    assert t.source == {"a": "Hi ${ name }"}
+    assert t.schema == {"type": "any"}
+    assert t.variables == ()
+    assert t.keypath == ("x",)
 
 
 # invalid template schemas =============================================================

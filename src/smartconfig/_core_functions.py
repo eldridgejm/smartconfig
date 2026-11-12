@@ -5,7 +5,10 @@ separated from _resolve.py for organizational clarity.
 
 """
 
+import copy
+
 from . import types as _types
+from ._templates import Template
 from .exceptions import ResolutionError, UnexpectedTemplateError
 from ._utils import deep_update
 from ._internals import (
@@ -110,13 +113,12 @@ def _fully_resolve(args: _types.FunctionArgs) -> _ConcreteNode:
 
 @_types.Function.new(resolve_input=False)
 def _template(args: _types.FunctionArgs) -> _ConcreteNode:
-    """Return a dict wrapping the input as a template that survives resolution.
+    """Defer the input: it resolves to a :class:`Template` of it, as written.
 
-    Builds ``{"__template__": <input>}`` in RAW mode so that ``${...}``
-    references are preserved and the wrapper dict is not detected as a
-    function call. This happens only on a field of type ``any``: on a template
-    field the wrapper is handled by the resolver (see ``make_node``), and any other
-    field is evaluated now, so a wrapper there is an error.
+    This function is called only on a field of type ``any``, and the Template has
+    schema ``any`` and no variables. On a template field the wrapper is handled by
+    the resolver (see ``make_node``), and any other field is evaluated now, so a
+    wrapper there is an error.
 
     """
     if args.schema.get("type") != "any":
@@ -127,14 +129,13 @@ def _template(args: _types.FunctionArgs) -> _ConcreteNode:
             None,
         )
 
-    node = make_node(
-        {"__template__": args.input},
-        args.schema,
+    return _TemplateNode(
+        args.input,
+        {"type": "template", "schema": {"type": "any"}, "variables": []},
+        args.keypath,
         args.resolution_context,
-        keypath=args.keypath,
-        mode=ResolutionMode.RAW,
+        parent=args._function_call_node,
     )
-    return node
 
 
 @_types.Function.new(resolve_input=False)
@@ -189,15 +190,15 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
         raise ResolutionError(f"Keypath '{keypath_str}' does not exist.", args.keypath)
     resolved = source_node.resolve()
 
-    # The target must be a __template__ function call.
-    if not isinstance(resolved, dict) or "__template__" not in resolved:
+    # The target must be a template (written with __template__).
+    if not isinstance(resolved, Template):
         raise ResolutionError(
-            "The target of 'use' must be a '__template__' function call.",
+            "The target of 'use' must be a template (written with __template__).",
             args.keypath,
         )
 
-    # Unwrap the template contents.
-    spliced_data = resolved["__template__"]
+    # Copy the template's value as written.
+    spliced_data = copy.deepcopy(resolved.source)
 
     # Apply overrides (deep merge).
     if overrides is not None:

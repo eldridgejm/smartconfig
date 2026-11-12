@@ -3,7 +3,7 @@
 import datetime
 import typing
 
-from smartconfig import resolve, exceptions, CORE_FUNCTIONS
+from smartconfig import resolve, exceptions, CORE_FUNCTIONS, Template
 from smartconfig.types import (
     ConfigurationDict,
     ConfigurationList,
@@ -1369,9 +1369,10 @@ def test_fully_resolve_scalar_with_interpolation_and_conversion():
 # template =============================================================================
 
 
-def test_template_resolves_to_itself():
-    """__template__ should resolve to a dict {"__template__": <contents>}, preserving
-    any ${...} references in the contents as literal text."""
+def test_template_resolves_to_a_template():
+    """On an "any" field, __template__ resolves to a Template of schema "any" and
+    no variables, preserving any ${...} references in the contents as literal
+    text."""
     # given
     template = CORE_FUNCTIONS["template"]
 
@@ -1390,12 +1391,15 @@ def test_template_resolves_to_itself():
     result = resolve(cfg, schema, functions={"template": template})
 
     # then
-    assert result == {"foo": {"__template__": "Hello ${name}!"}}
+    assert result == {
+        "foo": Template("Hello ${name}!", schema={"type": "any"}, keypath=["foo"])
+    }
+    assert result["foo"].resolve({"name": "x"}) == "Hello x!"
 
 
 def test_template_survives_multiple_resolutions():
     """Resolving a __template__ and then resolving the output again should produce
-    the same result — the template wrapper persists across resolution boundaries."""
+    the same result: the Template passes through the second resolution."""
     # given
     template = CORE_FUNCTIONS["template"]
 
@@ -1415,7 +1419,8 @@ def test_template_survives_multiple_resolutions():
     second = resolve(first, schema, functions={"template": template})
 
     # then
-    assert first == second == {"foo": {"__template__": "Hello ${name}!"}}
+    assert second == first
+    assert isinstance(second["foo"], Template)
 
 
 # use ==================================================================================
@@ -1458,7 +1463,11 @@ def test_use_works_when_keypath_resolves_to_a_template():
     # then — __use__ resolves "source", gets the template dict, unwraps and resolves it
     assert result == {
         "name": "world",
-        "source": {"__template__": {"greeting": "Hello ${name}!", "farewell": "Bye!"}},
+        "source": Template(
+            {"greeting": "Hello ${name}!", "farewell": "Bye!"},
+            schema={"type": "any"},
+            keypath=["source"],
+        ),
         "result": {"greeting": "Hello world!", "farewell": "Bye!"},
     }
 
@@ -1497,9 +1506,11 @@ def test_use_resolves_template():
     # then — __use__ unwraps the template and resolves it with interpolation.
     assert result == {
         "timeout": 30,
-        "template": {
-            "__template__": {"timeout": "${timeout}", "health_check": "/health"}
-        },
+        "template": Template(
+            {"timeout": "${timeout}", "health_check": "/health"},
+            schema={"type": "any"},
+            keypath=["template"],
+        ),
         "service": {"timeout": 30, "health_check": "/health"},
     }
 
@@ -1539,9 +1550,11 @@ def test_use_applies_destination_schema_for_type_conversion():
 
     # then — strings are converted per the destination schema
     assert result == {
-        "template": {
-            "__template__": {"port": "8080", "debug": "True", "name": "my-service"}
-        },
+        "template": Template(
+            {"port": "8080", "debug": "True", "name": "my-service"},
+            schema={"type": "any"},
+            keypath=["template"],
+        ),
         "result": {"port": 8080, "debug": True, "name": "my-service"},
     }
 
@@ -1577,7 +1590,7 @@ def test_use_performs_only_one_resolve():
     assert result == {
         "x": "world",
         "y": "${x}",
-        "template": {"__template__": "${y}"},
+        "template": Template("${y}", schema={"type": "any"}, keypath=["template"]),
         "result": "${x}",
     }
 
@@ -1609,7 +1622,13 @@ def test_use_with_nested_keypath():
 
     # then
     assert result == {
-        "templates": {"greeting": {"__template__": "hello ${name}"}},
+        "templates": {
+            "greeting": Template(
+                "hello ${name}",
+                schema={"type": "any"},
+                keypath=["templates", "greeting"],
+            )
+        },
         "name": "world",
         "result": "hello world",
     }
@@ -1738,12 +1757,11 @@ def test_use_with_overrides_replaces_template_key():
     # then
     assert result == {
         "name": "Alice",
-        "template": {
-            "__template__": {
-                "greeting": "Hello ${name}!",
-                "farewell": "Goodbye ${name}!",
-            }
-        },
+        "template": Template(
+            {"greeting": "Hello ${name}!", "farewell": "Goodbye ${name}!"},
+            schema={"type": "any"},
+            keypath=["template"],
+        ),
         "messages": {"greeting": "Hi Alice!", "farewell": "Goodbye Alice!"},
     }
 
@@ -1788,7 +1806,9 @@ def test_use_with_overrides_adds_new_key():
     # then
     assert result == {
         "name": "Alice",
-        "template": {"__template__": {"greeting": "Hello ${name}!"}},
+        "template": Template(
+            {"greeting": "Hello ${name}!"}, schema={"type": "any"}, keypath=["template"]
+        ),
         "messages": {"greeting": "Hello Alice!", "farewell": "Goodbye Alice!"},
     }
 
@@ -1832,7 +1852,9 @@ def test_use_with_overrides_interpolates_override_values():
     # then
     assert result == {
         "name": "Bob",
-        "template": {"__template__": {"greeting": "Hello!"}},
+        "template": Template(
+            {"greeting": "Hello!"}, schema={"type": "any"}, keypath=["template"]
+        ),
         "result": {"greeting": "Hi Bob!"},
     }
 
@@ -1874,7 +1896,9 @@ def test_use_with_empty_overrides_is_noop():
     # then
     assert result == {
         "name": "Alice",
-        "template": {"__template__": {"greeting": "Hello ${name}!"}},
+        "template": Template(
+            {"greeting": "Hello ${name}!"}, schema={"type": "any"}, keypath=["template"]
+        ),
         "result": {"greeting": "Hello Alice!"},
     }
 
@@ -1915,7 +1939,9 @@ def test_use_dict_form_without_overrides_key():
     # then
     assert result == {
         "name": "Alice",
-        "template": {"__template__": {"greeting": "Hello ${name}!"}},
+        "template": Template(
+            {"greeting": "Hello ${name}!"}, schema={"type": "any"}, keypath=["template"]
+        ),
         "result": {"greeting": "Hello Alice!"},
     }
 
@@ -2084,7 +2110,11 @@ def test_use_with_overrides_deep_merge():
 
     # then — deep merge should preserve "host" while overriding "port"
     assert result == {
-        "template": {"__template__": {"server": {"host": "localhost", "port": "8080"}}},
+        "template": Template(
+            {"server": {"host": "localhost", "port": "8080"}},
+            schema={"type": "any"},
+            keypath=["template"],
+        ),
         "result": {"server": {"host": "localhost", "port": 9090}},
     }
 
@@ -2366,14 +2396,14 @@ def test_use_and_previous_with_multiple_templates():
 
     # then
     assert result == {
-        "slides_template": {
-            "__template__": {
-                "path": "slides.pdf",
-                "ready": "False",
-                "missing_ok": "True",
-            }
-        },
-        "number_template": {"__template__": "${prev.number + 1}"},
+        "slides_template": Template(
+            {"path": "slides.pdf", "ready": "False", "missing_ok": "True"},
+            schema={"type": "any"},
+            keypath=["slides_template"],
+        ),
+        "number_template": Template(
+            "${prev.number + 1}", schema={"type": "any"}, keypath=["number_template"]
+        ),
         "lectures": [
             {
                 "number": 1,
