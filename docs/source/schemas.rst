@@ -237,7 +237,9 @@ More precisely, a schema dictionary follows the formal grammar below:
 
 .. code:: text
 
-    <SCHEMA> = (<DICT_SCHEMA> | <LIST_SCHEMA> | <VALUE_SCHEMA> | <ANY_SCHEMA>)
+    <SCHEMA> = (
+        <DICT_SCHEMA> | <LIST_SCHEMA> | <VALUE_SCHEMA> | <ANY_SCHEMA> | <TEMPLATE_SCHEMA>
+    )
 
     <DICT_SCHEMA> = {
         "type": "dict",
@@ -263,15 +265,24 @@ More precisely, a schema dictionary follows the formal grammar below:
         "nullable": (True | False)
     }
 
+    <TEMPLATE_SCHEMA> = {
+        "type": "template",
+        "schema": <SCHEMA>,
+        "variables": [<NAME>, ...],
+        ["nullable": (True | False)]
+    }
+
     <SCHEMA_WITH_DEFAULT> = (
         <DICT_SCHEMA_WITH_DEFAULT>
         | <LIST_SCHEMA_WITH_DEFAULT>
         | <VALUE_SCHEMA_WITH_DEFAULT>
         | <ANY_SCHEMA_WITH_DEFAULT>
+        | <TEMPLATE_SCHEMA_WITH_DEFAULT>
     )
 
 The ``DICT_SCHEMA_WITH_DEFAULT``, ``LIST_SCHEMA_WITH_DEFAULT``,
-``VALUE_SCHEMA_WITH_DEFAULT``, and ``ANY_SCHEMA_WITH_DEFAULT`` grammars are the
+``VALUE_SCHEMA_WITH_DEFAULT``, ``ANY_SCHEMA_WITH_DEFAULT`` and
+``TEMPLATE_SCHEMA_WITH_DEFAULT`` grammars are the
 same as their non-default counterparts, but with an additional field named
 `default` that specifies the default value should that part of the
 configuration be missing.
@@ -283,6 +294,13 @@ determined at runtime based on the configuration itself. This is particularly
 useful for handling polymorphic lists or dictionaries where the schema of an
 element depends on its content (e.g., a "type" field).
 (See :ref:`dynamic_schemas_example` for an example).
+
+A **template schema** marks a field whose value is evaluated later, possibly
+many times: its value is kept as written and resolves to a
+:class:`smartconfig.Template`. ``"schema"`` describes the value once it is
+evaluated, and ``"variables"`` names what must be given each time (it may be
+empty). The inner schema may not have a top-level default; put the default on
+the template schema. (See :ref:`template_fields_example`.)
 
 Schemas can be validated using the :func:`smartconfig.validate_schema`
 function.
@@ -552,3 +570,166 @@ Output:
       'name': 'Bob',
       'rank': 'assistant professor',
       'type': 'professor'}]
+
+
+.. _template_fields_example:
+
+Example 8: Template fields
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Some values can only be evaluated later, by whoever uses the configuration:
+for example, a page that is made once for each homework. A field whose schema
+has ``"type": "template"`` holds such a value. Its value is written in a
+``__template__`` wrapper, kept as written, and resolves to a
+:class:`smartconfig.Template`:
+
+.. testcode::
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "course": {"type": "string"},
+            "page": {
+                "type": "template",
+                "schema": {
+                    "type": "dict",
+                    "required_keys": {
+                        "title": {"type": "string"},
+                        "points": {"type": "integer"},
+                    },
+                },
+                "variables": ["publication"],
+            },
+        },
+    }
+
+    config = {
+        "course": "DSC 40B",
+        "page": {
+            "__template__": {
+                "title": "${ course }: ${ publication.name }",
+                "points": "${ publication.points * 2 }",
+            }
+        },
+    }
+
+    result = smartconfig.resolve(config, schema)
+    page = result["page"]
+    print(page)
+    print(page.source)
+
+Output:
+
+.. testoutput::
+
+    Template(at "page", variables: publication)
+    {'points': '${ publication.points * 2 }',
+     'title': '${ course }: ${ publication.name }'}
+
+:meth:`Template.resolve <smartconfig.Template.resolve>` evaluates the template:
+interpolation, function calls, type conversion and defaults, as
+:func:`smartconfig.resolve` does. It takes a mapping of the names the
+template's strings may use. Every name in ``variables`` must be given; other
+names may be given too. Here, ``course`` is not part of the template, so it is
+passed in:
+
+.. testcode::
+
+    print(
+        page.resolve(
+            {"publication": {"name": "Homework 1", "points": 5}, "course": "DSC 40B"}
+        )
+    )
+
+Output:
+
+.. testoutput::
+
+    {'points': 10, 'title': 'DSC 40B: Homework 1'}
+
+**What is checked when the configuration is resolved.** The value must be
+written with ``__template__`` (or copied with :ref:`__use__ <func-use>`):
+otherwise :class:`exceptions.TemplateRequiredError <smartconfig.exceptions.TemplateRequiredError>`
+is raised. Its structure is checked against the inner schema: required and
+unexpected keys, dicts versus lists, nulls. Nothing in it is evaluated, and
+function calls inside it are not checked.
+
+.. testcode::
+
+    bad = {"course": "DSC 40B", "page": {"__template__": {"title": "Homework"}}}
+
+    try:
+        smartconfig.resolve(bad, schema)
+    except smartconfig.exceptions.ResolutionError as exc:
+        print(exc.keypath)
+        print(exc.reason)
+
+Output:
+
+.. testoutput::
+
+    ('page', 'points')
+    'Dictionary is missing required key "points".'
+
+**What is checked when the template is resolved.** The names its strings use.
+A name that is not defined raises
+:class:`exceptions.UndefinedNameError <smartconfig.exceptions.UndefinedNameError>`,
+which suggests a close name or lists the names that were available:
+
+.. testcode::
+
+    try:
+        page.resolve({"publication": {"name": "Homework 1", "points": 5}})
+    except smartconfig.exceptions.UndefinedNameError as exc:
+        print(exc.keypath)
+        print(exc.available)
+
+Output:
+
+.. testoutput::
+
+    ('page', 'title')
+    ('title', 'points', 'publication')
+
+**Nested templates.** A template's inner schema may itself contain template
+fields. When the outer template is resolved, a nested one comes back as a
+:class:`smartconfig.Template` whose ``variables`` are the outer ones followed by
+its own; resolve it by giving all of them.
+
+**Missing, null and default values.**
+
+.. list-table::
+   :widths: 30 35 35
+   :header-rows: 1
+
+   * - Written
+     - Schema
+     - Resolved value
+   * - key absent
+     - optional, no ``default``
+     - key absent
+   * - key absent
+     - ``"default": None``, ``"nullable": True``
+     - ``None``
+   * - key absent
+     - ``"default": X`` (X not ``None``)
+     - a ``Template`` of ``X`` (written without a wrapper)
+   * - ``None``
+     - ``"nullable": True``
+     - ``None``
+   * - ``{"__template__": v}``
+     - any template schema
+     - a ``Template`` of ``v``
+
+**Other details.**
+
+- A ``__template__`` wrapper on a field of type ``"any"`` also resolves to a
+  ``Template``, with schema ``{"type": "any"}`` and no variables. On a field of
+  any other type it is an error
+  (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`).
+- A dynamic schema inside a template is called with the value as written, both
+  when the configuration is resolved and when the template is.
+- :meth:`Template.to_json <smartconfig.Template.to_json>` and
+  :meth:`Template.from_json <smartconfig.Template.from_json>` convert a template to
+  and from JSON-compatible data (without its schema, which may contain
+  functions).

@@ -34,13 +34,14 @@ src/smartconfig/
 ├── __init__.py            # Public API: resolve(), DEFAULT_FUNCTIONS, DEFAULT_CONVERTERS
 ├── _resolve.py            # resolve() function, defaults, function flattening
 ├── _internals.py          # Node types, unresolved containers, make_node() (see docstring)
-├── _core_functions.py     # Core functions: if, let, raw, resolve, fully_resolve, splice, use
+├── _core_functions.py     # Core functions: if, let, raw, resolve, fully_resolve, splice, template, use
+├── _templates.py          # Template class (the resolved value of a template field)
 ├── _prototypes.py         # Prototype class-based schemas
 ├── _schemas.py            # Schema validation
 ├── _utils.py              # Shared utilities (deep_update)
 ├── converters.py          # Type converters (int, float, bool, date, datetime)
 ├── types.py               # Type definitions and protocols
-├── exceptions.py          # Error, InvalidSchemaError, ResolutionError, ConversionError
+├── exceptions.py          # Error, InvalidSchemaError, ResolutionError (and subclasses), ConversionError
 └── stdlib/                # Namespaced built-in functions
     ├── __init__.py         # STDLIB_FUNCTIONS aggregation
     ├── datetime.py         # datetime.at, datetime.offset, datetime.first, datetime.parse
@@ -54,12 +55,13 @@ tests/
 ├── test_validate_schema.py     # Schema validation tests
 ├── test_prototypes/            # Prototype tests
 ├── test_resolve/               # Resolution tests
-└── test_stdlib/                # Stdlib function tests
+├── test_stdlib/                # Stdlib function tests
+└── test_templates/             # Template field and Template class tests
 ```
 
 ## Architecture
 
-1. **Tree-Based Processing**: Configurations become typed node trees (`_DictNode`, `_ListNode`, `_ValueNode`, `_FunctionCallNode`) defined in `_internals.py`
+1. **Tree-Based Processing**: Configurations become typed node trees (`_DictNode`, `_ListNode`, `_ValueNode`, `_FunctionCallNode`, `_TemplateNode`) defined in `_internals.py`
 2. **Lazy Evaluation**: Unresolved containers (`_UnresolvedDict`, `_UnresolvedList`) defer computation until accessed
 3. **Three-Phase Pipeline**: Build tree → Interpolate strings (Jinja2) → Convert types
 4. **Schema-Driven**: Schemas guide structure validation and type conversion

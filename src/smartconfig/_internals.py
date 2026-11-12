@@ -87,6 +87,10 @@ looks for "foo" in a custom context object that searches three sources, in this 
     Jinja2 looks for it in a dictionary of global variables that can be passed to the
     resolve() function.
 
+If the name is found in none of these (nor among Jinja's own names, like ``range``), it
+is an _UndefinedName, which knows the names that were available; using it raises an
+UndefinedNameError that suggests a close name or lists them.
+
 Local Variables
 ~~~~~~~~~~~~~~~
 
@@ -207,6 +211,28 @@ When resolve() is called on this configuration, the following major steps occur:
     8. The _DictNode representing "bar" is now fully resolved, and the _DictNode
        representing the root of the configuration tree is also fully resolved. The
        resolved configuration is returned from resolve().
+
+Template Fields
+---------------
+
+A field whose schema has ``"type": "template"`` is represented by a _TemplateNode
+(built by _make_template_node(), called from make_node()). Its value, written in a
+``__template__`` wrapper or given by a ``__use__``, is not resolved: the node
+resolves to a :class:`smartconfig.Template` holding the value as written. Like a
+_FunctionCallNode, it is evaluated lazily and cached. Evaluating it:
+
+    1. replaces each ``__use__`` in the value with the fragment it names (as written),
+       since copying needs the document's root;
+    2. builds a node tree of the value against the inner schema, which checks its
+       structure, and walks that tree without resolving it, evaluating nested
+       template fields and rejecting a ``__template__`` wrapper anywhere else;
+    3. returns a Template that remembers the resolution options, whose variables are
+       those of the enclosing templates followed by its own.
+
+A ``__template__`` wrapper on a field of type ``any`` also gives a _TemplateNode (with
+an ``any`` inner schema and no variables); see ``_template()`` in _core_functions.py.
+Template.resolve() (in _templates.py) builds and resolves a new tree from the
+template's source, with the given names as the global variables.
 
 """
 
@@ -1744,6 +1770,7 @@ def _use_fragment(
                 "dictionary.",
                 keypath,
             )
+        assert isinstance(overrides, dict)  # checked when the input was parsed
         fragment = deep_update([fragment, overrides])
 
     return fragment
@@ -1927,8 +1954,7 @@ class _TemplateNode(_Node):
 
     def resolve(self) -> _types.Configuration:
         """Return the Template for this field."""
-        # Template is not (yet) part of the Configuration type
-        return typing.cast(_types.Configuration, self.evaluate())
+        return self.evaluate()
 
 
 def _make_template_node(

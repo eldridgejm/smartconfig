@@ -6,7 +6,8 @@ Core API
 
 The core functionality of `smartconfig` is exposed through two main functions:
 :func:`resolve` for resolving configurations and :func:`validate_schema` for
-checking the validity of schemas.
+checking the validity of schemas. A resolved template field is a
+:class:`Template`.
 
 .. function:: resolve(...) -> Configuration or Prototype
 
@@ -102,6 +103,9 @@ checking the validity of schemas.
 
 .. autofunction:: validate_schema
 
+.. autoclass:: Template
+   :members: resolve, to_json, from_json
+
 Constants
 ---------
 
@@ -120,7 +124,7 @@ Constants
 .. data:: CORE_FUNCTIONS
 
     A dictionary containing only the core functions (``if``, ``let``,
-    ``raw``, ``resolve``, ``fully_resolve``, ``splice``, ``use``).
+    ``raw``, ``resolve``, ``fully_resolve``, ``splice``, ``template``, ``use``).
 
 .. data:: STDLIB_FUNCTIONS
 

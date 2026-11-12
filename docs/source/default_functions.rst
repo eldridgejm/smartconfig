@@ -45,7 +45,7 @@ The default functions are summarized in the tables below:
    * - :ref:`__splice__ <func-splice>`
      - Copy another part of the configuration
    * - :ref:`__template__ <func-template>`
-     - Define a reusable template
+     - Mark a value to be evaluated later (a template)
    * - :ref:`__use__ <func-use>`
      - Copy a template with optional overrides
 
@@ -377,15 +377,23 @@ This produces:
 template
 ~~~~~~~~
 
-Defines a reusable template that survives resolution. Unlike ``__raw__``, which
-unwraps on resolution (producing plain data), ``__template__`` resolves to a
-dictionary ``{"__template__": <contents>}`` that preserves the wrapper. This
-means templates persist across resolution boundaries — if a resolved
-configuration is serialized and then resolved again, templates are still
-recognized. To instantiate a template, use :ref:`__use__ <func-use>`.
+Marks a value as a template: it is kept as written (``${...}`` references are
+not interpolated and function calls are not evaluated) and resolves to a
+:class:`smartconfig.Template`, which can be evaluated later with
+:meth:`Template.resolve <smartconfig.Template.resolve>`, or copied elsewhere in
+the configuration with :ref:`__use__ <func-use>`.
 
-**Input**: Any configuration. The input is wrapped in ``{"__template__": ...}``
-and ``${...}`` references are preserved as literal text.
+- On a field whose schema is a template schema, the wrapper is required, and
+  the ``Template`` gets that schema's inner schema and variables. See
+  :ref:`template_fields_example`.
+- On a field of type ``"any"``, it is a reusable fragment: the ``Template`` has
+  schema ``{"type": "any"}`` and no variables.
+- On a field of any other type it is an error
+  (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`),
+  since that field is evaluated now. So is a wrapper inside a template, except
+  on a nested template field.
+
+**Input**: Any configuration, kept as written.
 
 **Example**:
 
@@ -406,6 +414,7 @@ and ``${...}`` references are preserved as literal text.
 
     result = smartconfig.resolve(config, schema)
     print(result)
+    print(result["service_template"].source)
 
 This produces:
 
@@ -413,12 +422,10 @@ This produces:
 
     {'port': 8080,
      'service_template': Template(at "service_template", variables: none)}
+    {'host': 'localhost', 'port': '${port}'}
 
-The value becomes a :class:`smartconfig.Template` whose source is kept as written:
-the ``${port}`` reference is not interpolated.
-
-Resolving the output a second time produces the same result — the template is
-idempotent:
+The ``${port}`` reference is kept as written. Resolving the output a second time
+produces the same result, since a ``Template`` passes through unchanged:
 
 .. testcode:: python
 
@@ -430,9 +437,20 @@ idempotent:
 use
 ~~~
 
-Copies and resolves a template from elsewhere in the configuration, with
-optional overrides. The target keypath must point to a ``__template__`` (or to
-something that resolves to a ``{"__template__": ...}`` dictionary).
+Copies a template from elsewhere in the configuration, with optional overrides.
+The target keypath must point to a template: a value written with
+:ref:`__template__ <func-template>`, on a field of type ``"any"`` or on a
+template field.
+
+Where the copy goes decides what happens to it:
+
+- On an ordinary field, the template's value (with any overrides merged in) is
+  resolved under the destination's schema, once.
+- On a template field, or anywhere inside a template's value, the copy is made
+  when the configuration is resolved and kept as written: the template's
+  ``source`` contains the copied value, which is checked like any template
+  value. A ``__use__`` as the whole value of a template field takes the place
+  of the ``__template__`` wrapper.
 
 **Input**: Either a string keypath (simple form) or a dictionary with the following keys:
 
@@ -524,6 +542,50 @@ fields at each use site:
 
     {'defaults': Template(at "defaults", variables: none),
      'server': {'host': 'localhost', 'port': 9090}}
+
+**Example (on a template field)**:
+
+On a template field the copy is kept as written, overrides included, and
+evaluated later with :meth:`Template.resolve <smartconfig.Template.resolve>`:
+
+.. testcode:: python
+
+    config = {
+        "fragments": {
+            "page": {"__template__": {"title": "${ publication }", "points": "10"}}
+        },
+        "homework_page": {
+            "__use__": {
+                "template": "fragments.page",
+                "overrides": {"points": "${ publication.points }"},
+            }
+        },
+    }
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "fragments": {"type": "any"},
+            "homework_page": {
+                "type": "template",
+                "schema": {
+                    "type": "dict",
+                    "required_keys": {
+                        "title": {"type": "string"},
+                        "points": {"type": "integer"},
+                    },
+                },
+                "variables": ["publication"],
+            },
+        },
+    }
+
+    page = smartconfig.resolve(config, schema)["homework_page"]
+    print(page.source)
+
+.. testoutput:: python
+
+    {'points': '${ publication.points }', 'title': '${ publication }'}
 
 
 List Operations

@@ -12,5 +12,14 @@ Exceptions
 .. autoexception:: ResolutionError
    :show-inheritance:
 
+.. autoexception:: TemplateRequiredError
+   :show-inheritance:
+
+.. autoexception:: UnexpectedTemplateError
+   :show-inheritance:
+
+.. autoexception:: UndefinedNameError
+   :show-inheritance:
+
 .. autoexception:: ConversionError
    :show-inheritance:
