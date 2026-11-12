@@ -38,6 +38,19 @@ def test_function_call_at_root_raises_if_circular_reference():
         resolve(cfg, schema, functions={"double": double})
 
 
+def test_function_call_at_root_can_use_a_global_variable_in_its_input():
+    # while the root function call is evaluated, it has no keys to look names up
+    # in, so names in its input come from the global variables
+    schema: Schema = {"type": "string"}
+    cfg: ConfigurationDict = {
+        "__if__": {"condition": "${ flag }", "then": "yes", "else": "no"}
+    }
+
+    result = resolve(cfg, schema, global_variables={"flag": True})
+
+    assert result == "yes"
+
+
 def test_function_call_at_root_without_circular_reference():
     # given
     schema: Schema = {

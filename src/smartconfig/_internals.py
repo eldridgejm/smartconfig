@@ -1269,11 +1269,18 @@ class _ValueNode(_Node):
                 except KeyError:
                     pass
 
-                # then try the root of the configuration tree
-                try:
-                    return root_container[key]
-                except (KeyError, IndexError):
-                    pass
+                # then try the root of the configuration tree, unless the root is a
+                # function call still being evaluated (we are in its input): it
+                # has no keys yet, and looking one up would be circular
+                root = this_node.root
+                if not (
+                    isinstance(root, _FunctionCallNode)
+                    and root._evaluated is _FunctionCallNode.PENDING
+                ):
+                    try:
+                        return root_container[key]
+                    except (KeyError, IndexError):
+                        pass
 
                 # then try the global variables
                 try:

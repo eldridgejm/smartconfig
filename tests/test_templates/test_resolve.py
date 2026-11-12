@@ -62,6 +62,17 @@ def test_resolve_evaluates_function_calls():
     assert template.resolve({"flag": False}) == {"answer": "no"}
 
 
+def test_a_template_whose_value_is_a_function_call_can_use_its_variables():
+    template = Template(
+        {"__if__": {"condition": "${ flag }", "then": "yes", "else": "no"}},
+        schema={"type": "string"},
+        variables=["flag"],
+    )
+
+    assert template.resolve({"flag": True}) == "yes"
+    assert template.resolve({"flag": False}) == "no"
+
+
 def test_resolving_twice_gives_independent_results():
     template = Template(
         {"tags": ["${ a }"]},
