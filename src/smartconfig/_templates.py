@@ -47,8 +47,6 @@ class Template:
         ``{"type": "any"}``.
     variables : Iterable[str]
         The names that must be given each time the template is evaluated.
-    globals : Iterable[str]
-        Other names the template may use.
     keypath : Iterable[str]
         The keypath where the template was written. Errors raised while evaluating
         the template are reported relative to it.
@@ -75,9 +73,6 @@ class Template:
     variables : tuple[str, ...]
         Names that must be given when evaluating: those of enclosing templates,
         then the template's own.
-    globals : tuple[str, ...]
-        Other names the template may use: those of enclosing templates, then the
-        template's own.
     keypath : :class:`types.KeyPath`
         Where the template was written.
 
@@ -90,7 +85,6 @@ class Template:
         source: _types.Configuration,
         schema: _types.Schema | _types.DynamicSchema = {"type": "any"},
         variables: Iterable[str] = (),
-        globals: Iterable[str] = (),
         keypath: Iterable[str] = (),
         *,
         converters: Mapping[str, Callable] = _DEFAULT,
@@ -102,7 +96,6 @@ class Template:
         self.source = copy.deepcopy(source)
         self.schema = schema
         self.variables: tuple[str, ...] = tuple(variables)
-        self.globals: tuple[str, ...] = tuple(globals)
         self.keypath: _types.KeyPath = tuple(keypath)
 
         # the options used by .resolve(); shared (not copied) by __deepcopy__
@@ -126,14 +119,12 @@ class Template:
         Returns
         -------
         dict[str, Any]
-            A dict with keys ``"source"``, ``"variables"``, ``"globals"`` and
-            ``"keypath"``.
+            A dict with keys ``"source"``, ``"variables"`` and ``"keypath"``.
 
         """
         return {
             "source": copy.deepcopy(self.source),
             "variables": list(self.variables),
-            "globals": list(self.globals),
             "keypath": list(self.keypath),
         }
 
@@ -168,7 +159,6 @@ class Template:
             data["source"],
             schema,
             variables=data.get("variables", ()),
-            globals=data.get("globals", ()),
             keypath=data.get("keypath", ()),
             **options,
         )
@@ -181,7 +171,6 @@ class Template:
         new.source = copy.deepcopy(self.source, memo)
         new.schema = self.schema
         new.variables = self.variables
-        new.globals = self.globals
         new.keypath = self.keypath
         new._options = self._options
         return new
@@ -193,7 +182,6 @@ class Template:
             self.source == other.source
             and self.schema == other.schema
             and self.variables == other.variables
-            and self.globals == other.globals
             and self.keypath == other.keypath
         )
 

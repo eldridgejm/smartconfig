@@ -19,21 +19,18 @@ def test_constructor_defaults():
     assert t.source == "Hi ${ name }"
     assert t.schema == {"type": "any"}
     assert t.variables == ()
-    assert t.globals == ()
     assert t.keypath == ()
 
 
-def test_variables_globals_and_keypath_are_tuples():
+def test_variables_and_keypath_are_tuples():
     t = Template(
         "Hi ${ name }",
         schema={"type": "string"},
         variables=["name"],
-        globals=["vars", "course"],
         keypath=["a", "b"],
     )
 
     assert t.variables == ("name",)
-    assert t.globals == ("vars", "course")
     assert t.keypath == ("a", "b")
     assert t.schema == {"type": "string"}
 
@@ -51,15 +48,15 @@ def test_source_is_a_deep_copy_of_what_was_passed():
 
 def test_options_are_keyword_only():
     with raises(TypeError):
-        Template("x", {"type": "any"}, (), (), (), {})  # type: ignore[misc]
+        Template("x", {"type": "any"}, (), (), {})  # type: ignore[misc]
 
 
 # equality, hashing, repr ==============================================================
 
 
 def test_equal_templates_compare_equal():
-    a = Template({"x": "${ y }"}, {"type": "any"}, ["y"], ["g"], ["k"])
-    b = Template({"x": "${ y }"}, {"type": "any"}, ["y"], ["g"], ["k"])
+    a = Template({"x": "${ y }"}, {"type": "any"}, ["y"], ["k"])
+    b = Template({"x": "${ y }"}, {"type": "any"}, ["y"], ["k"])
 
     assert a == b
 
@@ -70,10 +67,6 @@ def test_templates_with_different_source_are_not_equal():
 
 def test_templates_with_different_variables_are_not_equal():
     assert Template("a", variables=["x"]) != Template("a", variables=["y"])
-
-
-def test_templates_with_different_globals_are_not_equal():
-    assert Template("a", globals=["x"]) != Template("a", globals=["y"])
 
 
 def test_templates_with_different_keypath_are_not_equal():
@@ -113,7 +106,6 @@ def test_to_json_is_json_serializable():
         {"title": "${ name }", "items": [1, 2.5, True, None]},
         schema={"type": "any"},
         variables=["name"],
-        globals=["vars"],
         keypath=["a", "b"],
     )
 
@@ -122,7 +114,6 @@ def test_to_json_is_json_serializable():
     assert data == {
         "source": {"title": "${ name }", "items": [1, 2.5, True, None]},
         "variables": ["name"],
-        "globals": ["vars"],
         "keypath": ["a", "b"],
     }
     assert json.loads(json.dumps(data)) == data
@@ -142,7 +133,6 @@ def test_from_json_round_trip_with_schema():
         {"title": "${ name }"},
         schema={"type": "dict", "required_keys": {"title": {"type": "string"}}},
         variables=["name"],
-        globals=["vars"],
         keypath=["a", "b"],
     )
 

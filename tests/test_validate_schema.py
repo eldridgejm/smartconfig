@@ -165,12 +165,11 @@ def test_template_type_with_empty_variables():
     validate_schema(schema)
 
 
-def test_template_type_with_globals_and_nullable():
+def test_template_type_with_nullable():
     schema = {
         "type": "template",
         "schema": {"type": "string"},
         "variables": ["publication"],
-        "globals": ["vars", "course"],
         "nullable": True,
     }
     validate_schema(schema)
@@ -272,32 +271,17 @@ def test_template_type_raises_if_a_variable_is_not_an_identifier():
     assert exc.value.keypath == ("variables", "1")
 
 
-def test_template_type_raises_if_globals_is_not_a_list_of_identifiers():
+def test_template_type_raises_if_globals_is_given():
+    # names other than the variables are not declared
     schema = {
         "type": "template",
         "schema": {"type": "string"},
         "variables": [],
-        "globals": ["vars", "1st"],
+        "globals": ["vars"],
     }
 
-    with raises(exceptions.InvalidSchemaError) as exc:
+    with raises(exceptions.InvalidSchemaError):
         validate_schema(schema)
-
-    assert exc.value.keypath == ("globals", "1")
-
-
-def test_template_type_raises_if_globals_is_not_a_list():
-    schema = {
-        "type": "template",
-        "schema": {"type": "string"},
-        "variables": [],
-        "globals": {"vars": 1},
-    }
-
-    with raises(exceptions.InvalidSchemaError) as exc:
-        validate_schema(schema)
-
-    assert exc.value.keypath == ("globals",)
 
 
 def test_template_type_validates_inner_schema_recursively():

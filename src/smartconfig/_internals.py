@@ -1589,8 +1589,8 @@ class _FunctionCallNode(_Node):
 
 def _template_schema_parts(
     schema: _types.Schema, keypath: _types.KeyPath
-) -> tuple[_types.Schema | _types.DynamicSchema, tuple[str, ...], tuple[str, ...]]:
-    """The inner schema, variables and globals of a template schema.
+) -> tuple[_types.Schema | _types.DynamicSchema, tuple[str, ...]]:
+    """The inner schema and variables of a template schema.
 
     Static schemas are not validated by resolve(), so the keys are read defensively.
 
@@ -1605,11 +1605,7 @@ def _template_schema_parts(
             raise InvalidSchemaError(
                 f'A template schema must have a "{key}" key.', keypath + (key,)
             )
-    return (
-        schema["schema"],
-        tuple(schema["variables"]),
-        tuple(schema.get("globals", ())),
-    )
+    return schema["schema"], tuple(schema["variables"])
 
 
 class _TemplateNode(_Node):
@@ -1629,8 +1625,6 @@ class _TemplateNode(_Node):
         The schema of the template's value once evaluated.
     variables : tuple[str, ...]
         The variables declared by this template field.
-    globals : tuple[str, ...]
-        The globals declared by this template field.
     keypath : KeyPath
         The keypath to this node in the configuration tree.
     resolution_context : ResolutionContext
@@ -1658,7 +1652,7 @@ class _TemplateNode(_Node):
         super().__init__(parent, local_variables)
         self.value = value
         self.template_schema = template_schema
-        self.inner_schema, self.variables, self.globals = _template_schema_parts(
+        self.inner_schema, self.variables = _template_schema_parts(
             template_schema, keypath
         )
         self.keypath = keypath
@@ -1702,7 +1696,6 @@ class _TemplateNode(_Node):
             self.value,
             self.inner_schema,
             variables=self.variables,
-            globals=self.globals,
             keypath=self.keypath,
         )
         return self._evaluated
@@ -1762,7 +1755,7 @@ def _make_template_node(
         If the value is an invalid function call.
 
     """
-    _, variables, _ = _template_schema_parts(schema, keypath)
+    _, variables = _template_schema_parts(schema, keypath)
 
     if isinstance(cfg, Template):
         return _TemplateNode.from_template(

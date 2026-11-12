@@ -213,7 +213,6 @@ def _validate_template_schema(
             "type": "template",
             "schema": <SCHEMA>,
             "variables": [<NAME>, ...],
-            ["globals": [<NAME>, ...]],
             ["nullable": (True | False)]
         }
 
@@ -224,14 +223,12 @@ def _validate_template_schema(
     _check_keys(
         template_schema.keys(),
         required={"type", "schema", "variables"},
-        optional={"globals", "nullable"},
+        optional={"nullable"},
         keypath=keypath,
         allow_default=allow_default,
     )
 
     _validate_names(template_schema["variables"], keypath + ("variables",))
-    if "globals" in template_schema:
-        _validate_names(template_schema["globals"], keypath + ("globals",))
 
     validate_schema(
         template_schema["schema"],

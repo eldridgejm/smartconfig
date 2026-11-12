@@ -30,28 +30,8 @@ def test_template_field_resolves_to_a_template():
     assert isinstance(t, Template)
     assert t.source == "Hi ${ name }"
     assert t.variables == ("name",)
-    assert t.globals == ()
     assert t.keypath == ("x",)
     assert t.schema == {"type": "string"}
-
-
-def test_template_field_records_its_globals():
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "x": {
-                "type": "template",
-                "schema": {"type": "string"},
-                "variables": ["name"],
-                "globals": ["vars", "course"],
-            }
-        },
-    }
-    cfg: ConfigurationDict = {"x": {"__template__": "Hi ${ name }"}}
-
-    result = resolve(cfg, schema)
-
-    assert result["x"].globals == ("vars", "course")
 
 
 def test_dict_valued_template_is_kept_as_written():
