@@ -6,7 +6,7 @@ separated from _resolve.py for organizational clarity.
 """
 
 from . import types as _types
-from .exceptions import ResolutionError
+from .exceptions import ResolutionError, UnexpectedTemplateError
 from ._utils import deep_update
 from ._internals import (
     ResolutionMode,
@@ -114,9 +114,19 @@ def _template(args: _types.FunctionArgs) -> _ConcreteNode:
 
     Builds ``{"__template__": <input>}`` in RAW mode so that ``${...}``
     references are preserved and the wrapper dict is not detected as a
-    function call.
+    function call. This happens only on a field of type ``any``: on a template
+    field the wrapper is handled by the resolver (see ``make_node``), and any other
+    field is evaluated now, so a wrapper there is an error.
 
     """
+    if args.schema.get("type") != "any":
+        raise UnexpectedTemplateError(
+            "This field is not a template: it is evaluated now. "
+            "Remove the __template__ wrapper.",
+            args.keypath,
+            None,
+        )
+
     node = make_node(
         {"__template__": args.input},
         args.schema,

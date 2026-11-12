@@ -457,6 +457,51 @@ def test_preserve_type_with_a_template_at_the_root():
     assert isinstance(result, Template)
 
 
+# wrappers on fields that are not templates ============================================
+
+
+@pytest.mark.parametrize(
+    "field_schema",
+    [
+        {"type": "string"},
+        {"type": "integer"},
+        {"type": "dict", "required_keys": {"a": {"type": "string"}}},
+        {"type": "list", "element_schema": {"type": "string"}},
+    ],
+    ids=["string", "integer", "dict", "list"],
+)
+def test_wrapper_on_a_field_that_is_not_a_template_is_unexpected(field_schema):
+    schema = {"type": "dict", "required_keys": {"x": field_schema}}
+    cfg: ConfigurationDict = {"x": {"__template__": "Hi ${ name }"}}
+
+    with raises(exceptions.UnexpectedTemplateError) as exc:
+        resolve(cfg, schema)
+
+    assert isinstance(exc.value, exceptions.ResolutionError)
+    assert exc.value.keypath == ("x",)
+    assert exc.value.enclosing is None
+    assert exc.value.reason == (
+        "This field is not a template: it is evaluated now. "
+        "Remove the __template__ wrapper."
+    )
+
+
+def test_wrapper_at_the_root_that_is_not_a_template_is_unexpected():
+    with raises(exceptions.UnexpectedTemplateError) as exc:
+        resolve({"__template__": "Hi ${ name }"}, {"type": "string"})
+
+    assert exc.value.keypath == ()
+
+
+def test_wrapper_on_an_any_field_is_kept_as_a_dict():
+    schema = {"type": "dict", "required_keys": {"x": {"type": "any"}}}
+    cfg: ConfigurationDict = {"x": {"__template__": {"a": "Hi ${ name }"}}}
+
+    result = resolve(cfg, schema)
+
+    assert result == {"x": {"__template__": {"a": "Hi ${ name }"}}}
+
+
 # invalid template schemas =============================================================
 
 

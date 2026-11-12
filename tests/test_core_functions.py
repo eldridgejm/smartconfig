@@ -1418,48 +1418,6 @@ def test_template_survives_multiple_resolutions():
     assert first == second == {"foo": {"__template__": "Hello ${name}!"}}
 
 
-def test_template_with_content_schema():
-    """The schema can describe what a template must contain by using a dict schema
-    with a __template__ required key whose value schema specifies the expected
-    structure of the template contents."""
-    # given
-    template = CORE_FUNCTIONS["template"]
-
-    schema: Schema = {
-        "type": "dict",
-        "required_keys": {
-            "my_template": {
-                "type": "dict",
-                "required_keys": {
-                    "__template__": {
-                        "type": "dict",
-                        "required_keys": {
-                            "host": {"type": "string"},
-                            "port": {"type": "string"},
-                        },
-                    },
-                },
-            },
-        },
-    }
-
-    cfg: ConfigurationDict = {
-        "my_template": {
-            "__template__": {"host": "localhost", "port": "${default_port}"}
-        },
-    }
-
-    # when
-    result = resolve(cfg, schema, functions={"template": template})
-
-    # then — structure is validated, ${...} references are preserved
-    assert result == {
-        "my_template": {
-            "__template__": {"host": "localhost", "port": "${default_port}"}
-        },
-    }
-
-
 # use ==================================================================================
 
 
