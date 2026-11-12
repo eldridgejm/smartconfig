@@ -412,10 +412,10 @@ This produces:
 .. testoutput:: python
 
     {'port': 8080,
-     'service_template': {'__template__': {'host': 'localhost', 'port': '${port}'}}}
+     'service_template': Template(at "service_template", variables: none)}
 
-The template wrapper is preserved, and the ``${port}`` reference is kept as
-literal text.
+The value becomes a :class:`smartconfig.Template` whose source is kept as written:
+the ``${port}`` reference is not interpolated.
 
 Resolving the output a second time produces the same result — the template is
 idempotent:
@@ -477,12 +477,12 @@ of the destination:
 
 .. testoutput:: python
 
-    {'greeting_template': {'__template__': 'Hello, ${name}!'},
+    {'greeting_template': Template(at "greeting_template", variables: none),
      'message': 'Hello, Alice!',
      'name': 'Alice'}
 
 Notice that the template itself remains wrapped (the ``${name}`` reference is
-preserved inside the ``__template__`` wrapper), but the copy produced by
+kept as written in the :class:`smartconfig.Template`), but the copy produced by
 ``__use__`` has ``${name}`` resolved to ``"Alice"``.
 
 **Example (with overrides)**:
@@ -522,7 +522,7 @@ fields at each use site:
 
 .. testoutput:: python
 
-    {'defaults': {'__template__': {'host': 'localhost', 'port': 8080}},
+    {'defaults': Template(at "defaults", variables: none),
      'server': {'host': 'localhost', 'port': 9090}}
 
 
