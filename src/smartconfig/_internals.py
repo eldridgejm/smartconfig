@@ -219,6 +219,7 @@ from typing import (
     TypedDict,
 )
 import abc
+import copy
 import difflib
 import enum
 import typing
@@ -235,6 +236,7 @@ from .exceptions import (
 )
 from ._schemas import validate_schema as _validate_schema
 from ._templates import Template
+from ._utils import deep_update
 
 
 class ResolutionMode(enum.Enum):
@@ -1621,6 +1623,78 @@ def _template_schema_parts(
     return schema["schema"], tuple(schema["variables"])
 
 
+def _use_fragment(
+    use_input: _types.Configuration, root: _ConcreteNode, keypath: _types.KeyPath
+) -> _types.Configuration:
+    """The value that a ``__use__`` stands for: its target's source, as written.
+
+    ``use_input`` is either a keypath string or a dict with a ``"template"`` keypath
+    and optional ``"overrides"``, which are deep-merged (as written) on top of the
+    target's source. The target must resolve to a :class:`Template`.
+
+    Raises
+    ------
+    ResolutionError
+        If the input is malformed, the target does not exist or is not a template,
+        or overrides are given for a template that is not a dict.
+
+    """
+    # parse the input: a keypath string, or a dict with "template" and "overrides"
+    if isinstance(use_input, str):
+        target = use_input
+        overrides = None
+    elif isinstance(use_input, dict):
+        if "template" not in use_input:
+            raise ResolutionError(
+                "Dict input to 'use' must contain a 'template' key.", keypath
+            )
+        target_ = use_input["template"]
+        if not isinstance(target_, str):
+            raise ResolutionError(
+                "The 'template' value in 'use' must be a string.", keypath
+            )
+        target = target_
+        overrides = use_input.get("overrides")
+        if overrides is not None and not isinstance(overrides, dict):
+            raise ResolutionError(
+                "The 'overrides' value in 'use' must be a dictionary.", keypath
+            )
+        extra = set(use_input.keys()) - {"template", "overrides"}
+        if extra:
+            raise ResolutionError(f"Unexpected keys in 'use': {extra}.", keypath)
+    else:
+        raise ResolutionError(
+            "Input to 'use' must be a string or a dictionary.", keypath
+        )
+
+    # look up the target and resolve it
+    try:
+        if not isinstance(root, (_DictNode, _ListNode, _FunctionCallNode)):
+            raise KeyError(target)
+        resolved = root.get_keypath(target).resolve()
+    except KeyError:
+        raise ResolutionError(f"Keypath '{target}' does not exist.", keypath)
+
+    if not isinstance(resolved, Template):
+        raise ResolutionError(
+            "The target of 'use' must be a template (written with __template__).",
+            keypath,
+        )
+
+    # copy the template's source and merge the overrides on top of it
+    fragment = copy.deepcopy(resolved.source)
+    if overrides is not None:
+        if not isinstance(fragment, dict):
+            raise ResolutionError(
+                "Overrides can only be applied when the template resolves to a "
+                "dictionary.",
+                keypath,
+            )
+        fragment = deep_update([fragment, overrides])
+
+    return fragment
+
+
 class _TemplateNode(_Node):
     """Represents a template field in the configuration tree.
 
@@ -1698,6 +1772,10 @@ class _TemplateNode(_Node):
 
         self._evaluated = _TemplateNode._PENDING
 
+        # replace every __use__ in the value with the fragment it stands for, so
+        # that the template's source does not depend on the rest of the document
+        self.value = self._expand_uses(self.value, self.keypath)
+
         # check the structure of the value as written: building the tree raises
         # structure errors; it is walked but never resolved
         tree = make_node(
@@ -1725,6 +1803,35 @@ class _TemplateNode(_Node):
             check_for_function_call=context.check_for_function_call,
         )
         return self._evaluated
+
+    def _expand_uses(
+        self, value: _types.Configuration, keypath: _types.KeyPath
+    ) -> _types.Configuration:
+        """The value with each ``__use__`` replaced by its fragment, as written.
+
+        Every dict and list is visited, including the inputs of other function
+        calls. A fragment's own ``__use__`` calls were expanded when its template
+        was evaluated.
+
+        """
+        if isinstance(value, list):
+            return [
+                self._expand_uses(item, keypath + (str(i),))
+                for i, item in enumerate(value)
+            ]
+        if not isinstance(value, dict):
+            return value
+
+        context = self.resolution_context
+        try:
+            call = context.check_for_function_call(value, context.functions)
+        except ValueError:
+            # an invalid call is reported when the tree is built
+            call = None
+        if call is not None and getattr(call[0], "_role", None) == "use":
+            return _use_fragment(call[1], self.root, keypath)
+
+        return {k: self._expand_uses(v, keypath + (k,)) for k, v in value.items()}
 
     def _enclosing_templates(self) -> list[_TemplateNode]:
         """The template fields enclosing this one, innermost first."""
@@ -1780,8 +1887,8 @@ def _make_template_node(
 ) -> _TemplateNode:
     """Build the node for a template field (a value whose schema is a template).
 
-    The value must be a ``__template__`` wrapper, or an existing Template (which is
-    passed through unchanged).
+    The value must be a ``__template__`` wrapper, a ``__use__`` of a template, or an
+    existing Template (which is passed through unchanged).
 
     Raises
     ------
@@ -1809,6 +1916,17 @@ def _make_template_node(
         if call is not None and getattr(call[0], "_role", None) == "template":
             return _TemplateNode(
                 call[1],
+                schema,
+                keypath,
+                resolution_context,
+                parent=parent,
+                local_variables=local_variables,
+            )
+
+        if call is not None and getattr(call[0], "_role", None) == "use":
+            # the __use__ is expanded when the node is evaluated (it needs the root)
+            return _TemplateNode(
+                cfg,
                 schema,
                 keypath,
                 resolution_context,

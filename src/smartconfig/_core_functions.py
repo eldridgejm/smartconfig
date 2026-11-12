@@ -5,12 +5,8 @@ separated from _resolve.py for organizational clarity.
 
 """
 
-import copy
-
 from . import types as _types
-from ._templates import Template
 from .exceptions import ResolutionError, UnexpectedTemplateError
-from ._utils import deep_update
 from ._internals import (
     ResolutionMode,
     _DictNode,
@@ -21,6 +17,7 @@ from ._internals import (
     _ConcreteNode,
     make_node,
     _make_unresolved_container,
+    _use_fragment,
 )
 
 
@@ -153,62 +150,7 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
     rebuilt under the destination's schema.
 
     """
-    # Parse input: string (simple) or dict (advanced with overrides).
-    if isinstance(args.input, str):
-        keypath_str = args.input
-        overrides = None
-    elif isinstance(args.input, dict):
-        if "template" not in args.input:
-            raise ResolutionError(
-                "Dict input to 'use' must contain a 'template' key.", args.keypath
-            )
-        raw_template = args.input["template"]
-        if not isinstance(raw_template, str):
-            raise ResolutionError(
-                "The 'template' value in 'use' must be a string.", args.keypath
-            )
-        keypath_str = raw_template
-        overrides = args.input.get("overrides")
-        if overrides is not None and not isinstance(overrides, dict):
-            raise ResolutionError(
-                "The 'overrides' value in 'use' must be a dictionary.", args.keypath
-            )
-        extra = set(args.input.keys()) - {"template", "overrides"}
-        if extra:
-            raise ResolutionError(f"Unexpected keys in 'use': {extra}.", args.keypath)
-    else:
-        raise ResolutionError(
-            "Input to 'use' must be a string or a dictionary.", args.keypath
-        )
-
-    # Look up the node at the keypath and resolve it.
-    root = args._root_node
-    assert isinstance(root, (_DictNode, _ListNode, _FunctionCallNode))
-    try:
-        source_node = root.get_keypath(keypath_str)
-    except KeyError:
-        raise ResolutionError(f"Keypath '{keypath_str}' does not exist.", args.keypath)
-    resolved = source_node.resolve()
-
-    # The target must be a template (written with __template__).
-    if not isinstance(resolved, Template):
-        raise ResolutionError(
-            "The target of 'use' must be a template (written with __template__).",
-            args.keypath,
-        )
-
-    # Copy the template's value as written.
-    spliced_data = copy.deepcopy(resolved.source)
-
-    # Apply overrides (deep merge).
-    if overrides is not None:
-        if not isinstance(spliced_data, dict):
-            raise ResolutionError(
-                "Overrides can only be applied when the template resolves to a dictionary.",
-                args.keypath,
-            )
-        assert isinstance(overrides, dict)
-        spliced_data = deep_update([spliced_data, overrides])
+    spliced_data = _use_fragment(args.input, args._root_node, args.keypath)
 
     # Resolve: build a STANDARD tree from the (possibly overridden) raw data.
     # The caller resolves this node, performing one pass of interpolation and
