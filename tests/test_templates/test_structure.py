@@ -93,7 +93,11 @@ def test_interpolated_string_where_dict_expected_is_an_error_at_load():
         resolve(cfg, schema)
 
     assert exc.value.keypath == ("x",)
-    assert exc.value.reason == 'Expected a dict, but got the string "${ page }".'
+    assert exc.value.reason == (
+        'Expected a dict, but got the string "${ page }". A ${ ... } always gives a '
+        "string: to copy a dict or list, use __splice__ (or __use__ for a "
+        "template)."
+    )
 
 
 # function calls =======================================================================

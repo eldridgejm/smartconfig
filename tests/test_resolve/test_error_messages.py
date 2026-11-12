@@ -1,6 +1,6 @@
 """Tests for error messages and exception keypaths."""
 
-from smartconfig import resolve, exceptions
+from smartconfig import Template, resolve, exceptions
 from smartconfig.types import (
     ConfigurationDict,
     ConfigurationList,
@@ -287,6 +287,88 @@ def test_undefined_attribute_of_an_object_suggests_a_close_attribute():
     )
 
 
+# undefined names ======================================================================
+
+
+def test_an_undefined_name_suggests_a_close_name():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"title": {"type": "string"}, "x": {"type": "string"}},
+    }
+    cfg: ConfigurationDict = {"title": "t", "x": "${ titel }"}
+
+    with raises(exceptions.UndefinedNameError) as exc:
+        resolve(cfg, schema)
+
+    assert isinstance(exc.value, exceptions.ResolutionError)
+    assert exc.value.keypath == ("x",)
+    assert exc.value.name == "titel"
+    assert exc.value.reason == "'titel' is undefined. Did you mean \"title\"?"
+
+
+def test_an_undefined_name_without_a_close_match_lists_the_available_names():
+    # in lookup order: local variables, then the root's keys, then global variables
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"a": {"type": "string"}, "x": {"type": "string"}},
+    }
+    cfg: ConfigurationDict = {
+        "a": "1",
+        "x": {"__let__": {"variables": {"loc": 1}, "in": "${ zzz }"}},
+    }
+
+    with raises(exceptions.UndefinedNameError) as exc:
+        resolve(cfg, schema, global_variables={"glob": 1})
+
+    assert exc.value.available == ("loc", "a", "x", "glob")
+    assert exc.value.reason == (
+        "'zzz' is undefined. Names available here: loc, a, x, glob."
+    )
+
+
+def test_an_undefined_name_inside_an_attribute_access_is_reported():
+    schema: Schema = {"type": "dict", "required_keys": {"x": {"type": "string"}}}
+
+    with raises(exceptions.UndefinedNameError) as exc:
+        resolve(
+            {"x": "${ publcation.title }"}, schema, global_variables={"publication": 1}
+        )
+
+    assert exc.value.reason == (
+        "'publcation' is undefined. Did you mean \"publication\"?"
+    )
+
+
+def test_is_defined_still_works_for_an_undefined_name():
+    schema: Schema = {"type": "dict", "required_keys": {"x": {"type": "string"}}}
+    cfg: ConfigurationDict = {"x": "{% if zzz is defined %}a{% else %}b{% endif %}"}
+
+    assert resolve(cfg, schema) == {"x": "b"}
+
+
+def test_an_undefined_name_in_a_template_suggests_a_variable_or_a_key():
+    template = Template(
+        {"title": "${ publication }", "body": "${ publcation } ${ titel }"},
+        schema={
+            "type": "dict",
+            "required_keys": {
+                "title": {"type": "string"},
+                "body": {"type": "string"},
+            },
+        },
+        variables=["publication"],
+        keypath=["pages", "x"],
+    )
+
+    with raises(exceptions.UndefinedNameError) as exc:
+        template.resolve({"publication": "hw"})
+
+    assert exc.value.keypath == ("pages", "x", "body")
+    assert exc.value.reason == (
+        "'publcation' is undefined. Did you mean \"publication\"?"
+    )
+
+
 # StrictUndefined in other templates ===================================================
 
 
@@ -302,6 +384,20 @@ def test_strict_undefined_can_be_used_in_other_jinja_environments():
         template.render(meta={"topic": "Sorting"})
 
     assert str(excinfo.value) == 'The dict has no key "topc". Did you mean "topic"?'
+
+
+def test_strict_undefined_in_other_environments_reports_an_undefined_name():
+    import jinja2
+
+    from smartconfig import StrictUndefined
+
+    environment = jinja2.Environment(undefined=StrictUndefined)
+    template = environment.from_string("{{ nope }}")
+
+    with raises(jinja2.UndefinedError) as excinfo:
+        template.render()
+
+    assert str(excinfo.value) == "'nope' is undefined"
 
 
 # dicts and lists can't be inserted into strings =======================================
@@ -367,6 +463,25 @@ def test_a_dict_from_global_variables_inserted_into_a_string_is_an_error():
     assert reason == (
         'A dict with key "a" can\'t be inserted into a string. Use one of its '
         "keys instead."
+    )
+
+
+def test_an_interpolated_string_where_a_dict_is_expected_suggests_splice_or_use():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {"type": "dict", "extra_keys_schema": {"type": "any"}},
+            "b": {"type": "dict", "extra_keys_schema": {"type": "any"}},
+        },
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve({"a": {"k": 1}, "b": "${ a }"}, schema)
+
+    assert exc.value.reason == (
+        'Expected a dict, but got the string "${ a }". A ${ ... } always gives a '
+        "string: to copy a dict or list, use __splice__ (or __use__ for a "
+        "template)."
     )
 
 

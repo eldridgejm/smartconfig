@@ -232,6 +232,7 @@ from .exceptions import (
     InvalidSchemaError,
     ResolutionError,
     TemplateRequiredError,
+    UndefinedNameError,
     UnexpectedTemplateError,
 )
 from ._schemas import validate_schema as _validate_schema
@@ -327,6 +328,40 @@ class StrictUndefined(jinja2.StrictUndefined):
         attributes = [a for a in dir(obj) if not a.startswith("_")]
         message = f'The {type(obj).__name__} object has no attribute "{name}".'
         return message + (_did_you_mean(name, attributes) or "")
+
+
+class _UndefinedNameJinjaError(jinja2.exceptions.UndefinedError):
+    """Raised by Jinja for an undefined top-level name; see _UndefinedName."""
+
+    def __init__(self, message: str, name: str, available: tuple[str, ...]):
+        super().__init__(message)
+        self.name = name
+        self.available = available
+
+
+class _UndefinedName(StrictUndefined):
+    """An undefined top-level name, which knows the names that were available.
+
+    Using it raises a _UndefinedNameJinjaError, which _interpolate turns into an
+    UndefinedNameError.
+
+    """
+
+    def __init__(self, name: str, available: tuple[str, ...]):
+        def exception(message: str) -> _UndefinedNameJinjaError:
+            return _UndefinedNameJinjaError(message, name, available)
+
+        # Jinja raises self._undefined_exception(message) whenever the value is used
+        super().__init__(name=name, exc=typing.cast(type, exception))
+        self._available = available
+
+    @property
+    def _undefined_message(self) -> str:
+        name = str(self._undefined_name)
+        hint = _did_you_mean(name, self._available)
+        if hint is None and self._available:
+            hint = f" Names available here: {', '.join(self._available)}."
+        return f"'{name}' is undefined.{hint or ''}"
 
 
 class _InsertedContainer(Exception):
@@ -1292,7 +1327,22 @@ class _ValueNode(_Node):
                     pass
 
                 # finally, try jinja's default behavior, including jinja builtins
-                return super().resolve_or_missing(key)
+                result = super().resolve_or_missing(key)
+                if result is jinja2.utils.missing:
+                    return _UndefinedName(key, available_names())
+                return result
+
+        def available_names() -> tuple[str, ...]:
+            """The names a reference could use here, in lookup order."""
+            names: list[str] = []
+            node: _Node | None = this_node
+            while node is not None:
+                names += node.local_variables
+                node = node.parent
+            if isinstance(root_container, _UnresolvedDict):
+                names += [str(k) for k in root_container.dict_node.children]
+            names += global_variables
+            return tuple(dict.fromkeys(names))
 
         return CustomContext
 
@@ -1346,6 +1396,10 @@ class _ValueNode(_Node):
 
         try:
             result = template.render()
+        except _UndefinedNameJinjaError as exc:
+            raise UndefinedNameError(
+                exc.message or "", self.keypath, exc.name, exc.available
+            ) from None
         except jinja2.exceptions.UndefinedError as exc:
             raise ResolutionError(str(exc), self.keypath)
         except _InsertedContainer as exc:
@@ -2098,8 +2152,15 @@ def _check_shape(
         matches = expected not in ("dict", "list")
 
     if not matches:
+        hint = ""
+        if isinstance(cfg, str) and "${" in cfg and expected in ("dict", "list"):
+            hint = (
+                " A ${ ... } always gives a string: to copy a dict or list, use "
+                "__splice__ (or __use__ for a template)."
+            )
         raise ResolutionError(
-            f"Expected {_a(str(expected))}, but got {_describe_value(cfg)}.", keypath
+            f"Expected {_a(str(expected))}, but got {_describe_value(cfg)}.{hint}",
+            keypath,
         )
 
 

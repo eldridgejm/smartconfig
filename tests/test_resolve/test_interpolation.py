@@ -463,9 +463,10 @@ def test_interpolate_entire_dict_raises_exception():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema)
 
-    assert (
-        str(exc.value)
-        == 'Cannot resolve keypath "bar": Expected a dict, but got the string "${foo}".'
+    assert str(exc.value) == (
+        'Cannot resolve keypath "bar": Expected a dict, but got the string "${foo}". '
+        "A ${ ... } always gives a string: to copy a dict or list, use __splice__ "
+        "(or __use__ for a template)."
     )
 
 

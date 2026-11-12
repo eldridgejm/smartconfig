@@ -71,6 +71,32 @@ class UnexpectedTemplateError(ResolutionError):
         self.enclosing = enclosing
 
 
+class UndefinedNameError(ResolutionError):
+    """A ``${ ... }`` uses a name that is not defined.
+
+    Attributes
+    ----------
+    name : str
+        The undefined name.
+    available : tuple[str, ...]
+        The names that were available, in lookup order: local variables, the keys
+        of the root, then the global variables (not counting Jinja's own names,
+        like ``range``).
+
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        keypath: _types.KeyPath,
+        name: str,
+        available: tuple[str, ...],
+    ):
+        super().__init__(reason, keypath)
+        self.name = name
+        self.available = available
+
+
 class ConversionError(Error):
     """Could not convert the configuration value."""
 
