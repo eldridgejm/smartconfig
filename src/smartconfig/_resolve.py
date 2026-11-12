@@ -164,6 +164,53 @@ def _flatten_functions(
     return result
 
 
+def _make_resolution_context(
+    converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
+    functions: _types.FunctionMapping | None = DEFAULT_FUNCTIONS,
+    global_variables: Mapping[str, Any] | None = None,
+    filters: Mapping[str, Callable] | None = None,
+    inject_root_as: str | None = None,
+    check_for_function_call: _types.FunctionCallChecker
+    | None = _check_for_dunder_function_call,
+) -> _types.ResolutionContext:
+    """The resolution context for the options of :func:`resolve`.
+
+    The defaults are those of :func:`resolve`. Also used by
+    :meth:`Template.resolve`.
+
+    """
+    if functions is None:
+        converted_functions: Mapping[str, _types.Function] = {}
+    else:
+        # convert standard Python functions to _types.Function instances,
+        # flattening any nested mappings into dot-separated keys
+        converted_functions = _flatten_functions(functions)
+
+    if global_variables is None:
+        global_variables = {}
+    else:
+        global_variables = dict(global_variables)
+
+    if filters is None:
+        filters = {}
+
+    if check_for_function_call is None:
+        # do not check for function calls
+        def _no_check(*_):
+            return None
+
+        check_for_function_call = _no_check
+
+    return _types.ResolutionContext(
+        converters,
+        converted_functions,
+        global_variables,
+        filters,
+        inject_root_as,
+        check_for_function_call,
+    )
+
+
 # overloads ----------------------------------------------------------------------------
 
 # these overloads are provided so that type checkers can predict that the return
@@ -306,31 +353,9 @@ def resolve(
         reference, or there is some other issue with the configuration itself.
 
     """
-    if functions is None:
-        converted_functions: Mapping[str, _types.Function] = {}
-    else:
-        # convert standard Python functions to _types.Function instances,
-        # flattening any nested mappings into dot-separated keys
-        converted_functions = _flatten_functions(functions)
-
-    if global_variables is None:
-        global_variables = {}
-    else:
-        global_variables = dict(global_variables)
-
-    if filters is None:
-        filters = {}
-
-    if check_for_function_call is None:
-        # do not check for function calls
-        def _no_check(*_):
-            return None
-
-        check_for_function_call = _no_check
-
-    resolution_context = _types.ResolutionContext(
+    resolution_context = _make_resolution_context(
         converters,
-        converted_functions,
+        functions,
         global_variables,
         filters,
         inject_root_as,

@@ -16,6 +16,7 @@ import copy
 from typing import Any
 
 from . import types as _types
+from .exceptions import ResolutionError
 
 
 class _UseResolveDefault:
@@ -106,6 +107,59 @@ class Template:
             "inject_root_as": inject_root_as,
             "check_for_function_call": check_for_function_call,
         }
+
+    # resolution -----------------------------------------------------------------------
+
+    def resolve(self, variables: Mapping[str, Any] | None = None) -> Any:
+        """Evaluates the template.
+
+        The source is resolved against the schema as by :func:`smartconfig.resolve`
+        (interpolation, function calls, type conversion, defaults), with the
+        template's options. Nested template fields come back as :class:`Template`
+        objects.
+
+        Parameters
+        ----------
+        variables : Mapping[str, Any] | None
+            The names available to the template's strings. Every name in
+            :attr:`variables` must be given; other names may be given too.
+
+        Returns
+        -------
+        Any
+            The resolved value: a :class:`types.Configuration`, possibly containing
+            nested :class:`Template` objects. Typed as ``Any`` so that callers can
+            index into it, as with :func:`smartconfig.resolve`.
+
+        Raises
+        ------
+        ResolutionError
+            If a variable is missing, or if the template cannot be resolved. The
+            keypath is that of the template followed by the path inside it.
+
+        """
+        from ._internals import make_node
+        from ._resolve import _make_resolution_context
+
+        if variables is None:
+            variables = {}
+
+        missing = [name for name in self.variables if name not in variables]
+        if missing:
+            raise ResolutionError(
+                f"Missing variables: {', '.join(missing)}. "
+                f"This template needs: {', '.join(self.variables)}.",
+                self.keypath,
+            )
+
+        # options left at _DEFAULT take resolve()'s defaults
+        options = {k: v for k, v in self._options.items() if v is not _DEFAULT}
+        context = _make_resolution_context(global_variables=variables, **options)
+
+        root = make_node(self.source, self.schema, context, keypath=self.keypath)
+        # nested templates' variables start with this template's (see _TemplateNode)
+        root.template_scope = self.variables
+        return root.resolve()
 
     # serialization --------------------------------------------------------------------
 

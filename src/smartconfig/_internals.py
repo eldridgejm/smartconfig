@@ -615,8 +615,13 @@ class _Node(abc.ABC):
     local_variables : Mapping[str, Configuration | UnresolvedDict | UnresolvedList | UnresolvedFunctionCall] | None
         A dictionary of local variables that can be accessed during string
         interpolation. If None, this is made an empty dictionary.
+    template_scope : tuple[str, ...]
+        Set on the root by :meth:`Template.resolve`: the variables of the template
+        being resolved, which nested templates' variables start with.
 
     """
+
+    template_scope: tuple[str, ...] = ()
 
     def __init__(
         self,
@@ -1692,13 +1697,36 @@ class _TemplateNode(_Node):
         )
         self._check(tree)
 
+        # the variables of the enclosing templates come first: those of the template
+        # being resolved, if any (see Template.resolve), then those of the enclosing
+        # template fields, outermost first
+        enclosing: list[str] = list(self.root.template_scope)
+        for node in reversed(self._enclosing_templates()):
+            enclosing += node.variables
+
+        context = self.resolution_context
         self._evaluated = Template(
             self.value,
             self.inner_schema,
-            variables=self.variables,
+            variables=dict.fromkeys([*enclosing, *self.variables]),
             keypath=self.keypath,
+            converters=context.converters,
+            functions=context.functions,
+            filters=context.filters,
+            inject_root_as=context.inject_root_as,
+            check_for_function_call=context.check_for_function_call,
         )
         return self._evaluated
+
+    def _enclosing_templates(self) -> list[_TemplateNode]:
+        """The template fields enclosing this one, innermost first."""
+        result = []
+        node = self.parent
+        while node is not None:
+            if isinstance(node, _TemplateNode):
+                result.append(node)
+            node = node.parent
+        return result
 
     def _check(self, node: _ConcreteNode) -> None:
         """Walk a tree built from this template's value, without resolving it.
