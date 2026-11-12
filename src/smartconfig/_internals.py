@@ -231,6 +231,7 @@ from .exceptions import (
     InvalidSchemaError,
     ResolutionError,
     TemplateRequiredError,
+    UnexpectedTemplateError,
 )
 from ._schemas import validate_schema as _validate_schema
 from ._templates import Template
@@ -1690,6 +1691,13 @@ class _TemplateNode(_Node):
 
         self._evaluated = _TemplateNode._PENDING
 
+        # check the structure of the value as written: building the tree raises
+        # structure errors; it is walked but never resolved
+        tree = make_node(
+            self.value, self.inner_schema, self.resolution_context, self, self.keypath
+        )
+        self._check(tree)
+
         self._evaluated = Template(
             self.value,
             self.inner_schema,
@@ -1698,6 +1706,34 @@ class _TemplateNode(_Node):
             keypath=self.keypath,
         )
         return self._evaluated
+
+    def _check(self, node: _ConcreteNode) -> None:
+        """Walk a tree built from this template's value, without resolving it.
+
+        Nested template fields are checked in turn. Function calls are not
+        evaluated and their inputs are not checked, except that a __template__
+        wrapper (which would be a template inside a template) is an error.
+
+        """
+        if isinstance(node, _DictNode):
+            for child in node.children.values():
+                self._check(child)
+        elif isinstance(node, _ListNode):
+            for child in node.children:
+                self._check(child)
+        elif isinstance(node, _TemplateNode):
+            node.evaluate()
+        elif (
+            isinstance(node, _FunctionCallNode)
+            and getattr(node.function, "_role", None) == "template"
+        ):
+            where = ".".join(self.keypath)
+            raise UnexpectedTemplateError(
+                f'A template can\'t contain another __template__: the template at "{where}" '
+                "already defers everything in it. Remove the wrapper.",
+                node.keypath,
+                self.keypath,
+            )
 
     def resolve(self) -> _types.Configuration:
         """Return the Template for this field."""

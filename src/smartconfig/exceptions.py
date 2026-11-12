@@ -50,6 +50,27 @@ class TemplateRequiredError(ResolutionError):
         self.variables = variables
 
 
+class UnexpectedTemplateError(ResolutionError):
+    """A ``__template__`` wrapper where none belongs.
+
+    Attributes
+    ----------
+    enclosing : KeyPath | None
+        The keypath of the template that contains the wrapper, or ``None`` if the
+        wrapper is not inside a template.
+
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        keypath: _types.KeyPath,
+        enclosing: _types.KeyPath | None,
+    ):
+        super().__init__(reason, keypath)
+        self.enclosing = enclosing
+
+
 class ConversionError(Error):
     """Could not convert the configuration value."""
 
