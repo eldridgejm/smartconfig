@@ -33,6 +33,23 @@ class ResolutionError(Error):
         return f'Cannot resolve keypath "{dotted}": {self.reason}'
 
 
+class TemplateRequiredError(ResolutionError):
+    """A template field's value is not wrapped in ``__template__``.
+
+    Attributes
+    ----------
+    variables : tuple[str, ...]
+        The variables of the template field.
+
+    """
+
+    def __init__(
+        self, reason: str, keypath: _types.KeyPath, variables: tuple[str, ...]
+    ):
+        super().__init__(reason, keypath)
+        self.variables = variables
+
+
 class ConversionError(Error):
     """Could not convert the configuration value."""
 

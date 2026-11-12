@@ -14,6 +14,7 @@ from ._internals import (
     _FunctionCallNode,
     _ListNode,
     _ValueNode,
+    _TemplateNode,
     _ConcreteNode,
     make_node,
     _make_unresolved_container,
@@ -310,7 +311,7 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
             )
         for name, target in args.input["references"].items():
             if target == "__this__":
-                if isinstance(node, _ValueNode):
+                if isinstance(node, (_ValueNode, _TemplateNode)):
                     raise ResolutionError(
                         "'__this__' cannot be used when 'in' is a scalar value.",
                         args.keypath,
@@ -330,13 +331,17 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
                         args.keypath,
                     )
                 prev_node = parent.children[index - 1]
-                if isinstance(prev_node, _ValueNode):
+                if isinstance(prev_node, (_ValueNode, _TemplateNode)):
                     node.local_variables[name] = prev_node.resolve()
                 else:
                     node.local_variables[name] = _make_unresolved_container(prev_node)
 
     return node
 
+
+# the resolver identifies these by role, not by name (see make_node())
+_template._role = "template"
+_use._role = "use"
 
 CORE_FUNCTIONS: _types.FunctionMapping = {
     "fully_resolve": _fully_resolve,

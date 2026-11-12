@@ -321,6 +321,10 @@ class Function:
         self.fn = fn
         self.resolve_input = resolve_input
 
+        # private: identifies a core function whose meaning the resolver must know
+        # about ("template" or "use") regardless of the name it is registered under
+        self._role: str | None = None
+
     def __call__(self, args: FunctionArgs) -> _FunctionResult:
         """Call the function.
 

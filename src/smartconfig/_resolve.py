@@ -350,7 +350,8 @@ def resolve(
         # convert the resolved dict into a Prototype instance
         assert isinstance(resolved, dict)
         return spec._from_dict(resolved)
-    elif not preserve_type:
+    elif not preserve_type or _is_leaf(resolved):
+        # a leaf at the root (e.g. a Template) has no structure to preserve
         return resolved
     else:
         output = copy.deepcopy(cfg)
