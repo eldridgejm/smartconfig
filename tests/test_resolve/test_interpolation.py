@@ -257,6 +257,75 @@ def test_can_use_jinja_methods():
     assert result["bar"] == "testing THIS"
 
 
+def test_keys_named_like_container_methods_are_looked_up_as_keys():
+    # Jinja tries attributes before items, so without care ${ a.keys } would be
+    # the method of the container that stands for "a"
+    names = ["keys", "values", "resolve", "get_keypath"]
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {
+                "type": "dict",
+                "required_keys": {name: {"type": "integer"} for name in names},
+            },
+            "dot": {"type": "string"},
+            "subscript": {"type": "string"},
+        },
+    }
+    cfg: ConfigurationDict = {
+        "a": {name: i for i, name in enumerate(names)},
+        "dot": " ".join(f"${{ a.{name} }}" for name in names),
+        "subscript": " ".join(f'${{ a["{name}"] }}' for name in names),
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["dot"] == "0 1 2 3"
+    assert result["subscript"] == "0 1 2 3"
+
+
+def test_keys_named_like_container_methods_are_looked_up_in_function_results():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {
+                "type": "dict",
+                "required_keys": {"get_keypath": {"type": "integer"}},
+            },
+            "b": {"type": "string"},
+        },
+    }
+    cfg: ConfigurationDict = {
+        "a": {"__dict.update__": [{"get_keypath": 1}, {}]},
+        "b": "${ a.get_keypath }",
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["b"] == "1"
+
+
+def test_container_methods_can_be_called_when_no_key_shadows_them():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
+            "b": {"type": "string"},
+        },
+    }
+    cfg: ConfigurationDict = {
+        "a": {"x": 1, "y": 2},
+        "b": "${ a.keys() | join(',') } ${ a.values() | sum }",
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["b"] == "x,y 3"
+
+
 def test_can_use_builtin_jinja_function_range():
     # given
     schema: Schema = {

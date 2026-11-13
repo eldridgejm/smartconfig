@@ -449,6 +449,25 @@ def _refuse_containers(value: typing.Any) -> typing.Any:
     return value
 
 
+class _Environment(jinja2.Environment):
+    """A Jinja environment in which ``${ a.b }`` on a configuration container is a["b"].
+
+    Jinja tries Python attributes before items, so a key named like a method of an
+    unresolved container (``keys``, ``values``, ``resolve``, ``get_keypath``) would
+    give the method. Here a container's items come first; its methods are found
+    only when no item has the name, so ``${ a.keys() }`` still works.
+
+    """
+
+    def getattr(self, obj: typing.Any, attribute: str) -> typing.Any:
+        if isinstance(obj, (_UnresolvedDict, _UnresolvedList, _UnresolvedFunctionCall)):
+            try:
+                return obj[attribute]
+            except (LookupError, TypeError):
+                pass
+        return super().getattr(obj, attribute)
+
+
 class _UnresolvedDict(_types.UnresolvedDict):
     """Implements UnresolvedDict using a _DictNode as the backing data structure."""
 
@@ -1396,7 +1415,7 @@ class _ValueNode(_Node):
         The interpolated string.
 
         """
-        environment = jinja2.Environment(
+        environment = _Environment(
             variable_start_string="${",
             variable_end_string="}",
             # inserting a dict or list into a string is an error
