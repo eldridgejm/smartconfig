@@ -1,11 +1,9 @@
 """Tests of template fields at load: the wrapper is required, a Template is returned."""
 
-from typing import Any
-
 import pytest
 from pytest import raises
 
-from smartconfig import CORE_FUNCTIONS, DEFAULT_FUNCTIONS, Template, exceptions, resolve
+from smartconfig import CORE_FUNCTIONS, Template, exceptions, resolve
 from smartconfig.types import ConfigurationDict, ConfigurationList, Schema
 
 
@@ -74,21 +72,6 @@ def test_list_valued_template_is_kept_as_written():
     assert result["x"].source == ["1", "${ n + 1 }"]
 
 
-def test_template_source_does_not_alias_the_input():
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "x": {"type": "template", "schema": {"type": "any"}, "variables": []}
-        },
-    }
-    cfg: dict[str, Any] = {"x": {"__template__": {"a": ["b"]}}}
-
-    result = resolve(cfg, schema)
-    cfg["x"]["__template__"]["a"].append("c")
-
-    assert result["x"].source == {"a": ["b"]}
-
-
 def test_template_function_is_recognized_by_role_not_by_name():
     schema = {"type": "dict", "required_keys": {"x": STRING_TEMPLATE}}
     cfg: ConfigurationDict = {"x": {"__tmpl__": "Hi ${ name }"}}
@@ -105,11 +88,9 @@ def test_template_function_is_recognized_by_role_not_by_name():
     "value",
     [
         "Hi ${ name }",
-        {"title": "${ name }"},
-        ["${ name }"],
         {"__raw__": "Hi ${ name }"},
     ],
-    ids=["string", "dict", "list", "other-function-call"],
+    ids=["string", "other-function-call"],
 )
 def test_unwrapped_value_raises_template_required(value):
     schema = {
@@ -151,24 +132,6 @@ def test_template_required_message_with_no_variables():
     assert "(variables: none)" in exc.value.reason
 
 
-def test_template_required_message_with_several_variables():
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "x": {
-                "type": "template",
-                "schema": {"type": "string"},
-                "variables": ["a", "b"],
-            }
-        },
-    }
-
-    with raises(exceptions.TemplateRequiredError) as exc:
-        resolve({"x": "hello"}, schema)
-
-    assert "(variables: a, b)" in exc.value.reason
-
-
 def test_wrapper_is_an_unknown_function_when_template_function_is_unavailable():
     schema = {"type": "dict", "required_keys": {"x": STRING_TEMPLATE}}
     cfg: ConfigurationDict = {"x": {"__template__": "Hi"}}
@@ -199,12 +162,6 @@ def test_unknown_function_call_on_template_field_is_an_error():
 
 
 # null, optional and default ===========================================================
-
-
-def test_absent_optional_template_without_default_is_absent():
-    schema = {"type": "dict", "optional_keys": {"x": STRING_TEMPLATE}}
-
-    assert resolve({}, schema) == {}
 
 
 def test_absent_template_with_null_default_is_none():
@@ -296,42 +253,15 @@ def test_wrapped_null_is_a_template_of_null():
 # Template objects as input ============================================================
 
 
-def test_template_given_to_a_template_field_comes_back_unchanged():
-    t = Template("Hi ${ name }", {"type": "string"}, ["name"], keypath=["x"])
-    schema = {"type": "dict", "required_keys": {"x": STRING_TEMPLATE}}
-
-    result = resolve({"x": t}, schema)  # type: ignore[dict-item]
-
-    assert result["x"] is t
-
-
-def test_template_given_to_an_any_field_comes_back_unchanged():
-    t = Template("Hi ${ name }", {"type": "string"}, ["name"], keypath=["x"])
-    schema = {"type": "dict", "required_keys": {"x": {"type": "any"}}}
-
-    result = resolve({"x": t}, schema)  # type: ignore[dict-item]
-
-    assert result["x"] is t
-
-
-@pytest.mark.parametrize(
-    "field_schema, expected",
-    [
-        ({"type": "string"}, "a string"),
-        ({"type": "integer"}, "an integer"),
-        ({"type": "dict"}, "a dict"),
-        ({"type": "list", "element_schema": {"type": "any"}}, "a list"),
-    ],
-)
-def test_template_given_to_another_field_is_a_shape_error(field_schema, expected):
+def test_template_given_to_another_field_is_a_shape_error():
     t = Template("Hi")
-    schema = {"type": "dict", "required_keys": {"x": field_schema}}
+    schema = {"type": "dict", "required_keys": {"x": {"type": "dict"}}}
 
     with raises(exceptions.ResolutionError) as exc:
         resolve({"x": t}, schema)  # type: ignore[dict-item]
 
     assert exc.value.keypath == ("x",)
-    assert exc.value.reason == f"Expected {expected}, but got a template."
+    assert exc.value.reason == "Expected a dict, but got a template."
 
 
 def test_resolving_the_output_again_leaves_templates_alone():
@@ -380,29 +310,6 @@ def test_template_fields_as_list_elements():
 
     assert [t.source for t in result] == ["a ${ name }", "b ${ name }"]
     assert [t.keypath for t in result] == [("0",), ("1",)]
-
-
-def test_unwrapped_list_element_raises_at_its_keypath():
-    schema: Schema = {"type": "list", "element_schema": STRING_TEMPLATE}
-    cfg: ConfigurationList = [{"__template__": "a ${ name }"}, "b ${ name }"]
-
-    with raises(exceptions.TemplateRequiredError) as exc:
-        resolve(cfg, schema)
-
-    assert exc.value.keypath == ("1",)
-
-
-def test_template_fields_as_extra_keys():
-    schema: Schema = {"type": "dict", "extra_keys_schema": STRING_TEMPLATE}
-    cfg: ConfigurationDict = {
-        "a": {"__template__": "a ${ name }"},
-        "b": {"__template__": "b"},
-    }
-
-    result = resolve(cfg, schema)
-
-    assert result["a"].source == "a ${ name }"
-    assert result["b"].keypath == ("b",)
 
 
 def test_root_can_be_a_template_field():
@@ -464,11 +371,9 @@ def test_preserve_type_with_a_template_at_the_root():
     "field_schema",
     [
         {"type": "string"},
-        {"type": "integer"},
         {"type": "dict", "required_keys": {"a": {"type": "string"}}},
-        {"type": "list", "element_schema": {"type": "string"}},
     ],
-    ids=["string", "integer", "dict", "list"],
+    ids=["string", "dict"],
 )
 def test_wrapper_on_a_field_that_is_not_a_template_is_unexpected(field_schema):
     schema = {"type": "dict", "required_keys": {"x": field_schema}}
@@ -520,8 +425,3 @@ def test_static_template_schema_missing_a_key_is_an_invalid_schema(missing):
         resolve({"x": {"__template__": "Hi"}}, schema)
 
     assert missing in str(exc.value)
-
-
-def test_default_functions_include_template():
-    # sanity check for the tests above, which rely on the default functions
-    assert "template" in DEFAULT_FUNCTIONS

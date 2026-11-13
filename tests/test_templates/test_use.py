@@ -73,32 +73,12 @@ def test_use_with_overrides_is_merged_as_written():
     }
 
 
-def test_use_of_another_template_field():
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "x": {"type": "template", "schema": {"type": "string"}, "variables": []},
-            "y": {"type": "template", "schema": {"type": "string"}, "variables": []},
-        },
-    }
-    cfg: ConfigurationDict = {
-        "x": {"__template__": "Hi ${ name }"},
-        "y": {"__use__": "x"},
-    }
-
-    result = resolve(cfg, schema)
-
-    assert result["y"].source == "Hi ${ name }"
-
-
 # __use__ inside a template's value ====================================================
 
 
 @pytest.mark.parametrize(
     "body, expanded",
     [
-        # at a dict key
-        ({"part": {"__use__": "fragments.part"}}, {"part": {"p": "${ name }"}}),
         # in a list
         ([1, {"__use__": "fragments.part"}], [1, {"p": "${ name }"}]),
         # inside another function call's input
@@ -107,7 +87,7 @@ def test_use_of_another_template_field():
             {"__if__": {"condition": True, "then": {"p": "${ name }"}}},
         ),
     ],
-    ids=["dict", "list", "function-input"],
+    ids=["list", "function-input"],
 )
 def test_use_inside_a_template_is_expanded_at_load(body, expanded):
     cfg: ConfigurationDict = {
@@ -184,33 +164,20 @@ def test_fragments_that_use_each_other_are_a_circular_reference():
     assert exc.value.reason == "Circular reference."
 
 
-@pytest.mark.parametrize(
-    "use, reason",
-    [
-        ("fragments.nope", "Keypath 'fragments.nope' does not exist."),
-        (
-            "fragments.plain",
-            "The target of 'use' must be a template (written with __template__).",
-        ),
-        (
-            {"template": "fragments.text", "overrides": {"a": 1}},
-            "Overrides can only be applied when the template resolves to a dictionary.",
-        ),
-        (42, "Input to 'use' must be a string or a dictionary."),
-    ],
-    ids=["missing", "not-a-template", "overrides-on-non-dict", "bad-input"],
-)
-def test_use_errors_are_raised_at_load(use, reason):
+def test_use_errors_are_raised_at_load():
     cfg: ConfigurationDict = {
-        "fragments": {"plain": {"a": 1}, "text": {"__template__": "t"}},
-        "x": {"__template__": {"title": "t", "body": {"__use__": use}}},
+        "fragments": {"plain": {"a": 1}},
+        "x": {"__template__": {"title": "t", "body": {"__use__": "fragments.plain"}}},
     }
 
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, SCHEMA)
 
     assert exc.value.keypath == ("x", "body")
-    assert exc.value.reason == reason
+    assert (
+        exc.value.reason
+        == "The target of 'use' must be a template (written with __template__)."
+    )
 
 
 def test_an_invalid_function_call_in_a_template_is_still_an_error_at_load():

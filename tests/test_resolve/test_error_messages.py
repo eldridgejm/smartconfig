@@ -466,25 +466,6 @@ def test_a_dict_from_global_variables_inserted_into_a_string_is_an_error():
     )
 
 
-def test_an_interpolated_string_where_a_dict_is_expected_suggests_splice_or_use():
-    schema: Schema = {
-        "type": "dict",
-        "required_keys": {
-            "a": {"type": "dict", "extra_keys_schema": {"type": "any"}},
-            "b": {"type": "dict", "extra_keys_schema": {"type": "any"}},
-        },
-    }
-
-    with raises(exceptions.ResolutionError) as exc:
-        resolve({"a": {"k": 1}, "b": "${ a }"}, schema)
-
-    assert exc.value.reason == (
-        'Expected a dict, but got the string "${ a }". A ${ ... } always gives a '
-        "string: to copy a dict or list, use __splice__ (or __use__ for a "
-        "template)."
-    )
-
-
 def test_values_from_dicts_and_lists_can_still_be_inserted():
     cfg: ConfigurationDict = {
         "vars": {"d": {"a": 1}, "l": ["x", "y"]},

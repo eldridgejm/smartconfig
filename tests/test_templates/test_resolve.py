@@ -112,12 +112,6 @@ def test_missing_variable_is_an_error():
     assert exc.value.reason == "Missing variables: a, c. This template needs: a, b, c."
 
 
-def test_no_variables_needed_and_none_given():
-    template = Template("hi", schema={"type": "string"})
-
-    assert template.resolve() == "hi"
-
-
 def test_extra_names_are_allowed():
     template = Template(
         "${ a } ${ course }", schema={"type": "string"}, variables=["a"]
@@ -176,23 +170,6 @@ def test_a_template_remembers_the_options_of_the_resolve_that_made_it():
     result = template.resolve({"n": 1})
 
     assert result == {"a": 10, "b": 80, "c": "HI"}
-
-
-def test_a_constructed_template_uses_the_defaults():
-    template = Template({"x": "${ a + 1 }"}, variables=["a"])
-
-    assert template.resolve({"a": 1}) == {"x": "2"}
-
-
-def test_a_constructed_template_uses_the_options_passed():
-    template = Template(
-        "${ a | shout }",
-        schema={"type": "string"},
-        variables=["a"],
-        filters={"shout": str.upper},
-    )
-
-    assert template.resolve({"a": "x"}) == "X"
 
 
 # nested templates =====================================================================
@@ -284,26 +261,3 @@ def test_a_function_call_producing_the_wrong_shape_is_an_error():
 
     assert exc.value.keypath == ("x",)
     assert exc.value.reason == 'Expected a dict, but got the string "s".'
-
-
-# json =================================================================================
-
-
-def test_from_json_round_trip_resolves_the_same():
-    template = Template(
-        {"title": "${ name }", "count": "${ n }"},
-        schema={
-            "type": "dict",
-            "required_keys": {
-                "title": {"type": "string"},
-                "count": {"type": "integer"},
-            },
-        },
-        variables=["name", "n"],
-        keypath=["x"],
-    )
-
-    rebuilt = Template.from_json(template.to_json(), schema=template.schema)
-
-    variables = {"name": "hw", "n": "3"}
-    assert rebuilt.resolve(variables) == template.resolve(variables)

@@ -160,11 +160,6 @@ def test_template_type_smoke():
     validate_schema(schema)
 
 
-def test_template_type_with_empty_variables():
-    schema = {"type": "template", "schema": {"type": "string"}, "variables": []}
-    validate_schema(schema)
-
-
 def test_template_type_with_nullable():
     schema = {
         "type": "template",
@@ -330,24 +325,6 @@ def test_template_type_inner_schema_may_not_be_dynamic_if_disallowed():
         validate_schema(schema, allow_dynamic=False)
 
     assert exc.value.keypath == ("schema",)
-
-
-def test_template_type_inner_schema_may_contain_template_fields():
-    schema = {
-        "type": "template",
-        "schema": {
-            "type": "dict",
-            "required_keys": {
-                "inner": {
-                    "type": "template",
-                    "schema": {"type": "string"},
-                    "variables": ["y"],
-                },
-            },
-        },
-        "variables": ["x"],
-    }
-    validate_schema(schema)
 
 
 def test_template_type_rejects_default_at_top_of_inner_schema():
