@@ -219,7 +219,7 @@ A field whose schema has ``"type": "template"`` is represented by a _TemplateNod
 (built by _make_template_node(), called from make_node()). Its value, written in a
 ``__template__`` wrapper or given by a ``__use__``, is not resolved: the node
 resolves to a :class:`smartconfig.Template` holding the value as written. Like a
-_FunctionCallNode, it is evaluated lazily and cached. Evaluating it:
+_ValueNode, it is resolved lazily and the result cached. Resolving it:
 
     1. replaces each ``__use__`` in the value with the fragment it names (as written),
        since copying needs the document's root;
@@ -227,14 +227,14 @@ _FunctionCallNode, it is evaluated lazily and cached. Evaluating it:
        structure, and walks that tree without resolving it, rejecting template
        fields and ``__template__`` wrappers (templates do not nest). The tree is
        marked with the template's keypath, so a template field in it raises when
-       evaluated;
+       resolved;
     3. returns a Template that remembers the resolution options and the variables.
 
 A ``__template__`` wrapper on a field of type ``any`` also gives a _TemplateNode (with
 an ``any`` inner schema and no variables); see ``_template()`` in _core_functions.py.
-Template.resolve() (in _templates.py) builds and resolves a new tree from the
+Template.evaluate() (in _templates.py) builds and resolves a new tree from the
 template's source, with the given names as the global variables. It marks the root
-with the template's keypath, so that a template field produced while resolving (by a
+with the template's keypath, so that a template field produced while evaluating (by a
 function call, say) is rejected too.
 
 """
@@ -703,7 +703,7 @@ class _Node(abc.ABC):
         interpolation. If None, this is made an empty dictionary.
     template_keypath : KeyPath | None
         Set on the root of a tree built from a template's value (by
-        :meth:`Template.resolve`, and by _TemplateNode.evaluate to check the
+        :meth:`Template.evaluate`, and by _TemplateNode.resolve to check the
         structure): the keypath of that template. Such a tree may not contain
         template fields.
 
@@ -1804,8 +1804,8 @@ class _TemplateNode(_Node):
     """Represents a template field in the configuration tree.
 
     The value of a template field is not resolved; it is kept as written and the node
-    resolves to a :class:`Template`. Like a _FunctionCallNode, the node is evaluated
-    lazily (and the result cached).
+    resolves to a :class:`Template`. Like a _ValueNode, the node is resolved lazily
+    (and the result cached).
 
     Attributes
     ----------
@@ -1826,10 +1826,10 @@ class _TemplateNode(_Node):
 
     """
 
-    # sentinel object denoting that a node is currently being evaluated
+    # sentinel object denoting that a node is currently being resolved
     _PENDING = object()
 
-    # sentinel object denoting that the evaluation of this node has not yet started
+    # sentinel object denoting that the resolution of this node has not yet started
     _UNDISCOVERED = object()
 
     def __init__(
@@ -1849,7 +1849,7 @@ class _TemplateNode(_Node):
         )
         self.keypath = keypath
         self.resolution_context = resolution_context
-        self._evaluated: Any = _TemplateNode._UNDISCOVERED
+        self._resolved: Any = _TemplateNode._UNDISCOVERED
 
     @classmethod
     def from_template(
@@ -1864,10 +1864,10 @@ class _TemplateNode(_Node):
         node = cls(
             template.source, template_schema, keypath, resolution_context, parent
         )
-        node._evaluated = template
+        node._resolved = template
         return node
 
-    def evaluate(self) -> Template:
+    def resolve(self) -> Template:
         """Build (once) and return the Template for this field.
 
         Raises
@@ -1888,13 +1888,13 @@ class _TemplateNode(_Node):
                 enclosing,
             )
 
-        if self._evaluated is _TemplateNode._PENDING:
+        if self._resolved is _TemplateNode._PENDING:
             raise ResolutionError("Circular reference.", self.keypath)
 
-        if self._evaluated is not _TemplateNode._UNDISCOVERED:
-            return self._evaluated
+        if self._resolved is not _TemplateNode._UNDISCOVERED:
+            return self._resolved
 
-        self._evaluated = _TemplateNode._PENDING
+        self._resolved = _TemplateNode._PENDING
 
         # replace every __use__ in the value with the fragment it stands for, so
         # that the template's source does not depend on the rest of the document
@@ -1902,8 +1902,8 @@ class _TemplateNode(_Node):
 
         # check the structure of the value as written: building the tree raises
         # structure errors; it is walked but never resolved. Like the tree that
-        # Template.resolve builds, it is marked as a template's tree, so a template
-        # field in it is an error when evaluated
+        # Template.evaluate builds, it is marked as a template's tree, so a template
+        # field in it is an error when resolved
         tree = make_node(
             self.value, self.inner_schema, self.resolution_context, keypath=self.keypath
         )
@@ -1911,7 +1911,7 @@ class _TemplateNode(_Node):
         self._check(tree)
 
         context = self.resolution_context
-        self._evaluated = Template(
+        self._resolved = Template(
             self.value,
             self.inner_schema,
             variables=self.variables,
@@ -1922,7 +1922,7 @@ class _TemplateNode(_Node):
             inject_root_as=context.inject_root_as,
             check_for_function_call=context.check_for_function_call,
         )
-        return self._evaluated
+        return self._resolved
 
     def _expand_uses(
         self, value: _types.Configuration, keypath: _types.KeyPath
@@ -1968,7 +1968,7 @@ class _TemplateNode(_Node):
             for child in node.children:
                 self._check(child)
         elif isinstance(node, _TemplateNode):
-            node.evaluate()  # raises: templates do not nest
+            node.resolve()  # raises: templates do not nest
         elif (
             isinstance(node, _FunctionCallNode)
             and getattr(node.function, "_role", None) == "template"
@@ -1980,10 +1980,6 @@ class _TemplateNode(_Node):
                 node.keypath,
                 self.keypath,
             )
-
-    def resolve(self) -> _types.Configuration:
-        """Return the Template for this field."""
-        return self.evaluate()
 
 
 def _make_template_node(
@@ -2033,7 +2029,7 @@ def _make_template_node(
             )
 
         if call is not None and getattr(call[0], "_role", None) == "use":
-            # the __use__ is expanded when the node is evaluated (it needs the root)
+            # the __use__ is expanded when the node is resolved (it needs the root)
             return _TemplateNode(
                 cfg,
                 schema,

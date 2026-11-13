@@ -1,4 +1,4 @@
-"""Tests of Template.resolve()."""
+"""Tests of Template.evaluate()."""
 
 import datetime
 
@@ -23,7 +23,7 @@ PAGE = {
 }
 
 
-def test_resolve_interpolates_converts_and_fills_defaults():
+def test_evaluate_interpolates_converts_and_fills_defaults():
     schema = {
         "type": "dict",
         "required_keys": {
@@ -41,7 +41,7 @@ def test_resolve_interpolates_converts_and_fills_defaults():
     }
     template = resolve(cfg, schema)["x"]
 
-    result = template.resolve({"name": "hw", "n": 1})
+    result = template.evaluate({"name": "hw", "n": 1})
 
     assert result == {
         "title": "hw",
@@ -51,15 +51,15 @@ def test_resolve_interpolates_converts_and_fills_defaults():
     }
 
 
-def test_resolve_evaluates_function_calls():
+def test_evaluate_calls_functions():
     template = Template(
         {"answer": {"__if__": {"condition": "${ flag }", "then": "yes", "else": "no"}}},
         schema={"type": "dict", "required_keys": {"answer": {"type": "string"}}},
         variables=["flag"],
     )
 
-    assert template.resolve({"flag": True}) == {"answer": "yes"}
-    assert template.resolve({"flag": False}) == {"answer": "no"}
+    assert template.evaluate({"flag": True}) == {"answer": "yes"}
+    assert template.evaluate({"flag": False}) == {"answer": "no"}
 
 
 def test_a_template_whose_value_is_a_function_call_can_use_its_variables():
@@ -69,11 +69,11 @@ def test_a_template_whose_value_is_a_function_call_can_use_its_variables():
         variables=["flag"],
     )
 
-    assert template.resolve({"flag": True}) == "yes"
-    assert template.resolve({"flag": False}) == "no"
+    assert template.evaluate({"flag": True}) == "yes"
+    assert template.evaluate({"flag": False}) == "no"
 
 
-def test_resolving_twice_gives_independent_results():
+def test_evaluating_twice_gives_independent_results():
     template = Template(
         {"tags": ["${ a }"]},
         schema={
@@ -85,9 +85,9 @@ def test_resolving_twice_gives_independent_results():
         variables=["a"],
     )
 
-    first = template.resolve({"a": "x"})
+    first = template.evaluate({"a": "x"})
     first["tags"].append("changed")
-    second = template.resolve({"a": "y"})
+    second = template.evaluate({"a": "y"})
 
     assert first == {"tags": ["x", "changed"]}
     assert second == {"tags": ["y"]}
@@ -106,7 +106,7 @@ def test_missing_variable_is_an_error():
     )
 
     with raises(exceptions.ResolutionError) as exc:
-        template.resolve({"b": 1})
+        template.evaluate({"b": 1})
 
     assert exc.value.keypath == ("x", "y")
     assert exc.value.reason == "Missing variables: a, c. This template needs: a, b, c."
@@ -117,7 +117,7 @@ def test_extra_names_are_allowed():
         "${ a } ${ course }", schema={"type": "string"}, variables=["a"]
     )
 
-    assert template.resolve({"a": 1, "course": "dsc"}) == "1 dsc"
+    assert template.evaluate({"a": 1, "course": "dsc"}) == "1 dsc"
 
 
 # options ==============================================================================
@@ -167,7 +167,7 @@ def test_a_template_remembers_the_options_of_the_resolve_that_made_it():
         filters={"shout": str.upper},
     )["x"]
 
-    result = template.resolve({"n": 1})
+    result = template.evaluate({"n": 1})
 
     assert result == {"a": 10, "b": 80, "c": "HI"}
 
@@ -175,7 +175,7 @@ def test_a_template_remembers_the_options_of_the_resolve_that_made_it():
 # nested templates =====================================================================
 
 
-def test_a_template_field_produced_while_resolving_a_template_is_an_error():
+def test_a_template_field_produced_while_evaluating_a_template_is_an_error():
     # the __if__ hides the template field from the check made at load
     inner = {
         "type": "dict",
@@ -201,7 +201,7 @@ def test_a_template_field_produced_while_resolving_a_template_is_an_error():
     )
 
     with raises(exceptions.UnexpectedTemplateError) as exc:
-        template.resolve({"flag": True})
+        template.evaluate({"flag": True})
 
     assert exc.value.enclosing == ("x",)
 
@@ -225,7 +225,7 @@ def test_a_template_object_inside_a_template_source_is_an_error():
     )
 
     with raises(exceptions.UnexpectedTemplateError) as exc:
-        template.resolve()
+        template.evaluate()
 
     assert exc.value.keypath == ("x", "k")
     assert exc.value.enclosing == ("x",)
@@ -243,7 +243,7 @@ def test_errors_are_reported_at_the_template_keypath_plus_the_inner_path():
     )
 
     with raises(exceptions.ResolutionError) as exc:
-        template.resolve({"n": "many"})
+        template.evaluate({"n": "many"})
 
     assert exc.value.keypath == ("pages", "x", "count")
 
@@ -256,7 +256,7 @@ def test_undefined_name_is_reported_at_the_template_keypath_plus_the_inner_path(
     )
 
     with raises(exceptions.ResolutionError) as exc:
-        template.resolve()
+        template.evaluate()
 
     assert exc.value.keypath == ("pages", "x", "title")
 
@@ -269,7 +269,7 @@ def test_a_function_call_producing_the_wrong_shape_is_an_error():
     )
 
     with raises(exceptions.ResolutionError) as exc:
-        template.resolve()
+        template.evaluate()
 
     assert exc.value.keypath == ("x",)
     assert exc.value.reason == 'Expected a dict, but got the string "s".'

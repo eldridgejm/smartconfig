@@ -44,7 +44,7 @@ def test_use_as_the_value_of_a_template_field_gives_the_fragment_as_written():
     assert isinstance(result["x"], Template)
     assert result["x"].source == {"title": "${ name }", "body": "${ name }!"}
     assert result["x"].keypath == ("x",)
-    assert result["x"].resolve({"name": "hw"}) == {"title": "hw", "body": "hw!"}
+    assert result["x"].evaluate({"name": "hw"}) == {"title": "hw", "body": "hw!"}
 
 
 def test_use_with_overrides_is_merged_as_written():

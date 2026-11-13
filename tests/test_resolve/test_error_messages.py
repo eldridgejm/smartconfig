@@ -361,7 +361,7 @@ def test_an_undefined_name_in_a_template_suggests_a_variable_or_a_key():
     )
 
     with raises(exceptions.UndefinedNameError) as exc:
-        template.resolve({"publication": "hw"})
+        template.evaluate({"publication": "hw"})
 
     assert exc.value.keypath == ("pages", "x", "body")
     assert exc.value.reason == (

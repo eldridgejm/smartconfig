@@ -3,7 +3,7 @@
 A template field is a field whose schema has ``"type": "template"``. When a
 configuration is resolved, the value of such a field is not evaluated; instead, it is
 kept as written and returned as a :class:`Template`, which can be evaluated later
-(possibly many times) with :meth:`Template.resolve`.
+(possibly many times) with :meth:`Template.evaluate`.
 
 This module imports only ``types`` and ``exceptions`` at module level, so that
 ``_internals`` can import it. Anything needed from the resolution machinery is
@@ -98,7 +98,7 @@ class Template:
         self.variables: tuple[str, ...] = tuple(variables)
         self.keypath: _types.KeyPath = tuple(keypath)
 
-        # the options used by .resolve(); shared (not copied) by __deepcopy__
+        # the options used by .evaluate(); shared (not copied) by __deepcopy__
         self._options: dict[str, Any] = {
             "converters": converters,
             "functions": functions,
@@ -109,7 +109,7 @@ class Template:
 
     # resolution -----------------------------------------------------------------------
 
-    def resolve(self, variables: Mapping[str, Any] | None = None) -> Any:
+    def evaluate(self, variables: Mapping[str, Any] | None = None) -> Any:
         """Evaluates the template.
 
         The source is resolved against the schema as by :func:`smartconfig.resolve`
@@ -125,13 +125,13 @@ class Template:
         Returns
         -------
         Any
-            The resolved value: a :class:`types.Configuration`. Typed as ``Any`` so
+            The value: a :class:`types.Configuration`. Typed as ``Any`` so
             that callers can index into it, as with :func:`smartconfig.resolve`.
 
         Raises
         ------
         ResolutionError
-            If a variable is missing, or if the template cannot be resolved. The
+            If a variable is missing, or if the template cannot be evaluated. The
             keypath is that of the template followed by the path inside it.
 
         """

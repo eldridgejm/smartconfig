@@ -380,7 +380,7 @@ template
 Marks a value as a template: it is kept as written (``${...}`` references are
 not interpolated and function calls are not evaluated) and resolves to a
 :class:`smartconfig.Template`, which can be evaluated later with
-:meth:`Template.resolve <smartconfig.Template.resolve>`, or copied elsewhere in
+:meth:`Template.evaluate <smartconfig.Template.evaluate>`, or copied elsewhere in
 the configuration with :ref:`__use__ <func-use>`.
 
 - On a field whose schema is a template schema, the wrapper is required, and
@@ -545,7 +545,7 @@ fields at each use site:
 **Example (on a template field)**:
 
 On a template field the copy is kept as written, overrides included, and
-evaluated later with :meth:`Template.resolve <smartconfig.Template.resolve>`:
+evaluated later with :meth:`Template.evaluate <smartconfig.Template.evaluate>`:
 
 .. testcode:: python
 

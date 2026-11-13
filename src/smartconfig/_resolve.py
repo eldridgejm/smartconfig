@@ -176,7 +176,7 @@ def _make_resolution_context(
     """The resolution context for the options of :func:`resolve`.
 
     The defaults are those of :func:`resolve`. Also used by
-    :meth:`Template.resolve`.
+    :meth:`Template.evaluate`.
 
     """
     if functions is None:

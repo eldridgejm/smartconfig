@@ -1394,7 +1394,7 @@ def test_template_resolves_to_a_template():
     assert result == {
         "foo": Template("Hello ${name}!", schema={"type": "any"}, keypath=["foo"])
     }
-    assert result["foo"].resolve({"name": "x"}) == "Hello x!"
+    assert result["foo"].evaluate({"name": "x"}) == "Hello x!"
 
 
 def test_template_survives_multiple_resolutions():

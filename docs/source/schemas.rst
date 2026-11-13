@@ -626,7 +626,7 @@ Output:
     {'points': '${ publication.points * 2 }',
      'title': '${ course }: ${ publication.name }'}
 
-:meth:`Template.resolve <smartconfig.Template.resolve>` evaluates the template:
+:meth:`Template.evaluate <smartconfig.Template.evaluate>` evaluates the template:
 interpolation, function calls, type conversion and defaults, as
 :func:`smartconfig.resolve` does. It takes a mapping of the names the
 template's strings may use. Every name in ``variables`` must be given; other
@@ -636,7 +636,7 @@ passed in:
 .. testcode::
 
     print(
-        page.resolve(
+        page.evaluate(
             {"publication": {"name": "Homework 1", "points": 5}, "course": "DSC 40B"}
         )
     )
@@ -671,7 +671,7 @@ Output:
     ('page', 'points')
     'Dictionary is missing required key "points".'
 
-**What is checked when the template is resolved.** The names its strings use.
+**What is checked when the template is evaluated.** The names its strings use.
 A name that is not defined raises
 :class:`exceptions.UndefinedNameError <smartconfig.exceptions.UndefinedNameError>`,
 which suggests a close name or lists the names that were available:
@@ -679,7 +679,7 @@ which suggests a close name or lists the names that were available:
 .. testcode::
 
     try:
-        page.resolve({"publication": {"name": "Homework 1", "points": 5}})
+        page.evaluate({"publication": {"name": "Homework 1", "points": 5}})
     except smartconfig.exceptions.UndefinedNameError as exc:
         print(exc.keypath)
         print(exc.available)
@@ -729,4 +729,4 @@ all the variables it needs.
   any other type it is an error
   (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`).
 - A dynamic schema inside a template is called with the value as written, both
-  when the configuration is resolved and when the template is.
+  when the configuration is resolved and when the template is evaluated.
