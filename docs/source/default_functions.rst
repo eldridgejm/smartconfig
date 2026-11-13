@@ -390,8 +390,7 @@ the configuration with :ref:`__use__ <func-use>`.
   schema ``{"type": "any"}`` and no variables.
 - On a field of any other type it is an error
   (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`),
-  since that field is evaluated now. So is a wrapper inside a template, except
-  on a nested template field.
+  since that field is evaluated now. So is a wrapper inside a template.
 
 **Input**: Any configuration, kept as written.
 

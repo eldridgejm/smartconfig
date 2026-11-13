@@ -72,8 +72,7 @@ class Template:
     schema : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
         The schema of the evaluated value.
     variables : tuple[str, ...]
-        Names that must be given when evaluating: those of enclosing templates,
-        then the template's own.
+        Names that must be given when evaluating.
     keypath : :class:`types.KeyPath`
         Where the template was written.
 
@@ -115,8 +114,7 @@ class Template:
 
         The source is resolved against the schema as by :func:`smartconfig.resolve`
         (interpolation, function calls, type conversion, defaults), with the
-        template's options. Nested template fields come back as :class:`Template`
-        objects.
+        template's options.
 
         Parameters
         ----------
@@ -127,9 +125,8 @@ class Template:
         Returns
         -------
         Any
-            The resolved value: a :class:`types.Configuration`, possibly containing
-            nested :class:`Template` objects. Typed as ``Any`` so that callers can
-            index into it, as with :func:`smartconfig.resolve`.
+            The resolved value: a :class:`types.Configuration`. Typed as ``Any`` so
+            that callers can index into it, as with :func:`smartconfig.resolve`.
 
         Raises
         ------
@@ -157,8 +154,8 @@ class Template:
         context = _make_resolution_context(global_variables=variables, **options)
 
         root = make_node(self.source, self.schema, context, keypath=self.keypath)
-        # nested templates' variables start with this template's (see _TemplateNode)
-        root.template_scope = self.variables
+        # a template field in the tree would be a template inside this one
+        root.template_keypath = self.keypath
         return root.resolve()
 
     # serialization --------------------------------------------------------------------

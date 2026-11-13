@@ -175,48 +175,60 @@ def test_a_template_remembers_the_options_of_the_resolve_that_made_it():
 # nested templates =====================================================================
 
 
-# a "page" whose "body" is itself a template, with variable "section"
-NESTED = {
-    "type": "dict",
-    "required_keys": {
-        "x": {
-            "type": "template",
-            "schema": {
-                "type": "dict",
-                "required_keys": {
-                    "title": {"type": "string"},
-                    "body": {
-                        "type": "template",
-                        "schema": {"type": "string"},
-                        "variables": ["section"],
-                    },
-                },
-            },
-            "variables": ["page"],
-        }
-    },
-}
-
-
-def test_a_nested_template_has_the_outer_and_inner_variables():
-    cfg: ConfigurationDict = {
-        "x": {
-            "__template__": {
-                "title": "${ page }",
-                "body": {"__template__": "${ page }: ${ section }"},
+def test_a_template_field_produced_while_resolving_a_template_is_an_error():
+    # the __if__ hides the template field from the check made at load
+    inner = {
+        "type": "dict",
+        "required_keys": {
+            "body": {
+                "type": "template",
+                "schema": {"type": "string"},
+                "variables": ["section"],
             }
-        }
+        },
     }
-    template = resolve(cfg, NESTED)["x"]
+    template = Template(
+        {
+            "__if__": {
+                "condition": "${ flag }",
+                "then": {"body": {"__template__": "a"}},
+                "else": {"body": {"__template__": "b"}},
+            }
+        },
+        schema=inner,
+        variables=["flag"],
+        keypath=["x"],
+    )
 
-    result = template.resolve({"page": "p1"})
-    body = result["body"]
+    with raises(exceptions.UnexpectedTemplateError) as exc:
+        template.resolve({"flag": True})
 
-    assert result["title"] == "p1"
-    assert isinstance(body, Template)
-    assert body.variables == ("page", "section")
-    assert body.keypath == ("x", "body")
-    assert body.resolve({"page": "p1", "section": "s1"}) == "p1: s1"
+    assert exc.value.enclosing == ("x",)
+
+
+def test_a_template_object_inside_a_template_source_is_an_error():
+    # a Template can be put in a source only from Python, not from a config file
+    inner = Template("${ a }", variables=["a"], keypath=["y"])
+    template = Template(
+        {"k": inner},
+        schema={
+            "type": "dict",
+            "required_keys": {
+                "k": {
+                    "type": "template",
+                    "schema": {"type": "string"},
+                    "variables": ["a"],
+                }
+            },
+        },
+        keypath=["x"],
+    )
+
+    with raises(exceptions.UnexpectedTemplateError) as exc:
+        template.resolve()
+
+    assert exc.value.keypath == ("x", "k")
+    assert exc.value.enclosing == ("x",)
 
 
 # errors ===============================================================================

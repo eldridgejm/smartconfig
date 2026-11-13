@@ -128,35 +128,34 @@ def test_wrapper_inside_a_template_is_unexpected(inner, value, keypath):
 # nested template fields ===============================================================
 
 
-# a "page" whose "body" is itself a template, with variable "section"
-NESTED = {
-    "type": "dict",
-    "required_keys": {
-        "title": {"type": "string"},
-        "body": {
-            "type": "template",
-            "schema": {
-                "type": "dict",
-                "required_keys": {"text": {"type": "string"}},
+def test_a_template_field_inside_a_template_is_an_error():
+    # a "page" whose "body" would itself be a template, with variable "section"
+    page = {
+        "type": "dict",
+        "required_keys": {
+            "title": {"type": "string"},
+            "body": {
+                "type": "template",
+                "schema": {"type": "string"},
+                "variables": ["section"],
             },
-            "variables": ["section"],
         },
-    },
-}
-
-
-def test_nested_template_value_is_checked_against_its_own_schema():
+    }
     schema = {
         "type": "dict",
         "required_keys": {
-            "x": {"type": "template", "schema": NESTED, "variables": ["page"]}
+            "x": {"type": "template", "schema": page, "variables": ["page"]}
         },
     }
-    value: ConfigurationDict = {"title": "a", "body": {"__template__": {"txt": "b"}}}
+    value: ConfigurationDict = {"title": "a", "body": {"__template__": "b"}}
     cfg: ConfigurationDict = {"x": {"__template__": value}}
 
-    with raises(exceptions.ResolutionError) as exc:
+    with raises(exceptions.UnexpectedTemplateError) as exc:
         resolve(cfg, schema)
 
-    assert exc.value.keypath == ("x", "body", "text")
-    assert exc.value.reason == 'Dictionary is missing required key "text".'
+    assert exc.value.keypath == ("x", "body")
+    assert exc.value.enclosing == ("x",)
+    assert exc.value.reason == (
+        'A template can\'t contain a template field: the template at "x" already '
+        "defers everything in it. Make the field a sibling of the template instead."
+    )

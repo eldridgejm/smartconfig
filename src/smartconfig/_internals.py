@@ -224,15 +224,18 @@ _FunctionCallNode, it is evaluated lazily and cached. Evaluating it:
     1. replaces each ``__use__`` in the value with the fragment it names (as written),
        since copying needs the document's root;
     2. builds a node tree of the value against the inner schema, which checks its
-       structure, and walks that tree without resolving it, evaluating nested
-       template fields and rejecting a ``__template__`` wrapper anywhere else;
-    3. returns a Template that remembers the resolution options, whose variables are
-       those of the enclosing templates followed by its own.
+       structure, and walks that tree without resolving it, rejecting template
+       fields and ``__template__`` wrappers (templates do not nest). The tree is
+       marked with the template's keypath, so a template field in it raises when
+       evaluated;
+    3. returns a Template that remembers the resolution options and the variables.
 
 A ``__template__`` wrapper on a field of type ``any`` also gives a _TemplateNode (with
 an ``any`` inner schema and no variables); see ``_template()`` in _core_functions.py.
 Template.resolve() (in _templates.py) builds and resolves a new tree from the
-template's source, with the given names as the global variables.
+template's source, with the given names as the global variables. It marks the root
+with the template's keypath, so that a template field produced while resolving (by a
+function call, say) is rejected too.
 
 """
 
@@ -679,13 +682,15 @@ class _Node(abc.ABC):
     local_variables : Mapping[str, Configuration | UnresolvedDict | UnresolvedList | UnresolvedFunctionCall] | None
         A dictionary of local variables that can be accessed during string
         interpolation. If None, this is made an empty dictionary.
-    template_scope : tuple[str, ...]
-        Set on the root by :meth:`Template.resolve`: the variables of the template
-        being resolved, which nested templates' variables start with.
+    template_keypath : KeyPath | None
+        Set on the root of a tree built from a template's value (by
+        :meth:`Template.resolve`, and by _TemplateNode.evaluate to check the
+        structure): the keypath of that template. Such a tree may not contain
+        template fields.
 
     """
 
-    template_scope: tuple[str, ...] = ()
+    template_keypath: _types.KeyPath | None = None
 
     def __init__(
         self,
@@ -1844,7 +1849,26 @@ class _TemplateNode(_Node):
         return node
 
     def evaluate(self) -> Template:
-        """Build (once) and return the Template for this field."""
+        """Build (once) and return the Template for this field.
+
+        Raises
+        ------
+        UnexpectedTemplateError
+            If the node is in a tree built from a template's value: templates do
+            not nest. Checked first, so that an existing Template is rejected too.
+
+        """
+        enclosing = self.root.template_keypath
+        if enclosing is not None:
+            where = ".".join(enclosing)
+            raise UnexpectedTemplateError(
+                f'A template can\'t contain a template field: the template at "{where}" '
+                "already defers everything in it. Make the field a sibling of the "
+                "template instead.",
+                self.keypath,
+                enclosing,
+            )
+
         if self._evaluated is _TemplateNode._PENDING:
             raise ResolutionError("Circular reference.", self.keypath)
 
@@ -1858,24 +1882,20 @@ class _TemplateNode(_Node):
         self.value = self._expand_uses(self.value, self.keypath)
 
         # check the structure of the value as written: building the tree raises
-        # structure errors; it is walked but never resolved
+        # structure errors; it is walked but never resolved. Like the tree that
+        # Template.resolve builds, it is marked as a template's tree, so a template
+        # field in it is an error when evaluated
         tree = make_node(
-            self.value, self.inner_schema, self.resolution_context, self, self.keypath
+            self.value, self.inner_schema, self.resolution_context, keypath=self.keypath
         )
+        tree.template_keypath = self.keypath
         self._check(tree)
-
-        # the variables of the enclosing templates come first: those of the template
-        # being resolved, if any (see Template.resolve), then those of the enclosing
-        # template fields, outermost first
-        enclosing: list[str] = list(self.root.template_scope)
-        for node in reversed(self._enclosing_templates()):
-            enclosing += node.variables
 
         context = self.resolution_context
         self._evaluated = Template(
             self.value,
             self.inner_schema,
-            variables=dict.fromkeys([*enclosing, *self.variables]),
+            variables=self.variables,
             keypath=self.keypath,
             converters=context.converters,
             functions=context.functions,
@@ -1914,22 +1934,12 @@ class _TemplateNode(_Node):
 
         return {k: self._expand_uses(v, keypath + (k,)) for k, v in value.items()}
 
-    def _enclosing_templates(self) -> list[_TemplateNode]:
-        """The template fields enclosing this one, innermost first."""
-        result = []
-        node = self.parent
-        while node is not None:
-            if isinstance(node, _TemplateNode):
-                result.append(node)
-            node = node.parent
-        return result
-
     def _check(self, node: _ConcreteNode) -> None:
         """Walk a tree built from this template's value, without resolving it.
 
-        Nested template fields are checked in turn. Function calls are not
-        evaluated and their inputs are not checked, except that a __template__
-        wrapper (which would be a template inside a template) is an error.
+        Function calls are not evaluated and their inputs are not checked. A
+        template field or a __template__ wrapper (a template inside a template) is
+        an error.
 
         """
         if isinstance(node, _DictNode):
@@ -1939,7 +1949,7 @@ class _TemplateNode(_Node):
             for child in node.children:
                 self._check(child)
         elif isinstance(node, _TemplateNode):
-            node.evaluate()
+            node.evaluate()  # raises: templates do not nest
         elif (
             isinstance(node, _FunctionCallNode)
             and getattr(node.function, "_role", None) == "template"

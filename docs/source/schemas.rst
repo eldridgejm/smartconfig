@@ -691,10 +691,11 @@ Output:
     ('page', 'title')
     ('title', 'points', 'publication')
 
-**Nested templates.** A template's inner schema may itself contain template
-fields. When the outer template is resolved, a nested one comes back as a
-:class:`smartconfig.Template` whose ``variables`` are the outer ones followed by
-its own; resolve it by giving all of them.
+**Templates do not nest.** A template's value can't contain a template field:
+the template already defers everything in it. Doing so raises
+:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`.
+To evaluate part of a value separately, make it a sibling template that lists
+all the variables it needs.
 
 **Missing, null and default values.**
 
