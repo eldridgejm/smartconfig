@@ -104,7 +104,7 @@ checking the validity of schemas. A resolved template field is a
 .. autofunction:: validate_schema
 
 .. autoclass:: Template
-   :members: resolve, to_json, from_json
+   :members: resolve
 
 Constants
 ---------

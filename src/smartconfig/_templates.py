@@ -158,62 +158,6 @@ class Template:
         root.template_keypath = self.keypath
         return root.resolve()
 
-    # serialization --------------------------------------------------------------------
-
-    def to_json(self) -> dict[str, Any]:
-        """Returns a JSON-compatible dict describing the template.
-
-        The schema and the options are not included, since they may contain
-        callables. Leaf values of ``source`` are left as they are, so a source
-        containing (say) dates needs an encoder that handles them.
-
-        Returns
-        -------
-        dict[str, Any]
-            A dict with keys ``"source"``, ``"variables"`` and ``"keypath"``.
-
-        """
-        return {
-            "source": copy.deepcopy(self.source),
-            "variables": list(self.variables),
-            "keypath": list(self.keypath),
-        }
-
-    @classmethod
-    def from_json(
-        cls,
-        data: Mapping[str, Any],
-        schema: _types.Schema | _types.DynamicSchema | None = None,
-        **options: Any,
-    ) -> "Template":
-        """Rebuilds a template from the output of :meth:`to_json`.
-
-        Parameters
-        ----------
-        data : Mapping[str, Any]
-            The output of :meth:`to_json`.
-        schema : Union[:class:`types.Schema`, :class:`types.DynamicSchema`] | None
-            The schema of the template. If ``None``, ``{"type": "any"}`` is used.
-        **options
-            Keyword-only options of the constructor (``converters``, ``functions``,
-            ...). Options not given default to those of :func:`smartconfig.resolve`.
-
-        Returns
-        -------
-        Template
-
-        """
-        if schema is None:
-            schema = {"type": "any"}
-
-        return cls(
-            data["source"],
-            schema,
-            variables=data.get("variables", ()),
-            keypath=data.get("keypath", ()),
-            **options,
-        )
-
     # copying, comparison, display -----------------------------------------------------
 
     def __deepcopy__(self, memo: dict[int, Any]) -> "Template":

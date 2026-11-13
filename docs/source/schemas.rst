@@ -730,7 +730,3 @@ all the variables it needs.
   (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`).
 - A dynamic schema inside a template is called with the value as written, both
   when the configuration is resolved and when the template is.
-- :meth:`Template.to_json <smartconfig.Template.to_json>` and
-  :meth:`Template.from_json <smartconfig.Template.from_json>` convert a template to
-  and from JSON-compatible data (without its schema, which may contain
-  functions).

@@ -1,7 +1,6 @@
 """Tests for the smartconfig.Template class as a data object (no resolution)."""
 
 import copy
-import json
 from typing import Any
 
 
@@ -66,57 +65,6 @@ def test_templates_with_different_schema_are_not_equal():
 def test_template_is_not_equal_to_other_types():
     assert Template("a") != "a"
     assert Template("a") != {"__template__": "a"}
-
-
-# json =================================================================================
-
-
-def test_to_json_is_json_serializable():
-    t = Template(
-        {"title": "${ name }", "items": [1, 2.5, True, None]},
-        schema={"type": "any"},
-        variables=["name"],
-        keypath=["a", "b"],
-    )
-
-    data = t.to_json()
-
-    assert data == {
-        "source": {"title": "${ name }", "items": [1, 2.5, True, None]},
-        "variables": ["name"],
-        "keypath": ["a", "b"],
-    }
-    assert json.loads(json.dumps(data)) == data
-
-
-def test_to_json_does_not_alias_source():
-    t = Template({"title": "x"})
-
-    data = t.to_json()
-    data["source"]["title"] = "changed"
-
-    assert t.source == {"title": "x"}
-
-
-def test_from_json_round_trip_with_schema():
-    t = Template(
-        {"title": "${ name }"},
-        schema={"type": "dict", "required_keys": {"title": {"type": "string"}}},
-        variables=["name"],
-        keypath=["a", "b"],
-    )
-
-    assert Template.from_json(t.to_json(), schema=t.schema) == t
-
-
-def test_from_json_without_schema_has_any_schema():
-    t = Template("x", schema={"type": "string"}, variables=["y"])
-
-    rebuilt = Template.from_json(t.to_json())
-
-    assert rebuilt.schema == {"type": "any"}
-    assert rebuilt.source == "x"
-    assert rebuilt.variables == ("y",)
 
 
 # copying ==============================================================================
