@@ -3,7 +3,7 @@
 import pytest
 from pytest import raises
 
-from smartconfig import Template, exceptions, resolve
+from smartconfig import CORE_FUNCTIONS, Template, exceptions, resolve
 from smartconfig.types import ConfigurationDict
 
 
@@ -201,3 +201,22 @@ def test_use_in_a_template_at_the_root_has_no_target():
 
     assert exc.value.keypath == ()
     assert exc.value.reason == "Keypath 'x' does not exist."
+
+
+def test_use_under_another_name_is_expanded_inside_a_template():
+    # the resolver recognizes the use function itself, not its name
+    cfg: ConfigurationDict = {
+        "fragments": {"part": {"__tmpl__": {"p": "${ name }"}}},
+        "x": {"__tmpl__": {"title": "t", "body": {"__copy__": "fragments.part"}}},
+    }
+
+    result = resolve(
+        cfg,
+        SCHEMA,
+        functions={
+            "tmpl": CORE_FUNCTIONS["template"],
+            "copy": CORE_FUNCTIONS["use"],
+        },
+    )
+
+    assert result["x"].source == {"title": "t", "body": {"p": "${ name }"}}

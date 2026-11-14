@@ -72,13 +72,112 @@ def test_list_valued_template_is_kept_as_written():
     assert result["x"].source == ["1", "${ n + 1 }"]
 
 
-def test_template_function_is_recognized_by_role_not_by_name():
+def test_template_function_works_under_another_name():
     schema = {"type": "dict", "required_keys": {"x": STRING_TEMPLATE}}
     cfg: ConfigurationDict = {"x": {"__tmpl__": "Hi ${ name }"}}
 
     result = resolve(cfg, schema, functions={"tmpl": CORE_FUNCTIONS["template"]})
 
     assert result["x"].source == "Hi ${ name }"
+
+
+# other functions on a template field ==================================================
+
+
+def test_a_function_that_produces_a_template_is_accepted():
+    # __if__ chooses a __template__ when the configuration is resolved; the chosen
+    # template is kept as written
+    schema = {
+        "type": "dict",
+        "required_keys": {"long": {"type": "boolean"}, "x": STRING_TEMPLATE},
+    }
+    cfg: ConfigurationDict = {
+        "long": True,
+        "x": {
+            "__if__": {
+                "condition": "${ long }",
+                "then": {"__template__": "Hello, ${ name }!"},
+                "else": {"__template__": "Hi ${ name }"},
+            }
+        },
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["x"] == Template(
+        "Hello, ${ name }!",
+        schema={"type": "string"},
+        parameters=["name"],
+        keypath=["x"],
+    )
+    assert result["x"].evaluate({"name": "Justin"}) == "Hello, Justin!"
+
+
+def test_a_let_around_a_template_is_accepted():
+    schema = {"type": "dict", "required_keys": {"x": STRING_TEMPLATE}}
+    cfg: ConfigurationDict = {
+        "x": {
+            "__let__": {
+                "variables": {"unused": 1},
+                "in": {"__template__": "Hi ${ name }"},
+            }
+        }
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["x"].source == "Hi ${ name }"
+    assert result["x"].parameters == ("name",)
+
+
+def test_a_custom_function_returning_a_template_is_accepted():
+    def make(args):
+        return Template("Hi ${ name }")
+
+    schema = {"type": "dict", "required_keys": {"x": STRING_TEMPLATE}}
+
+    result = resolve({"x": {"__make__": {}}}, schema, functions={"make": make})
+
+    # it takes the field's schema and parameters
+    assert result["x"] == Template(
+        "Hi ${ name }", schema={"type": "string"}, parameters=["name"], keypath=["x"]
+    )
+
+
+def test_a_template_from_elsewhere_is_structure_checked_under_the_field_schema():
+    def make(args):
+        return Template({"wrong": "key"})
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {
+                "type": "template",
+                "schema": {
+                    "type": "dict",
+                    "required_keys": {"title": {"type": "string"}},
+                },
+                "parameters": [],
+            }
+        },
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve({"x": {"__make__": {}}}, schema, functions={"make": make})
+
+    assert exc.value.keypath == ("x", "title")
+
+
+def test_a_function_that_does_not_produce_a_template_is_an_error():
+    schema = {"type": "dict", "required_keys": {"x": STRING_TEMPLATE}}
+    cfg: ConfigurationDict = {
+        "x": {"__if__": {"condition": True, "then": "hello", "else": "bye"}}
+    }
+
+    with raises(exceptions.TemplateRequiredError) as exc:
+        resolve(cfg, schema)
+
+    assert exc.value.keypath == ("x",)
 
 
 # the wrapper is required ==============================================================

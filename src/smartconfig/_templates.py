@@ -138,7 +138,7 @@ class Template:
             keypath is that of the template followed by the path inside it.
 
         """
-        from ._internals import make_node
+        from ._internals import make_template_tree
         from ._resolve import _make_resolution_context
 
         if variables is None:
@@ -163,9 +163,8 @@ class Template:
         options = {k: v for k, v in self._options.items() if v is not _DEFAULT}
         context = _make_resolution_context(global_variables=variables, **options)
 
-        root = make_node(self.source, self.schema, context, keypath=self.keypath)
         # a template field in the tree would be a template inside this one
-        root.template_keypath = self.keypath
+        root = make_template_tree(self.source, self.schema, context, self.keypath)
         return root.resolve()
 
     # copying, comparison, display -----------------------------------------------------

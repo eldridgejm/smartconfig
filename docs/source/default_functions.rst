@@ -383,9 +383,11 @@ not interpolated and function calls are not evaluated) and resolves to a
 :meth:`Template.evaluate <smartconfig.Template.evaluate>`, or copied elsewhere in
 the configuration with :ref:`__use__ <func-use>`.
 
-- On a field whose schema is a template schema, the ``__template__`` wrapper
-  is required, and the ``Template`` gets that schema's inner schema and
-  variables. See :ref:`template_fields_example`.
+- On a field whose schema is a template schema, the ``Template`` gets that
+  schema's inner schema and parameters. The field's value must be a
+  ``__template__`` wrapper, or a function call that produces a template (such
+  as ``__use__``, or an ``__if__`` that chooses between two ``__template__``
+  values). See :ref:`template_fields_example`.
 - On a field of type ``"any"``, it is a template that can be copied elsewhere
   with ``__use__``: the ``Template`` has schema ``{"type": "any"}`` and no
   parameters.
@@ -447,20 +449,41 @@ first in the local variables (from ``__let__``), then in the configuration,
 then in the global variables. So ``{"__use__": "a.b"}`` finds whatever
 ``${ a.b }`` would, including a template in a global variable.
 
-**Names in the copy refer to where it is pasted.** The template's value is
-copied as written, and its ``${...}`` references are resolved at the
-destination, as if the value had been written there. This is what lets one
-template be shared by many places, each filling it in with its own values.
+**A copy is a paste.** ``__use__`` never evaluates the template. It copies the
+template's value as written, merges in the overrides (also as written), and puts
+the result where the ``__use__`` was, exactly as if you had typed it there.
+Only the value is copied: the template's own schema and parameters are not, so
+the copy can be pasted into a field of another type, or into a template field
+with other parameters.
 
-Where the copy goes decides what happens to it:
+**Names in the copy refer to where it is pasted.** Since the copy behaves as if
+it had been written at the destination, its ``${...}`` references are resolved
+there. This is what lets one template be shared by many places, each filling it
+in with its own values.
 
-- On an ordinary field, the template's value (with any overrides merged in) is
-  resolved under the destination's schema, once.
-- On a template field, or anywhere inside a template's value, the copy is made
-  when the configuration is resolved and kept as written: the template's
-  ``source`` contains the copied value, which is checked like any template
-  value. A ``__use__`` as the whole value of a template field takes the place
-  of the ``__template__`` wrapper.
+**The destination decides what happens next**, as it would for a value written
+there by hand:
+
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Destination
+     - What happens to the copy
+   * - An ordinary field (a string, a dict, ...)
+     - It is resolved now, under that field's schema: ``${...}`` is
+       interpolated and values are converted.
+   * - A template field
+     - It is kept as written, and becomes a :class:`smartconfig.Template` with
+       that field's inner schema and parameters, evaluated later. A ``__use__``
+       here takes the place of the ``__template__`` wrapper.
+   * - Inside a template's value
+     - It is kept as written, as part of the enclosing template's ``source``,
+       and resolved when that template is evaluated.
+
+On a template field, or inside a template, the copy is made when the
+configuration is resolved, so a template's ``source`` never depends on the rest
+of the configuration. The copied value is checked like any template value.
 
 **Input**: Either a string keypath (simple form) or a dictionary with the following keys:
 

@@ -651,9 +651,12 @@ Output:
     {'points': 10, 'title': 'DSC 40B: Homework 1'}
 
 **What is checked when the configuration is resolved.** The value must be
-written with ``__template__`` (or copied with :ref:`__use__ <func-use>`):
-otherwise :class:`exceptions.TemplateRequiredError <smartconfig.exceptions.TemplateRequiredError>`
-is raised. Its structure is checked against the inner schema: required and
+written with ``__template__``, copied with :ref:`__use__ <func-use>`, or
+produced by another function call that makes a template (an ``__if__`` that
+chooses between two ``__template__`` values, say): otherwise
+:class:`exceptions.TemplateRequiredError <smartconfig.exceptions.TemplateRequiredError>`
+is raised. Whichever way the template is made, it gets this field's inner schema
+and parameters. Its structure is checked against the inner schema: required and
 unexpected keys, dicts versus lists, nulls. Nothing in it is evaluated, and
 function calls inside it are not checked. Recall the schema from above:
 

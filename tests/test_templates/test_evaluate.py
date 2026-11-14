@@ -308,3 +308,28 @@ def test_a_function_call_producing_the_wrong_shape_is_an_error():
 
     assert exc.value.keypath == ("x",)
     assert exc.value.reason == 'Expected a dict, but got the string "s".'
+
+
+def test_a_template_field_in_the_source_is_a_nesting_error_when_evaluated():
+    # a Template made in Python is not checked at load; evaluating it reports the
+    # nested template field, not a missing __template__ wrapper
+    template = Template(
+        {"body": "plain"},
+        schema={
+            "type": "dict",
+            "required_keys": {
+                "body": {
+                    "type": "template",
+                    "schema": {"type": "string"},
+                    "parameters": [],
+                }
+            },
+        },
+        keypath=["x"],
+    )
+
+    with raises(exceptions.UnexpectedTemplateError) as exc:
+        template.evaluate()
+
+    assert exc.value.keypath == ("x", "body")
+    assert exc.value.enclosing == ("x",)

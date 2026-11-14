@@ -163,3 +163,51 @@ def test_a_template_field_inside_a_template_is_an_error():
         'A template can\'t contain a template field: the template at "x" already '
         "defers everything in it. Make the field a sibling of the template instead."
     )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"__use__": "fragments.body"},
+        "a plain value",
+        {
+            "__if__": {
+                "condition": True,
+                "then": {"__template__": "b"},
+                "else": {"__template__": "c"},
+            }
+        },
+    ],
+    ids=["use", "plain", "if"],
+)
+def test_a_template_field_inside_a_template_is_an_error_whatever_its_value(body):
+    # a template field's value can be any function call that makes a template; inside
+    # a template it is rejected at load, without the call being evaluated
+    page = {
+        "type": "dict",
+        "required_keys": {
+            "title": {"type": "string"},
+            "body": {
+                "type": "template",
+                "schema": {"type": "string"},
+                "parameters": [],
+            },
+        },
+    }
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "fragments": {"type": "any"},
+            "x": {"type": "template", "schema": page, "parameters": []},
+        },
+    }
+    cfg: ConfigurationDict = {
+        "fragments": {"body": {"__template__": "b"}},
+        "x": {"__template__": {"title": "a", "body": body}},
+    }
+
+    with raises(exceptions.UnexpectedTemplateError) as exc:
+        resolve(cfg, schema)
+
+    assert exc.value.keypath == ("x", "body")
+    assert exc.value.enclosing == ("x",)

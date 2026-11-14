@@ -112,13 +112,25 @@ def _fully_resolve(args: _types.FunctionArgs) -> _ConcreteNode:
 def _template(args: _types.FunctionArgs) -> _ConcreteNode:
     """Defer the input: it resolves to a :class:`Template` of it, as written.
 
-    This function is called only on a field of type ``any``, and the Template has
-    schema ``any`` and no parameters. On a template field the wrapper is handled by
-    the resolver (see ``make_node``), and any other field is evaluated now, so a
-    wrapper there is an error.
+    What the Template is depends on the field's schema:
+
+    - on a template field, the Template has that field's inner schema and
+      parameters;
+    - on a field of type ``any``, it has schema ``any`` and no parameters;
+    - any other field is evaluated now, so the wrapper is an error.
 
     """
-    if args.schema.get("type") != "any":
+    schema_type = args.schema.get("type")
+
+    if schema_type == "template":
+        template_schema = args.schema
+    elif schema_type == "any":
+        template_schema = {
+            "type": "template",
+            "schema": {"type": "any"},
+            "parameters": [],
+        }
+    else:
         raise UnexpectedTemplateError(
             "This field is not a template: it is evaluated now. "
             "Remove the __template__ wrapper.",
@@ -128,7 +140,7 @@ def _template(args: _types.FunctionArgs) -> _ConcreteNode:
 
     return _TemplateNode(
         args.input,
-        {"type": "template", "schema": {"type": "any"}, "parameters": []},
+        template_schema,
         args.keypath,
         args.resolution_context,
         parent=args._function_call_node,
@@ -146,15 +158,29 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
       ``"overrides"`` key (a dictionary that is deep-merged on top of the
       resolved template).
 
-    The referenced subtree is resolved, optionally merged with overrides, then
-    rebuilt under the destination's schema.
+    The template's value is copied as written, the overrides are merged into it,
+    and the result is treated as if it had been written here:
+
+    - on a template field, it is kept as written: the result is a Template with
+      that field's inner schema and parameters;
+    - on any other field, it is resolved under the field's schema.
 
     """
     spliced_data = _expand_use(args.input, args._function_call_node, args.keypath)
 
-    # Resolve: build a STANDARD tree from the (possibly overridden) raw data.
-    # The caller resolves this node, performing one pass of interpolation and
-    # type conversion.
+    if args.schema.get("type") == "template":
+        # a template field: keep the copy as written
+        return _TemplateNode(
+            spliced_data,
+            args.schema,
+            args.keypath,
+            args.resolution_context,
+            parent=args._function_call_node,
+        )
+
+    # any other field: build a STANDARD tree from the (possibly overridden) value
+    # as written. The caller resolves this node, performing one pass of
+    # interpolation and type conversion.
     node = make_node(
         spliced_data,
         args.schema,
@@ -291,10 +317,6 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
 
     return node
 
-
-# the resolver identifies these by role, not by name (see make_node())
-_template._role = "template"
-_use._role = "use"
 
 CORE_FUNCTIONS: _types.FunctionMapping = {
     "fully_resolve": _fully_resolve,

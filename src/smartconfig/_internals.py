@@ -215,25 +215,37 @@ When resolve() is called on this configuration, the following major steps occur:
 Template Fields
 ---------------
 
-A field whose schema has ``"type": "template"`` is represented by a _TemplateNode
-(built by _make_template_node(), called from make_node()). Its value is written in a
-``__template__`` wrapper or given by a ``__use__``. When a configuration containing a
-template field is resolved, the field is not resolved to an ordinary value (an int, a
-string, a dict, etc.). Rather, the node resolves to a :class:`smartconfig.Template`
-holding the value as written. Like a _ValueNode, it is resolved lazily and the result
-cached. Resolving it:
+A field whose schema has ``"type": "template"`` is represented by a _TemplateNode.
+When a configuration containing a template field is resolved, the field is not
+resolved to an ordinary value (an int, a string, a dict, etc.). Rather, the node
+resolves to a :class:`smartconfig.Template` holding the value as written.
+
+The resolver does not unwrap a template field's value itself. make_node() (through
+_make_template_node()) builds an ordinary _FunctionCallNode for it, whose function is
+given the template schema; the value of a template field must be a function call (or
+a Template passed in). The core functions decide what to do with that schema:
+``__template__`` returns a _TemplateNode of its input, and ``__use__`` returns a
+_TemplateNode of the template it copies (see _core_functions.py). Any other function's
+result is built under the template schema too, so ``__if__`` choosing between two
+``__template__`` values works, and a result that isn't a template is an error.
+
+Like a _ValueNode, a _TemplateNode is resolved lazily and the result cached.
+Resolving it:
 
     1. replaces each ``__use__`` in the value with the value it stands for (as written).
        The target is looked up as a ``${...}`` reference would be (local variables,
        the document, then the global variables), so it is done here rather than
        when the node is built, since looking in the document needs the whole tree;
     2. builds a node tree of the value against the inner schema, which checks its
-       structure, and walks that tree without resolving it, rejecting template
-       fields and ``__template__`` wrappers (templates do not nest). The tree is
-       marked with the template's keypath, so a template field in it raises when
-       resolved;
-    3. returns a Template that remembers the resolution options and the available
-       variables.
+       structure, and walks that tree without resolving it (_TemplateNode._check),
+       rejecting template fields and ``__template__`` wrappers (templates do not
+       nest). The tree is marked with the template's keypath, so a template field in
+       it raises when resolved.
+
+    Steps 1 and 2 are the only places where the resolver must recognize a core
+    function by identity (_is_use_function, _is_template_function): a template's
+    value is not evaluated, so no function in it runs that could act for itself;
+    3. returns a Template that remembers the resolution options and the parameters.
 
 A ``__template__`` wrapper on a field of type ``any`` also gives a _TemplateNode (with
 an ``any`` inner schema and no parameters); see ``_template()`` in _core_functions.py.
@@ -1746,6 +1758,64 @@ class _FunctionCallNode(_Node):
 # _TemplateNode ------------------------------------------------------------------------
 
 
+def _nested_template_field_error(
+    keypath: _types.KeyPath, enclosing: _types.KeyPath
+) -> UnexpectedTemplateError:
+    """The error for a template field at ``keypath`` inside the template at
+    ``enclosing``."""
+    where = ".".join(enclosing)
+    return UnexpectedTemplateError(
+        f'A template can\'t contain a template field: the template at "{where}" '
+        "already defers everything in it. Make the field a sibling of the template "
+        "instead.",
+        keypath,
+        enclosing,
+    )
+
+
+def make_template_tree(
+    value: _types.Configuration,
+    schema: _types.Schema | _types.DynamicSchema,
+    resolution_context: _types.ResolutionContext,
+    keypath: _types.KeyPath,
+) -> _ConcreteNode:
+    """Build the node tree of a template's value, marked as a template's tree.
+
+    The root's ``template_keypath`` is set to ``keypath``, so that a template field
+    in the tree raises when it is resolved (templates do not nest).
+
+    Raises
+    ------
+    UnexpectedTemplateError
+        If the tree has a template field whose value is not a template. The
+        template's own field was accepted before its value was built, so the field
+        is a template inside this one, and that is the error reported (rather than
+        asking for a ``__template__`` wrapper, which would be an error too).
+
+    """
+    try:
+        tree = make_node(value, schema, resolution_context, keypath=keypath)
+    except TemplateRequiredError as exc:
+        raise _nested_template_field_error(exc.keypath, keypath) from None
+    tree.template_keypath = keypath
+    return tree
+
+
+def _is_template_function(function: _types.Function) -> bool:
+    """Whether ``function`` is the core ``template`` function, whatever its name."""
+    # imported here: _core_functions imports this module
+    from ._core_functions import _template
+
+    return function is _template
+
+
+def _is_use_function(function: _types.Function) -> bool:
+    """Whether ``function`` is the core ``use`` function, whatever its name."""
+    from ._core_functions import _use
+
+    return function is _use
+
+
 def _template_schema_parts(
     schema: _types.Schema, keypath: _types.KeyPath
 ) -> tuple[_types.Schema | _types.DynamicSchema, tuple[str, ...]]:
@@ -1969,14 +2039,7 @@ class _TemplateNode(_Node):
         # node is a template inside that template
         enclosing = self.root.template_keypath
         if enclosing is not None:
-            where = ".".join(enclosing)
-            raise UnexpectedTemplateError(
-                f'A template can\'t contain a template field: the template at "{where}" '
-                "already defers everything in it. Make the field a sibling of the "
-                "template instead.",
-                self.keypath,
-                enclosing,
-            )
+            raise _nested_template_field_error(self.keypath, enclosing)
 
         if self._resolved is _TemplateNode._PENDING:
             raise ResolutionError("Circular reference.", self.keypath)
@@ -1994,10 +2057,9 @@ class _TemplateNode(_Node):
         # structure errors; it is walked but never resolved. Like the tree that
         # Template.evaluate builds, it is marked as a template's tree, so a template
         # field in it is an error when resolved
-        tree = make_node(
-            self.value, self.inner_schema, self.resolution_context, keypath=self.keypath
+        tree = make_template_tree(
+            self.value, self.inner_schema, self.resolution_context, self.keypath
         )
-        tree.template_keypath = self.keypath
         self._check(tree)
 
         context = self.resolution_context
@@ -2040,7 +2102,7 @@ class _TemplateNode(_Node):
         except ValueError:
             # an invalid call is reported when the tree is built
             call = None
-        if call is not None and getattr(call[0], "_role", None) == "use":
+        if call is not None and _is_use_function(call[0]):
             # a __use__ call: replace it with the value it stands for
             return _expand_use(call[1], self, keypath)
 
@@ -2063,12 +2125,17 @@ class _TemplateNode(_Node):
         elif isinstance(node, _ListNode):
             for child in node.children:
                 self._check(child)
-        elif isinstance(node, _TemplateNode):
-            node.resolve()  # raises: templates do not nest
-        elif (
+        elif isinstance(node, _TemplateNode) or (
             isinstance(node, _FunctionCallNode)
-            and getattr(node.function, "_role", None) == "template"
+            and node.schema.get("type") == "template"
         ):
+            # a template field. Its value is a Template passed in, or a function call
+            # that would make one when evaluated (a __template__, a __use__, ...)
+            raise _nested_template_field_error(node.keypath, self.keypath)
+        elif isinstance(node, _FunctionCallNode) and _is_template_function(
+            node.function
+        ):
+            # a __template__ wrapper on a field of type "any"
             where = ".".join(self.keypath)
             raise UnexpectedTemplateError(
                 f'A template can\'t contain another __template__: the template at "{where}" '
@@ -2085,25 +2152,49 @@ def _make_template_node(
     parent: _ConcreteNode | None,
     keypath: _types.KeyPath,
     local_variables: Mapping[str, _types.Configuration] | None,
-) -> _TemplateNode:
+    mode: ResolutionMode,
+) -> _TemplateNode | _FunctionCallNode:
     """Build the node for a template field (a value whose schema is a template).
 
-    The value must be a ``__template__`` wrapper, a ``__use__`` of a template, or an
-    existing Template (which is passed through unchanged).
+    The value must be a function call or an existing Template. A Template that is
+    already this field's (same inner schema, parameters and keypath) is passed
+    through unchanged; any other is rebuilt from its source under this field's
+    schema. A function call becomes an ordinary _FunctionCallNode, whose
+    function is given the template schema: ``__template__`` and ``__use__`` return a
+    _TemplateNode for it. Any other function's result is built under the template
+    schema too, so it must in turn be a Template or a function call that makes one.
 
     Raises
     ------
     TemplateRequiredError
-        If the value is not wrapped.
+        If the value is neither a function call nor a Template.
     ResolutionError
         If the value is an invalid function call.
 
     """
-    _, parameters = _template_schema_parts(schema, keypath)
+    inner_schema, parameters = _template_schema_parts(schema, keypath)
 
     if isinstance(cfg, Template):
-        return _TemplateNode.from_template(
-            cfg, schema, keypath, resolution_context, parent
+        if (
+            cfg.schema == inner_schema
+            and cfg.parameters == parameters
+            and cfg.keypath == keypath
+        ):
+            # this field's own Template (as when a resolved configuration is
+            # resolved again): passed through unchanged
+            return _TemplateNode.from_template(
+                cfg, schema, keypath, resolution_context, parent
+            )
+        # a Template made elsewhere (by a __template__ on an "any" field that a
+        # function returned, say): like a __use__ copy, its value is kept as written
+        # under this field's schema and parameters
+        return _TemplateNode(
+            cfg.source,
+            schema,
+            keypath,
+            resolution_context,
+            parent=parent,
+            local_variables=local_variables,
         )
 
     if isinstance(cfg, dict):
@@ -2114,26 +2205,16 @@ def _make_template_node(
         except ValueError as exc:
             raise ResolutionError(f"Invalid function call: {exc}", keypath)
 
-        if call is not None and getattr(call[0], "_role", None) == "template":
-            return _TemplateNode(
-                call[1],
-                schema,
+        if call is not None:
+            return _FunctionCallNode(
                 keypath,
                 resolution_context,
+                function=call[0],
+                input=call[1],
+                schema=schema,
                 parent=parent,
                 local_variables=local_variables,
-            )
-
-        if call is not None and getattr(call[0], "_role", None) == "use":
-            # the __use__ is expanded when the node is resolved (looking up its target
-            # needs the whole tree)
-            return _TemplateNode(
-                cfg,
-                schema,
-                keypath,
-                resolution_context,
-                parent=parent,
-                local_variables=local_variables,
+                mode=mode,
             )
 
     names = ", ".join(parameters) if parameters else "none"
@@ -2229,7 +2310,7 @@ def make_node(
 
     if schema.get("type") == "template":
         return _make_template_node(
-            cfg, schema, resolution_context, parent, keypath, local_variables
+            cfg, schema, resolution_context, parent, keypath, local_variables, mode
         )
 
     # construct the configuration tree. the configuration tree is a nested container
