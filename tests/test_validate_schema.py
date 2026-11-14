@@ -152,6 +152,206 @@ def test_raises_if_unknown_key_provided_with_any_type():
         validate_schema(schema)
 
 
+# template types =======================================================================
+
+
+def test_template_type_smoke():
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "parameters": ["name"],
+    }
+    validate_schema(schema)
+
+
+def test_template_type_with_nullable():
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "parameters": ["publication"],
+        "nullable": True,
+    }
+    validate_schema(schema)
+
+
+def test_template_type_with_default_where_defaults_are_allowed():
+    schema = {
+        "type": "dict",
+        "optional_keys": {
+            "foo": {
+                "type": "template",
+                "schema": {"type": "string"},
+                "parameters": [],
+                "default": "hello ${ name }",
+            }
+        },
+    }
+    validate_schema(schema)
+
+
+def test_template_type_with_default_where_defaults_are_not_allowed_raises():
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "parameters": [],
+        "default": "hello",
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("default",)
+    assert "Unexpected key." in str(exc.value)
+
+
+def test_template_type_raises_if_schema_is_missing():
+    schema = {"type": "template", "parameters": []}
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("schema",)
+    assert "Missing key." in str(exc.value)
+
+
+def test_template_type_raises_if_variables_is_missing():
+    schema = {"type": "template", "schema": {"type": "string"}}
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("parameters",)
+    assert "Missing key." in str(exc.value)
+
+
+def test_template_type_raises_on_unknown_key():
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "parameters": [],
+        "foo": 1,
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("foo",)
+    assert "Unexpected key." in str(exc.value)
+
+
+def test_template_type_raises_if_variables_is_not_a_list():
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "parameters": "name",
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("parameters",)
+
+
+def test_template_type_raises_if_a_variable_is_not_a_string():
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "parameters": [1],
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("parameters", "0")
+
+
+def test_template_type_raises_if_a_variable_is_not_an_identifier():
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "parameters": ["ok", "not ok"],
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("parameters", "1")
+
+
+def test_template_type_raises_if_globals_is_given():
+    # names other than the variables are not declared
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "parameters": [],
+        "globals": ["vars"],
+    }
+
+    with raises(exceptions.InvalidSchemaError):
+        validate_schema(schema)
+
+
+def test_template_type_validates_inner_schema_recursively():
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {
+                "type": "template",
+                "schema": {
+                    "type": "dict",
+                    "required_keys": {"title": {"type": "int"}},
+                },
+                "parameters": [],
+            }
+        },
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == (
+        "required_keys",
+        "x",
+        "schema",
+        "required_keys",
+        "title",
+        "type",
+    )
+
+
+def test_template_type_inner_schema_may_be_dynamic():
+    def inner(_):
+        return {"type": "string"}
+
+    schema = {"type": "template", "schema": inner, "parameters": []}
+    validate_schema(schema)
+
+
+def test_template_type_inner_schema_may_not_be_dynamic_if_disallowed():
+    def inner(_):
+        return {"type": "string"}
+
+    schema = {"type": "template", "schema": inner, "parameters": []}
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema, allow_dynamic=False)
+
+    assert exc.value.keypath == ("schema",)
+
+
+def test_template_type_rejects_default_at_top_of_inner_schema():
+    schema = {
+        "type": "template",
+        "schema": {"type": "string", "default": "hi"},
+        "parameters": [],
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("schema", "default")
+
+
 # dynamic schemata ====================================================================
 
 

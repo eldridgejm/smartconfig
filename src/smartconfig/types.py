@@ -17,10 +17,13 @@ import datetime
 # configurations =======================================================================
 
 # these type aliases define a "configuration", which is the type of both the input
-# and output of resolve().
+# and output of resolve(). A resolved template field is a Template, which is a leaf.
+
+if TYPE_CHECKING:
+    from ._templates import Template
 
 type ConfigurationValue = (
-    str | int | float | bool | datetime.datetime | datetime.date | None
+    str | int | float | bool | datetime.datetime | datetime.date | Template | None
 )
 type ConfigurationContainer = ConfigurationDict | ConfigurationList
 type ConfigurationList = list[ConfigurationContainer | ConfigurationValue]

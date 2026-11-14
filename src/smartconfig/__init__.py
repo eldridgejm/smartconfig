@@ -8,6 +8,7 @@ from ._prototypes import Prototype, NotRequired, is_prototype_class
 from .stdlib import STDLIB_FUNCTIONS
 from ._core_functions import CORE_FUNCTIONS
 from ._internals import StrictUndefined
+from ._templates import Template
 
 __all__ = [
     "exceptions",
@@ -24,4 +25,5 @@ __all__ = [
     "NotRequired",
     "is_prototype_class",
     "StrictUndefined",
+    "Template",
 ]

@@ -32,9 +32,10 @@ Type aliases used to describe the structure of a configuration.
 
 .. class:: ConfigurationValue
 
-   A "simple value"; a leaf in the configuration tree.
+   A "simple value"; a leaf in the configuration tree. A resolved template field
+   is also a leaf, of type :class:`smartconfig.Template`.
 
-   Type alias for ``str | int | float | bool | datetime.datetime | datetime.date | None``
+   Type alias for ``str | int | float | bool | datetime.datetime | datetime.date | Template | None``
 
 .. class:: Configuration
 

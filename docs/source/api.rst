@@ -102,6 +102,16 @@ checking the validity of schemas.
 
 .. autofunction:: validate_schema
 
+Templates
+---------
+
+A template field resolves to a :class:`Template`, which holds the field's value
+unevaluated until :meth:`Template.evaluate` is called. See
+:ref:`template_fields_example`.
+
+.. autoclass:: Template
+   :members: evaluate
+
 Constants
 ---------
 
@@ -120,7 +130,7 @@ Constants
 .. data:: CORE_FUNCTIONS
 
     A dictionary containing only the core functions (``if``, ``let``,
-    ``raw``, ``resolve``, ``fully_resolve``, ``splice``, ``use``).
+    ``raw``, ``resolve``, ``fully_resolve``, ``splice``, ``template``, ``use``).
 
 .. data:: STDLIB_FUNCTIONS
 

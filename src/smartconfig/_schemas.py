@@ -177,6 +177,67 @@ def _validate_value_schema(value_schema, keypath, allow_default, allow_dynamic: 
         )
 
 
+def _validate_names(names: object, keypath: _types.KeyPath):
+    """Checks that ``names`` is a list of strings, each a valid identifier.
+
+    Raises
+    ------
+    InvalidSchemaError
+        If ``names`` is not a list, or if an element is not an identifier string.
+
+    """
+    if not isinstance(names, list):
+        raise _exceptions.InvalidSchemaError(
+            "Must be a list of names (strings).", keypath
+        )
+
+    for i, name in enumerate(names):
+        if not isinstance(name, str) or not name.isidentifier():
+            raise _exceptions.InvalidSchemaError(
+                f"Invalid name: {name!r}. Names must be valid identifiers.",
+                keypath + (str(i),),
+            )
+
+
+def _validate_template_schema(
+    template_schema: _types.Schema,
+    keypath: _types.KeyPath,
+    allow_default: bool,
+    allow_dynamic: bool,
+):
+    """Validates a template schema.
+
+    A template schema has the following form:
+
+        <TEMPLATE_SCHEMA> = {
+            "type": "template",
+            "schema": <SCHEMA>,
+            "parameters": [<NAME>, ...],
+            ["nullable": (True | False)]
+        }
+
+    The inner schema is validated recursively; it may not have a default at its
+    top level (the default of a template field belongs on the template schema).
+
+    """
+    _check_keys(
+        template_schema.keys(),
+        required={"type", "schema", "parameters"},
+        optional={"nullable"},
+        keypath=keypath,
+        allow_default=allow_default,
+    )
+
+    _validate_names(template_schema["parameters"], keypath + ("parameters",))
+
+    validate_schema(
+        template_schema["schema"],
+        keypath + ("schema",),
+        allow_default=False,
+        allow_dynamic=allow_dynamic,
+    )
+
+
 # implementation =======================================================================
 
 
@@ -233,5 +294,7 @@ def validate_schema(
         _validate_dict_schema(*args)
     elif schema["type"] == "list":
         _validate_list_schema(*args)
+    elif schema["type"] == "template":
+        _validate_template_schema(*args)
     else:
         _validate_value_schema(*args)
