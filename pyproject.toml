@@ -29,4 +29,5 @@ dev = [
     "sphinxcontrib-mermaid>=1.0.0",
     "ruamel-yaml>=0.18.16",
     "mypy>=1.18.2",
+    "sphinx-autobuild>=2025.8.25",
 ]
