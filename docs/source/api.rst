@@ -97,16 +97,6 @@ checking the validity of schemas.
 
 .. autofunction:: validate_schema
 
-Templates
----------
-
-A template field resolves to a :class:`Template`, which holds the field's value
-unevaluated until :meth:`Template.evaluate` is called. See
-:ref:`template_fields_example`.
-
-.. autoclass:: Template
-   :members: evaluate
-
 Constants
 ---------
 

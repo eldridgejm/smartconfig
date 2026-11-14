@@ -2,7 +2,8 @@ Types and Classes
 =================
 
 The :mod:`smartconfig.types` module defines the types and type aliases
-used throughout the `smartconfig` package.
+used throughout the `smartconfig` package. This page also documents
+:class:`smartconfig.Template`, the value that a template field resolves to.
 
 .. module:: smartconfig.types
 
@@ -70,6 +71,20 @@ They are passed to functions and Jinja2 templates to allow for lazy resolution.
    :undoc-members:
 
    .. automethod:: __getitem__
+
+Templates
+---------
+
+.. currentmodule:: smartconfig
+
+A template field resolves to a :class:`Template`, which holds the field's value
+unevaluated until :meth:`Template.evaluate` is called. See
+:ref:`template_fields_example`.
+
+.. autoclass:: Template
+   :members: evaluate
+
+.. currentmodule:: smartconfig.types
 
 Functions
 ---------
