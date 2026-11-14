@@ -10,13 +10,13 @@ Resolution
 
 The process of converting a raw configuration into a resolved configuration is
 called **resolution**. During resolution, `smartconfig` processes the
-configuration according to the provided schema or prototype, performing
+configuration according to the provided schema, performing
 interpolation of placeholders, conversion of values to their appropriate types,
 and evaluation of any function calls.
 
 :func:`smartconfig.resolve` is the main function that performs resolution. It
 takes two arguments: the raw configuration (a Python dictionary) and the schema
-or prototype specifying its expected structure. The behavior of
+specifying its expected structure. The behavior of
 :func:`smartconfig.resolve` can be customized using various optional
 parameters; see the function documentation as well as the pages in the
 "Customizing Behavior" section for more details.
@@ -40,19 +40,26 @@ When a string references another value via ``${...}``, that referenced value is 
         "detailed_message": "${welcome_message} Enjoy your learning journey."
     }
 
-    class Course(smartconfig.Prototype):
-        course_name: str
-        welcome_message: str
-        detailed_message: str
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "course_name": {"type": "string"},
+            "welcome_message": {"type": "string"},
+            "detailed_message": {"type": "string"},
+        },
+    }
 
-    resolved = smartconfig.resolve(config, Course)
+    resolved = smartconfig.resolve(config, schema)
     pprint(resolved)
 
 This would output:
 
 .. testoutput:: python
 
-    Course(course_name='Introduction to Python', welcome_message='Welcome to Introduction to Python!', detailed_message='Welcome to Introduction to Python! Enjoy your learning journey.')
+    {'course_name': 'Introduction to Python',
+     'detailed_message': 'Welcome to Introduction to Python! Enjoy your learning '
+                         'journey.',
+     'welcome_message': 'Welcome to Introduction to Python!'}
 
 Jinja2
 ^^^^^^
@@ -67,19 +74,23 @@ Interpolation is implemented using the `Jinja2` templating engine, which support
         "is_advanced": "${ course_name.startswith('Advanced') }"
     }
 
-    class CourseMetadata(smartconfig.Prototype):
-        course_name: str
-        name_length: int
-        is_advanced: bool
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "course_name": {"type": "string"},
+            "name_length": {"type": "integer"},
+            "is_advanced": {"type": "boolean"},
+        },
+    }
 
-    resolved = smartconfig.resolve(config, CourseMetadata)
+    resolved = smartconfig.resolve(config, schema)
     pprint(resolved)
 
 This would output:
 
 .. testoutput:: python
 
-    CourseMetadata(course_name='Advanced Python', name_length=15, is_advanced=True)
+    {'course_name': 'Advanced Python', 'is_advanced': True, 'name_length': 15}
 
 Conversion
 ~~~~~~~~~~
@@ -117,22 +128,26 @@ logic. It takes a dictionary with three keys: ``condition``, ``then``, and
 
 .. testcode:: python
 
-    class StudentEligibility(smartconfig.Prototype):
-        student_score: int
-        is_eligible: bool
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "student_score": {"type": "integer"},
+            "is_eligible": {"type": "boolean"},
+        },
+    }
 
     config = {
         "student_score": 85,
         "is_eligible": {"__if__": {"condition": "${student_score >= 70}", "then": True, "else": False}}
     }
 
-    print(smartconfig.resolve(config, StudentEligibility))
+    print(smartconfig.resolve(config, schema))
 
 This resolves to:
 
 .. testoutput:: python
 
-    StudentEligibility(student_score=85, is_eligible=True)
+    {'is_eligible': True, 'student_score': 85}
 
 Here we are taking advantage of the fact that templating is done by the
 Jinja2 and so during interpolation ``${student_score >= 70}`` evaluates to ``True``, and

@@ -36,7 +36,6 @@ src/smartconfig/
 ├── _internals.py          # Node types, unresolved containers, make_node() (see docstring)
 ├── _core_functions.py     # Core functions: if, let, raw, resolve, fully_resolve, splice, template, use
 ├── _templates.py          # Template class (the resolved value of a template field)
-├── _prototypes.py         # Prototype class-based schemas
 ├── _schemas.py            # Schema validation
 ├── _utils.py              # Shared utilities (deep_update)
 ├── converters.py          # Type converters (int, float, bool, date, datetime)
@@ -53,7 +52,6 @@ tests/
 ├── test_core_functions.py      # Core function tests
 ├── test_jinja.py               # Jinja2 integration tests
 ├── test_validate_schema.py     # Schema validation tests
-├── test_prototypes/            # Prototype tests
 ├── test_resolve/               # Resolution tests
 ├── test_stdlib/                # Stdlib function tests
 └── test_templates/             # Template field and Template class tests

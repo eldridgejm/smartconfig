@@ -18,7 +18,6 @@ import typing
 from . import converters as _converters, types as _types
 from ._core_functions import CORE_FUNCTIONS
 from ._internals import make_node
-from ._prototypes import Prototype, is_prototype_class
 from .stdlib import STDLIB_FUNCTIONS
 
 
@@ -219,21 +218,6 @@ def _make_resolution_context(
 
 
 @typing.overload
-def resolve[_P: Prototype](
-    cfg: _types.Configuration,
-    spec: type[_P],
-    converters: Mapping[str, Callable] = ...,
-    functions: _types.FunctionMapping | None = ...,
-    global_variables: Mapping[str, Any] | None = ...,
-    inject_root_as: str | None = ...,
-    filters: Mapping[str, Callable] | None = ...,
-    preserve_type: bool = ...,
-    check_for_function_call: _types.FunctionCallChecker | None = ...,
-) -> _P:
-    """Overloaded resolve() for ConfigurationValue."""
-
-
-@typing.overload
 def resolve(
     cfg: _types.ConfigurationDict,
     spec: _types.Schema | _types.DynamicSchema,
@@ -283,7 +267,7 @@ def resolve(
 
 def resolve(
     cfg: _types.Configuration,
-    spec: _types.Schema | _types.DynamicSchema | type[Prototype],
+    spec: _types.Schema | _types.DynamicSchema,
     converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
     functions: _types.FunctionMapping | None = DEFAULT_FUNCTIONS,
     global_variables: Mapping[str, Any] | None = None,
@@ -292,18 +276,16 @@ def resolve(
     preserve_type: bool = False,
     check_for_function_call: _types.FunctionCallChecker
     | None = _check_for_dunder_function_call,
-) -> _types.Configuration | Prototype:
+) -> _types.Configuration:
     """Resolve a configuration by interpolating and parsing its entries.
 
     Parameters
     ----------
     cfg : :class:`types.Configuration`
         The "raw" configuration to resolve.
-    spec : Union[:class:`types.Schema`, :class:`types.DynamicSchema`, :class:`Prototype`]
-        The schema describing the structure of the resolved configuration, or a
-        :class:`Prototype` subclass. If a :class:`Prototype` subclass is provided, the
-        resolved configuration will be an instance of that :class:`Prototype` class. If
-        a :class:`types.DynamicSchema` is provided (which is a callable), it is called
+    spec : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
+        The schema describing the structure of the resolved configuration. If a
+        :class:`types.DynamicSchema` is provided (which is a callable), it is called
         with the configuration and the keypath and should return a
         :class:`types.Schema`.
     converters : Mapping[str, Callable]
@@ -362,20 +344,13 @@ def resolve(
         check_for_function_call,
     )
 
-    if is_prototype_class(spec):
-        schema = spec._schema()
-    else:
-        schema = typing.cast(_types.Schema, spec)
+    schema = typing.cast(_types.Schema, spec)
 
     root = make_node(cfg, schema, resolution_context)
 
     resolved = root.resolve()
 
-    if is_prototype_class(spec):
-        # convert the resolved dict into a Prototype instance
-        assert isinstance(resolved, dict)
-        return spec._from_dict(resolved)
-    elif not preserve_type or _is_leaf(resolved):
+    if not preserve_type or _is_leaf(resolved):
         # a leaf at the root (e.g. a Template) has no structure to preserve
         return resolved
     else:
