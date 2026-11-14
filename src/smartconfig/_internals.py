@@ -216,22 +216,27 @@ Template Fields
 ---------------
 
 A field whose schema has ``"type": "template"`` is represented by a _TemplateNode
-(built by _make_template_node(), called from make_node()). Its value, written in a
-``__template__`` wrapper or given by a ``__use__``, is not resolved: the node
-resolves to a :class:`smartconfig.Template` holding the value as written. Like a
-_ValueNode, it is resolved lazily and the result cached. Resolving it:
+(built by _make_template_node(), called from make_node()). Its value is written in a
+``__template__`` wrapper or given by a ``__use__``. When a configuration containing a
+template field is resolved, the field is not resolved to an ordinary value (an int, a
+string, a dict, etc.). Rather, the node resolves to a :class:`smartconfig.Template`
+holding the value as written. Like a _ValueNode, it is resolved lazily and the result
+cached. Resolving it:
 
-    1. replaces each ``__use__`` in the value with the fragment it names (as written),
-       since copying needs the document's root;
+    1. replaces each ``__use__`` in the value with the value it stands for (as written).
+       The target is looked up as a ``${...}`` reference would be (local variables,
+       the document, then the global variables), so it is done here rather than
+       when the node is built, since looking in the document needs the whole tree;
     2. builds a node tree of the value against the inner schema, which checks its
        structure, and walks that tree without resolving it, rejecting template
        fields and ``__template__`` wrappers (templates do not nest). The tree is
        marked with the template's keypath, so a template field in it raises when
        resolved;
-    3. returns a Template that remembers the resolution options and the variables.
+    3. returns a Template that remembers the resolution options and the available
+       variables.
 
 A ``__template__`` wrapper on a field of type ``any`` also gives a _TemplateNode (with
-an ``any`` inner schema and no variables); see ``_template()`` in _core_functions.py.
+an ``any`` inner schema and no available variables); see ``_template()`` in _core_functions.py.
 Template.evaluate() (in _templates.py) builds and resolves a new tree from the
 template's source, with the given names as the global variables. It marks the root
 with the template's keypath, so that a template field produced while evaluating (by a
@@ -702,10 +707,13 @@ class _Node(abc.ABC):
         A dictionary of local variables that can be accessed during string
         interpolation. If None, this is made an empty dictionary.
     template_keypath : KeyPath | None
-        Set on the root of a tree built from a template's value (by
+        Used to detect a template inside a template, which is not allowed. It is set
+        on the root of a tree built from a template's value (by
         :meth:`Template.evaluate`, and by _TemplateNode.resolve to check the
-        structure): the keypath of that template. Such a tree may not contain
-        template fields.
+        structure), and it is the keypath of that template. A _TemplateNode checks
+        its root's ``template_keypath`` when it is resolved: if it is set, the node
+        is a template inside a template, and the error message uses the keypath to
+        name the enclosing template. ``None`` on any other root.
 
     """
 
@@ -749,6 +757,64 @@ class _Node(abc.ABC):
     @abc.abstractmethod
     def resolve(self) -> _types.Configuration:
         """Recursively resolve the node into a configuration."""
+
+    # name lookup ----------------------------------------------------------------------
+    #
+    # ${...} references (see _ValueNode._make_custom_jinja_context) and __use__
+    # targets (see _look_up_keypath) find names the same way, using these methods.
+
+    def _root_container(
+        self,
+    ) -> _UnresolvedDict | _UnresolvedList | _UnresolvedFunctionCall | dict[str, Any]:
+        """The root of the tree as an unresolved container, for looking up names.
+
+        If the root is a value or template node, the tree is a single isolated node.
+        It cannot have in-tree references, because they'd be circular, so an empty
+        dict does the job.
+
+        """
+        if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
+            return _make_unresolved_container(self.root)
+        return {}
+
+    def _look_up_name(
+        self,
+        key: str,
+        root_container: _UnresolvedDict
+        | _UnresolvedList
+        | _UnresolvedFunctionCall
+        | dict[str, Any],
+        global_variables: Mapping[str, Any],
+    ) -> Any:
+        """Look up a name as seen from this node.
+
+        The name is looked up in the local variables of this node and its ancestors,
+        then in the root of the tree, then in the global variables.
+
+        Raises
+        ------
+        KeyError
+            If the name is in none of them.
+
+        """
+        try:
+            return self.get_local_variable(key)
+        except KeyError:
+            pass
+
+        # the root is skipped if it is a function call still being evaluated (we
+        # are in its input): it has no keys yet, and looking one up would be circular
+        root = self.root
+        if not (
+            isinstance(root, _FunctionCallNode)
+            and root._evaluated is _FunctionCallNode.PENDING
+        ):
+            try:
+                return root_container[key]  # type: ignore[index]
+            except (KeyError, IndexError):
+                pass
+
+        return global_variables[key]
 
     def get_local_variable(
         self, key: str
@@ -1329,16 +1395,7 @@ class _ValueNode(_Node):
         looking up the key in the template variables.
 
         """
-        root_container: (
-            _UnresolvedDict | _UnresolvedList | _UnresolvedFunctionCall | dict[str, Any]
-        )
-        if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
-            root_container = _make_unresolved_container(self.root)
-        else:
-            # if the root is a value node, then the configuration tree is a single
-            # isolated node. This node cannot have any in-tree references, because
-            # they'd be circular. In this case, an empty root container does the job.
-            root_container = {}
+        root_container = self._root_container()
 
         # save a copy of self, because we shadow `self` in `resolve_or_missing` below
         this_node = self
@@ -1351,28 +1408,11 @@ class _ValueNode(_Node):
 
         class CustomContext(jinja2.runtime.Context):
             def resolve_or_missing(self, key):
-                # first try local variables
+                # first try local variables, then the root, then the globals
                 try:
-                    return this_node.get_local_variable(key)
-                except KeyError:
-                    pass
-
-                # then try the root of the configuration tree, unless the root is a
-                # function call still being evaluated (we are in its input): it
-                # has no keys yet, and looking one up would be circular
-                root = this_node.root
-                if not (
-                    isinstance(root, _FunctionCallNode)
-                    and root._evaluated is _FunctionCallNode.PENDING
-                ):
-                    try:
-                        return root_container[key]
-                    except (KeyError, IndexError):
-                        pass
-
-                # then try the global variables
-                try:
-                    return global_variables[key]
+                    return this_node._look_up_name(
+                        key, root_container, global_variables
+                    )
                 except KeyError:
                     pass
 
@@ -1709,32 +1749,81 @@ class _FunctionCallNode(_Node):
 def _template_schema_parts(
     schema: _types.Schema, keypath: _types.KeyPath
 ) -> tuple[_types.Schema | _types.DynamicSchema, tuple[str, ...]]:
-    """The inner schema and variables of a template schema.
+    """The inner schema and available variables of a template schema.
 
     Static schemas are not validated by resolve(), so the keys are read defensively.
 
     Raises
     ------
     InvalidSchemaError
-        If the schema has no "schema" or no "variables".
+        If the schema has no "schema" or no "available_variables".
 
     """
-    for key in ("schema", "variables"):
+    for key in ("schema", "available_variables"):
         if key not in schema:
             raise InvalidSchemaError(
                 f'A template schema must have a "{key}" key.', keypath + (key,)
             )
-    return schema["schema"], tuple(schema["variables"])
+    return schema["schema"], tuple(schema["available_variables"])
 
 
-def _use_fragment(
-    use_input: _types.Configuration, root: _ConcreteNode, keypath: _types.KeyPath
+def _look_up_keypath(node: _ConcreteNode, keypath: str) -> Any:
+    """The value at a dotted keypath, found as ``${...}`` would find it from ``node``.
+
+    The first part of the keypath is looked up as a name in a ``${...}`` reference
+    is: in the local variables, then the root of the tree, then the global variables
+    (including the root, under ``inject_root_as``). Each later part is looked up as
+    Jinja looks up ``.part``: a container's keys first, then Python attributes. A
+    part that is a number is also tried as a list index. So ``__use__: "a.b.0"``
+    finds whatever ``${ a.b.0 }`` would.
+
+    Raises
+    ------
+    KeyError
+        If no value is found.
+
+    """
+    first, *rest = keypath.split(".")
+
+    context = node.resolution_context
+    root_container = node._root_container()
+    global_variables = dict(context.global_variables)
+    if context.inject_root_as is not None:
+        global_variables[context.inject_root_as] = root_container
+
+    value = node._look_up_name(first, root_container, global_variables)
+
+    environment = _Environment()
+    for part in rest:
+        found = jinja2.Undefined()
+        if part.isdigit():
+            found = environment.getitem(value, int(part))
+        if isinstance(found, jinja2.Undefined):
+            found = environment.getattr(value, part)
+        if isinstance(found, jinja2.Undefined):
+            raise KeyError(keypath)
+        value = found
+
+    return value
+
+
+def _expand_use(
+    use_input: _types.Configuration, node: _ConcreteNode, keypath: _types.KeyPath
 ) -> _types.Configuration:
     """The value that a ``__use__`` stands for: its target's source, as written.
 
-    ``use_input`` is either a keypath string or a dict with a ``"template"`` keypath
-    and optional ``"overrides"``, which are deep-merged (as written) on top of the
-    target's source. The target must resolve to a :class:`Template`.
+    ``use_input`` is the input of the ``__use__`` call. It takes one of two forms:
+
+    - a keypath string naming the target, as in ``{"__use__": "a.b"}``;
+    - a dict with a ``"template"`` key (the target's keypath) and an optional
+      ``"overrides"`` key (a dict), as in
+      ``{"__use__": {"template": "a.b", "overrides": {...}}}``.
+
+    The target is looked up from ``node`` as a ``${...}`` reference would be (see
+    _look_up_keypath), so it can be in the document or in a global variable. It
+    must be a :class:`Template`. Its source is copied and the overrides, if any, are
+    deep-merged on top of the copy. Nothing is interpolated: the source and the
+    overrides are both used as written.
 
     Raises
     ------
@@ -1771,11 +1860,9 @@ def _use_fragment(
             "Input to 'use' must be a string or a dictionary.", keypath
         )
 
-    # look up the target and resolve it
+    # look up the target, as a ${...} reference would be
     try:
-        if not isinstance(root, (_DictNode, _ListNode, _FunctionCallNode)):
-            raise KeyError(target)
-        resolved = root.get_keypath(target).resolve()
+        resolved = _look_up_keypath(node, target)
     except KeyError:
         raise ResolutionError(f"Keypath '{target}' does not exist.", keypath)
 
@@ -1786,18 +1873,18 @@ def _use_fragment(
         )
 
     # copy the template's source and merge the overrides on top of it
-    fragment = copy.deepcopy(resolved.source)
+    value = copy.deepcopy(resolved.source)
     if overrides is not None:
-        if not isinstance(fragment, dict):
+        if not isinstance(value, dict):
             raise ResolutionError(
                 "Overrides can only be applied when the template resolves to a "
                 "dictionary.",
                 keypath,
             )
         assert isinstance(overrides, dict)  # checked when the input was parsed
-        fragment = deep_update([fragment, overrides])
+        value = deep_update([value, overrides])
 
-    return fragment
+    return value
 
 
 class _TemplateNode(_Node):
@@ -1815,8 +1902,8 @@ class _TemplateNode(_Node):
         The template schema (``{"type": "template", ...}``).
     inner_schema : Schema | DynamicSchema
         The schema of the template's value once evaluated.
-    variables : tuple[str, ...]
-        The variables declared by this template field.
+    available_variables : tuple[str, ...]
+        The variables available to this template field when it is evaluated.
     keypath : KeyPath
         The keypath to this node in the configuration tree.
     resolution_context : ResolutionContext
@@ -1844,7 +1931,7 @@ class _TemplateNode(_Node):
         super().__init__(parent, local_variables)
         self.value = value
         self.template_schema = template_schema
-        self.inner_schema, self.variables = _template_schema_parts(
+        self.inner_schema, self.available_variables = _template_schema_parts(
             template_schema, keypath
         )
         self.keypath = keypath
@@ -1877,6 +1964,9 @@ class _TemplateNode(_Node):
             not nest. Checked first, so that an existing Template is rejected too.
 
         """
+        # templates do not nest. If the root of this node's tree has a
+        # template_keypath, the tree was built from a template's value, so this
+        # node is a template inside that template
         enclosing = self.root.template_keypath
         if enclosing is not None:
             where = ".".join(enclosing)
@@ -1896,7 +1986,7 @@ class _TemplateNode(_Node):
 
         self._resolved = _TemplateNode._PENDING
 
-        # replace every __use__ in the value with the fragment it stands for, so
+        # replace every __use__ in the value with the value it stands for, so
         # that the template's source does not depend on the rest of the document
         self.value = self._expand_uses(self.value, self.keypath)
 
@@ -1914,7 +2004,7 @@ class _TemplateNode(_Node):
         self._resolved = Template(
             self.value,
             self.inner_schema,
-            variables=self.variables,
+            available_variables=self.available_variables,
             keypath=self.keypath,
             converters=context.converters,
             functions=context.functions,
@@ -1927,11 +2017,11 @@ class _TemplateNode(_Node):
     def _expand_uses(
         self, value: _types.Configuration, keypath: _types.KeyPath
     ) -> _types.Configuration:
-        """The value with each ``__use__`` replaced by its fragment, as written.
+        """The value with each ``__use__`` replaced by the value it stands for.
 
         Every dict and list is visited, including the inputs of other function
-        calls. A fragment's own ``__use__`` calls were expanded when its template
-        was evaluated.
+        calls. The target template's own ``__use__`` calls were already expanded
+        when that template was resolved.
 
         """
         if isinstance(value, list):
@@ -1942,6 +2032,8 @@ class _TemplateNode(_Node):
         if not isinstance(value, dict):
             return value
 
+        # at this point, value is a dict. It is either a function call (a __use__ or
+        # some other function) or an ordinary dict configuration
         context = self.resolution_context
         try:
             call = context.check_for_function_call(value, context.functions)
@@ -1949,16 +2041,20 @@ class _TemplateNode(_Node):
             # an invalid call is reported when the tree is built
             call = None
         if call is not None and getattr(call[0], "_role", None) == "use":
-            return _use_fragment(call[1], self.root, keypath)
+            # a __use__ call: replace it with the value it stands for
+            return _expand_use(call[1], self, keypath)
 
+        # an ordinary dict, or a call to a function other than __use__ (whose input
+        # is a dict too): expand the __use__ calls inside each value
         return {k: self._expand_uses(v, keypath + (k,)) for k, v in value.items()}
 
     def _check(self, node: _ConcreteNode) -> None:
-        """Walk a tree built from this template's value, without resolving it.
+        """Raise if a tree built from this template's value contains a template.
 
-        Function calls are not evaluated and their inputs are not checked. A
-        template field or a __template__ wrapper (a template inside a template) is
-        an error.
+        Templates do not nest. This walks the tree without resolving it, and raises
+        an UnexpectedTemplateError at the first template field or ``__template__``
+        wrapper it finds. Function calls are not evaluated, and their inputs are not
+        walked.
 
         """
         if isinstance(node, _DictNode):
@@ -2003,7 +2099,7 @@ def _make_template_node(
         If the value is an invalid function call.
 
     """
-    _, variables = _template_schema_parts(schema, keypath)
+    _, available_variables = _template_schema_parts(schema, keypath)
 
     if isinstance(cfg, Template):
         return _TemplateNode.from_template(
@@ -2029,7 +2125,8 @@ def _make_template_node(
             )
 
         if call is not None and getattr(call[0], "_role", None) == "use":
-            # the __use__ is expanded when the node is resolved (it needs the root)
+            # the __use__ is expanded when the node is resolved (looking up its target
+            # needs the whole tree)
             return _TemplateNode(
                 cfg,
                 schema,
@@ -2039,12 +2136,12 @@ def _make_template_node(
                 local_variables=local_variables,
             )
 
-    names = ", ".join(variables) if variables else "none"
+    names = ", ".join(available_variables) if available_variables else "none"
     raise TemplateRequiredError(
-        f"This field is a template (variables: {names}), evaluated later. "
+        f"This field is a template (available variables: {names}), evaluated later. "
         'Write it as {"__template__": ...}.',
         keypath,
-        variables,
+        available_variables,
     )
 
 

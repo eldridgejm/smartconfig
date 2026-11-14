@@ -383,11 +383,12 @@ not interpolated and function calls are not evaluated) and resolves to a
 :meth:`Template.evaluate <smartconfig.Template.evaluate>`, or copied elsewhere in
 the configuration with :ref:`__use__ <func-use>`.
 
-- On a field whose schema is a template schema, the wrapper is required, and
-  the ``Template`` gets that schema's inner schema and variables. See
-  :ref:`template_fields_example`.
-- On a field of type ``"any"``, it is a reusable fragment: the ``Template`` has
-  schema ``{"type": "any"}`` and no variables.
+- On a field whose schema is a template schema, the ``__template__`` wrapper
+  is required, and the ``Template`` gets that schema's inner schema and
+  variables. See :ref:`template_fields_example`.
+- On a field of type ``"any"``, it is a template that can be copied elsewhere
+  with ``__use__``: the ``Template`` has schema ``{"type": "any"}`` and no
+  available variables.
 - On a field of any other type it is an error
   (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`),
   since that field is evaluated now. So is a wrapper inside a template.
@@ -420,7 +421,7 @@ This produces:
 .. testoutput:: python
 
     {'port': 8080,
-     'service_template': Template(at "service_template", variables: none)}
+     'service_template': Template(at "service_template", available_variables: none)}
     {'host': 'localhost', 'port': '${port}'}
 
 The ``${port}`` reference is kept as written. Resolving the output a second time
@@ -436,10 +437,20 @@ produces the same result, since a ``Template`` passes through unchanged:
 use
 ~~~
 
-Copies a template from elsewhere in the configuration, with optional overrides.
-The target keypath must point to a template: a value written with
-:ref:`__template__ <func-template>`, on a field of type ``"any"`` or on a
-template field.
+Copies a template from elsewhere, with optional overrides. The target must be a
+template: a value written with :ref:`__template__ <func-template>` (on a field
+of type ``"any"`` or on a template field), or a :class:`smartconfig.Template`
+passed in from outside.
+
+The target keypath is looked up exactly as a ``${...}`` reference would be:
+first in the local variables (from ``__let__``), then in the configuration,
+then in the global variables. So ``{"__use__": "a.b"}`` finds whatever
+``${ a.b }`` would, including a template in a global variable.
+
+**Names in the copy refer to where it is pasted.** The template's value is
+copied as written, and its ``${...}`` references are resolved at the
+destination, as if the value had been written there. This is what lets one
+template be shared by many places, each filling it in with its own values.
 
 Where the copy goes decides what happens to it:
 
@@ -494,13 +505,64 @@ of the destination:
 
 .. testoutput:: python
 
-    {'greeting_template': Template(at "greeting_template", variables: none),
+    {'greeting_template': Template(at "greeting_template", available_variables: none),
      'message': 'Hello, Alice!',
      'name': 'Alice'}
 
 Notice that the template itself remains wrapped (the ``${name}`` reference is
 kept as written in the :class:`smartconfig.Template`), but the copy produced by
 ``__use__`` has ``${name}`` resolved to ``"Alice"``.
+
+**Example (a template from a global variable)**:
+
+A template can come from outside the configuration. Here, an application has
+resolved a shared configuration earlier and passes its templates in as the
+global variable ``vars``. The template refers to ``this.metadata.title``, which
+is resolved in the configuration where it is pasted:
+
+.. testcode:: python
+
+    shared = smartconfig.resolve(
+        {"heading": {"__template__": "Lecture: ${ this.metadata.title }"}},
+        {"type": "dict", "required_keys": {"heading": {"type": "any"}}},
+    )
+
+    lecture = {
+        "this": {
+            "metadata": {
+                "title": "Introduction",
+                "heading": {"__use__": "vars.heading"},
+            }
+        }
+    }
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "this": {
+                "type": "dict",
+                "required_keys": {
+                    "metadata": {
+                        "type": "dict",
+                        "required_keys": {
+                            "title": {"type": "string"},
+                            "heading": {"type": "string"},
+                        },
+                    }
+                },
+            }
+        },
+    }
+
+    print(smartconfig.resolve(lecture, schema, global_variables={"vars": shared}))
+
+.. testoutput:: python
+
+    {'this': {'metadata': {'heading': 'Lecture: Introduction',
+                           'title': 'Introduction'}}}
+
+The copy is resolved with the destination's options (functions, converters,
+and so on), not the ones the template was created with.
 
 **Example (with overrides)**:
 
@@ -539,7 +601,7 @@ fields at each use site:
 
 .. testoutput:: python
 
-    {'defaults': Template(at "defaults", variables: none),
+    {'defaults': Template(at "defaults", available_variables: none),
      'server': {'host': 'localhost', 'port': 9090}}
 
 **Example (on a template field)**:
@@ -550,12 +612,12 @@ evaluated later with :meth:`Template.evaluate <smartconfig.Template.evaluate>`:
 .. testcode:: python
 
     config = {
-        "fragments": {
+        "templates": {
             "page": {"__template__": {"title": "${ publication }", "points": "10"}}
         },
         "homework_page": {
             "__use__": {
-                "template": "fragments.page",
+                "template": "templates.page",
                 "overrides": {"points": "${ publication.points }"},
             }
         },
@@ -564,7 +626,7 @@ evaluated later with :meth:`Template.evaluate <smartconfig.Template.evaluate>`:
     schema = {
         "type": "dict",
         "required_keys": {
-            "fragments": {"type": "any"},
+            "templates": {"type": "any"},
             "homework_page": {
                 "type": "template",
                 "schema": {
@@ -574,7 +636,7 @@ evaluated later with :meth:`Template.evaluate <smartconfig.Template.evaluate>`:
                         "points": {"type": "integer"},
                     },
                 },
-                "variables": ["publication"],
+                "available_variables": ["publication"],
             },
         },
     }

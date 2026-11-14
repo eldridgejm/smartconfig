@@ -15,7 +15,7 @@ def test_constructor_defaults():
 
     assert t.source == "Hi ${ name }"
     assert t.schema == {"type": "any"}
-    assert t.variables == ()
+    assert t.available_variables == ()
     assert t.keypath == ()
 
 
@@ -23,11 +23,11 @@ def test_variables_and_keypath_are_tuples():
     t = Template(
         "Hi ${ name }",
         schema={"type": "string"},
-        variables=["name"],
+        available_variables=["name"],
         keypath=["a", "b"],
     )
 
-    assert t.variables == ("name",)
+    assert t.available_variables == ("name",)
     assert t.keypath == ("a", "b")
     assert t.schema == {"type": "string"}
 
@@ -51,7 +51,9 @@ def test_templates_with_different_source_are_not_equal():
 
 
 def test_templates_with_different_variables_are_not_equal():
-    assert Template("a", variables=["x"]) != Template("a", variables=["y"])
+    assert Template("a", available_variables=["x"]) != Template(
+        "a", available_variables=["y"]
+    )
 
 
 def test_templates_with_different_keypath_are_not_equal():
@@ -71,7 +73,7 @@ def test_template_is_not_equal_to_other_types():
 
 
 def test_deepcopy_is_equal_with_independent_source():
-    t = Template({"tags": ["a"]}, variables=["x"], keypath=["k"])
+    t = Template({"tags": ["a"]}, available_variables=["x"], keypath=["k"])
 
     c = copy.deepcopy(t)
 

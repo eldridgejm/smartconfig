@@ -6,8 +6,7 @@ Core API
 
 The core functionality of `smartconfig` is exposed through two main functions:
 :func:`resolve` for resolving configurations and :func:`validate_schema` for
-checking the validity of schemas. A resolved template field is a
-:class:`Template`.
+checking the validity of schemas.
 
 .. function:: resolve(...) -> Configuration or Prototype
 
@@ -102,6 +101,13 @@ checking the validity of schemas. A resolved template field is a
 
 
 .. autofunction:: validate_schema
+
+Templates
+---------
+
+A template field resolves to a :class:`Template`, which holds the field's value
+unevaluated until :meth:`Template.evaluate` is called. See
+:ref:`template_fields_example`.
 
 .. autoclass:: Template
    :members: evaluate

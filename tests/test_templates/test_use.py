@@ -22,7 +22,7 @@ SCHEMA = {
                     "body": {"type": "any"},
                 },
             },
-            "variables": ["name"],
+            "available_variables": ["name"],
         },
     },
 }
@@ -194,7 +194,7 @@ def test_an_invalid_function_call_in_a_template_is_still_an_error_at_load():
 
 
 def test_use_in_a_template_at_the_root_has_no_target():
-    schema = {"type": "template", "schema": {"type": "any"}, "variables": []}
+    schema = {"type": "template", "schema": {"type": "any"}, "available_variables": []}
 
     with raises(exceptions.ResolutionError) as exc:
         resolve({"__use__": "x"}, schema)

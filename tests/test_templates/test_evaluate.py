@@ -27,7 +27,11 @@ def test_evaluate_interpolates_converts_and_fills_defaults():
     schema = {
         "type": "dict",
         "required_keys": {
-            "x": {"type": "template", "schema": PAGE, "variables": ["name", "n"]}
+            "x": {
+                "type": "template",
+                "schema": PAGE,
+                "available_variables": ["name", "n"],
+            }
         },
     }
     cfg: ConfigurationDict = {
@@ -55,7 +59,7 @@ def test_evaluate_calls_functions():
     template = Template(
         {"answer": {"__if__": {"condition": "${ flag }", "then": "yes", "else": "no"}}},
         schema={"type": "dict", "required_keys": {"answer": {"type": "string"}}},
-        variables=["flag"],
+        available_variables=["flag"],
     )
 
     assert template.evaluate({"flag": True}) == {"answer": "yes"}
@@ -66,7 +70,7 @@ def test_a_template_whose_value_is_a_function_call_can_use_its_variables():
     template = Template(
         {"__if__": {"condition": "${ flag }", "then": "yes", "else": "no"}},
         schema={"type": "string"},
-        variables=["flag"],
+        available_variables=["flag"],
     )
 
     assert template.evaluate({"flag": True}) == "yes"
@@ -82,7 +86,7 @@ def test_evaluating_twice_gives_independent_results():
                 "tags": {"type": "list", "element_schema": {"type": "string"}}
             },
         },
-        variables=["a"],
+        available_variables=["a"],
     )
 
     first = template.evaluate({"a": "x"})
@@ -101,7 +105,7 @@ def test_missing_variable_is_an_error():
     template = Template(
         "${ a } ${ b }",
         schema={"type": "string"},
-        variables=["a", "b", "c"],
+        available_variables=["a", "b", "c"],
         keypath=["x", "y"],
     )
 
@@ -109,15 +113,46 @@ def test_missing_variable_is_an_error():
         template.evaluate({"b": 1})
 
     assert exc.value.keypath == ("x", "y")
-    assert exc.value.reason == "Missing variables: a, c. This template needs: a, b, c."
-
-
-def test_extra_names_are_allowed():
-    template = Template(
-        "${ a } ${ course }", schema={"type": "string"}, variables=["a"]
+    assert exc.value.reason == (
+        "Missing variables: a, c. This template's available variables: a, b, c."
     )
 
-    assert template.evaluate({"a": 1, "course": "dsc"}) == "1 dsc"
+
+def test_extra_variable_is_an_error():
+    template = Template(
+        "${ a }",
+        schema={"type": "string"},
+        available_variables=["a"],
+        keypath=["x"],
+    )
+
+    with raises(exceptions.ResolutionError) as exc:
+        template.evaluate({"a": 1, "course": "dsc"})
+
+    assert exc.value.keypath == ("x",)
+    assert exc.value.reason == (
+        "Unexpected variables: course. This template's available variables: a."
+    )
+
+
+def test_missing_and_extra_variables_are_reported_together():
+    template = Template("${ a }", available_variables=["a"])
+
+    with raises(exceptions.ResolutionError) as exc:
+        template.evaluate({"b": 1})
+
+    assert exc.value.reason == (
+        "Missing variables: a. Unexpected variables: b. "
+        "This template's available variables: a."
+    )
+
+
+def test_a_template_with_no_available_variables_takes_none():
+    template = Template("hi")
+
+    assert template.evaluate() == "hi"
+    with raises(exceptions.ResolutionError):
+        template.evaluate({"a": 1})
 
 
 # options ==============================================================================
@@ -142,7 +177,7 @@ def test_a_template_remembers_the_options_of_the_resolve_that_made_it():
                         "c": {"type": "string"},
                     },
                 },
-                "variables": ["n"],
+                "available_variables": ["n"],
             }
         },
     }
@@ -183,7 +218,7 @@ def test_a_template_field_produced_while_evaluating_a_template_is_an_error():
             "body": {
                 "type": "template",
                 "schema": {"type": "string"},
-                "variables": ["section"],
+                "available_variables": ["section"],
             }
         },
     }
@@ -196,7 +231,7 @@ def test_a_template_field_produced_while_evaluating_a_template_is_an_error():
             }
         },
         schema=inner,
-        variables=["flag"],
+        available_variables=["flag"],
         keypath=["x"],
     )
 
@@ -208,7 +243,7 @@ def test_a_template_field_produced_while_evaluating_a_template_is_an_error():
 
 def test_a_template_object_inside_a_template_source_is_an_error():
     # a Template can be put in a source only from Python, not from a config file
-    inner = Template("${ a }", variables=["a"], keypath=["y"])
+    inner = Template("${ a }", available_variables=["a"], keypath=["y"])
     template = Template(
         {"k": inner},
         schema={
@@ -217,7 +252,7 @@ def test_a_template_object_inside_a_template_source_is_an_error():
                 "k": {
                     "type": "template",
                     "schema": {"type": "string"},
-                    "variables": ["a"],
+                    "available_variables": ["a"],
                 }
             },
         },
@@ -238,7 +273,7 @@ def test_errors_are_reported_at_the_template_keypath_plus_the_inner_path():
     template = Template(
         {"count": "${ n }"},
         schema={"type": "dict", "required_keys": {"count": {"type": "integer"}}},
-        variables=["n"],
+        available_variables=["n"],
         keypath=["pages", "x"],
     )
 

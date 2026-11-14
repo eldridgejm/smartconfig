@@ -156,7 +156,11 @@ def test_raises_if_unknown_key_provided_with_any_type():
 
 
 def test_template_type_smoke():
-    schema = {"type": "template", "schema": {"type": "string"}, "variables": ["name"]}
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "available_variables": ["name"],
+    }
     validate_schema(schema)
 
 
@@ -164,7 +168,7 @@ def test_template_type_with_nullable():
     schema = {
         "type": "template",
         "schema": {"type": "string"},
-        "variables": ["publication"],
+        "available_variables": ["publication"],
         "nullable": True,
     }
     validate_schema(schema)
@@ -177,7 +181,7 @@ def test_template_type_with_default_where_defaults_are_allowed():
             "foo": {
                 "type": "template",
                 "schema": {"type": "string"},
-                "variables": [],
+                "available_variables": [],
                 "default": "hello ${ name }",
             }
         },
@@ -189,7 +193,7 @@ def test_template_type_with_default_where_defaults_are_not_allowed_raises():
     schema = {
         "type": "template",
         "schema": {"type": "string"},
-        "variables": [],
+        "available_variables": [],
         "default": "hello",
     }
 
@@ -201,7 +205,7 @@ def test_template_type_with_default_where_defaults_are_not_allowed_raises():
 
 
 def test_template_type_raises_if_schema_is_missing():
-    schema = {"type": "template", "variables": []}
+    schema = {"type": "template", "available_variables": []}
 
     with raises(exceptions.InvalidSchemaError) as exc:
         validate_schema(schema)
@@ -216,7 +220,7 @@ def test_template_type_raises_if_variables_is_missing():
     with raises(exceptions.InvalidSchemaError) as exc:
         validate_schema(schema)
 
-    assert exc.value.keypath == ("variables",)
+    assert exc.value.keypath == ("available_variables",)
     assert "Missing key." in str(exc.value)
 
 
@@ -224,7 +228,7 @@ def test_template_type_raises_on_unknown_key():
     schema = {
         "type": "template",
         "schema": {"type": "string"},
-        "variables": [],
+        "available_variables": [],
         "foo": 1,
     }
 
@@ -236,34 +240,42 @@ def test_template_type_raises_on_unknown_key():
 
 
 def test_template_type_raises_if_variables_is_not_a_list():
-    schema = {"type": "template", "schema": {"type": "string"}, "variables": "name"}
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "available_variables": "name",
+    }
 
     with raises(exceptions.InvalidSchemaError) as exc:
         validate_schema(schema)
 
-    assert exc.value.keypath == ("variables",)
+    assert exc.value.keypath == ("available_variables",)
 
 
 def test_template_type_raises_if_a_variable_is_not_a_string():
-    schema = {"type": "template", "schema": {"type": "string"}, "variables": [1]}
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "available_variables": [1],
+    }
 
     with raises(exceptions.InvalidSchemaError) as exc:
         validate_schema(schema)
 
-    assert exc.value.keypath == ("variables", "0")
+    assert exc.value.keypath == ("available_variables", "0")
 
 
 def test_template_type_raises_if_a_variable_is_not_an_identifier():
     schema = {
         "type": "template",
         "schema": {"type": "string"},
-        "variables": ["ok", "not ok"],
+        "available_variables": ["ok", "not ok"],
     }
 
     with raises(exceptions.InvalidSchemaError) as exc:
         validate_schema(schema)
 
-    assert exc.value.keypath == ("variables", "1")
+    assert exc.value.keypath == ("available_variables", "1")
 
 
 def test_template_type_raises_if_globals_is_given():
@@ -271,7 +283,7 @@ def test_template_type_raises_if_globals_is_given():
     schema = {
         "type": "template",
         "schema": {"type": "string"},
-        "variables": [],
+        "available_variables": [],
         "globals": ["vars"],
     }
 
@@ -289,7 +301,7 @@ def test_template_type_validates_inner_schema_recursively():
                     "type": "dict",
                     "required_keys": {"title": {"type": "int"}},
                 },
-                "variables": [],
+                "available_variables": [],
             }
         },
     }
@@ -311,7 +323,7 @@ def test_template_type_inner_schema_may_be_dynamic():
     def inner(_):
         return {"type": "string"}
 
-    schema = {"type": "template", "schema": inner, "variables": []}
+    schema = {"type": "template", "schema": inner, "available_variables": []}
     validate_schema(schema)
 
 
@@ -319,7 +331,7 @@ def test_template_type_inner_schema_may_not_be_dynamic_if_disallowed():
     def inner(_):
         return {"type": "string"}
 
-    schema = {"type": "template", "schema": inner, "variables": []}
+    schema = {"type": "template", "schema": inner, "available_variables": []}
 
     with raises(exceptions.InvalidSchemaError) as exc:
         validate_schema(schema, allow_dynamic=False)
@@ -331,7 +343,7 @@ def test_template_type_rejects_default_at_top_of_inner_schema():
     schema = {
         "type": "template",
         "schema": {"type": "string", "default": "hi"},
-        "variables": [],
+        "available_variables": [],
     }
 
     with raises(exceptions.InvalidSchemaError) as exc:

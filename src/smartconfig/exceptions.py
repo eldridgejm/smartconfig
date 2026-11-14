@@ -38,16 +38,19 @@ class TemplateRequiredError(ResolutionError):
 
     Attributes
     ----------
-    variables : tuple[str, ...]
-        The variables of the template field.
+    available_variables : tuple[str, ...]
+        The available variables of the template field.
 
     """
 
     def __init__(
-        self, reason: str, keypath: _types.KeyPath, variables: tuple[str, ...]
+        self,
+        reason: str,
+        keypath: _types.KeyPath,
+        available_variables: tuple[str, ...],
     ):
         super().__init__(reason, keypath)
-        self.variables = variables
+        self.available_variables = available_variables
 
 
 class UnexpectedTemplateError(ResolutionError):

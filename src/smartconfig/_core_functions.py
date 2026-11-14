@@ -17,7 +17,7 @@ from ._internals import (
     _ConcreteNode,
     make_node,
     _make_unresolved_container,
-    _use_fragment,
+    _expand_use,
 )
 
 
@@ -113,7 +113,7 @@ def _template(args: _types.FunctionArgs) -> _ConcreteNode:
     """Defer the input: it resolves to a :class:`Template` of it, as written.
 
     This function is called only on a field of type ``any``, and the Template has
-    schema ``any`` and no variables. On a template field the wrapper is handled by
+    schema ``any`` and no available variables. On a template field the wrapper is handled by
     the resolver (see ``make_node``), and any other field is evaluated now, so a
     wrapper there is an error.
 
@@ -128,7 +128,7 @@ def _template(args: _types.FunctionArgs) -> _ConcreteNode:
 
     return _TemplateNode(
         args.input,
-        {"type": "template", "schema": {"type": "any"}, "variables": []},
+        {"type": "template", "schema": {"type": "any"}, "available_variables": []},
         args.keypath,
         args.resolution_context,
         parent=args._function_call_node,
@@ -150,7 +150,7 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
     rebuilt under the destination's schema.
 
     """
-    spliced_data = _use_fragment(args.input, args._root_node, args.keypath)
+    spliced_data = _expand_use(args.input, args._function_call_node, args.keypath)
 
     # Resolve: build a STANDARD tree from the (possibly overridden) raw data.
     # The caller resolves this node, performing one pass of interpolation and
@@ -266,7 +266,7 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
             if target == "__this__":
                 if isinstance(node, (_ValueNode, _TemplateNode)):
                     raise ResolutionError(
-                        "'__this__' cannot be used when 'in' is a scalar value.",
+                        "'__this__' cannot be used when 'in' is a value or a template.",
                         args.keypath,
                     )
                 node.local_variables[name] = _make_unresolved_container(node)

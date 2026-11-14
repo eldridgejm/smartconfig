@@ -698,7 +698,9 @@ def test_let_references_self_raises_on_scalar_in_block():
     with pytest.raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"let": _let})
 
-    assert "'__this__' cannot be used when 'in' is a scalar value" in str(exc.value)
+    assert "'__this__' cannot be used when 'in' is a value or a template" in str(
+        exc.value
+    )
 
 
 def test_let_arithmetic_with_this_reference():
@@ -1394,7 +1396,9 @@ def test_template_resolves_to_a_template():
     assert result == {
         "foo": Template("Hello ${name}!", schema={"type": "any"}, keypath=["foo"])
     }
-    assert result["foo"].evaluate({"name": "x"}) == "Hello x!"
+    # it has no available variables, so none may be given
+    with pytest.raises(exceptions.ResolutionError):
+        result["foo"].evaluate({"name": "x"})
 
 
 def test_template_survives_multiple_resolutions():
