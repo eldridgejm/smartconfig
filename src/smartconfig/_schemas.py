@@ -212,7 +212,7 @@ def _validate_template_schema(
         <TEMPLATE_SCHEMA> = {
             "type": "template",
             "schema": <SCHEMA>,
-            "available_variables": [<NAME>, ...],
+            "parameters": [<NAME>, ...],
             ["nullable": (True | False)]
         }
 
@@ -222,15 +222,13 @@ def _validate_template_schema(
     """
     _check_keys(
         template_schema.keys(),
-        required={"type", "schema", "available_variables"},
+        required={"type", "schema", "parameters"},
         optional={"nullable"},
         keypath=keypath,
         allow_default=allow_default,
     )
 
-    _validate_names(
-        template_schema["available_variables"], keypath + ("available_variables",)
-    )
+    _validate_names(template_schema["parameters"], keypath + ("parameters",))
 
     validate_schema(
         template_schema["schema"],

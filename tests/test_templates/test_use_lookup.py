@@ -80,7 +80,7 @@ def test_global_target_as_the_value_of_a_template_field():
             "x": {
                 "type": "template",
                 "schema": {"type": "string"},
-                "available_variables": ["name"],
+                "parameters": ["name"],
             }
         },
     }
@@ -101,7 +101,7 @@ def test_global_target_inside_a_template_value():
             "x": {
                 "type": "template",
                 "schema": {"type": "list", "element_schema": {"type": "string"}},
-                "available_variables": ["name"],
+                "parameters": ["name"],
             }
         },
     }

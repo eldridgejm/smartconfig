@@ -11,7 +11,7 @@ from smartconfig.types import ConfigurationDict, ConfigurationList, Schema
 STRING_TEMPLATE = {
     "type": "template",
     "schema": {"type": "string"},
-    "available_variables": ["name"],
+    "parameters": ["name"],
 }
 
 
@@ -27,7 +27,7 @@ def test_template_field_resolves_to_a_template():
     t = result["x"]
     assert isinstance(t, Template)
     assert t.source == "Hi ${ name }"
-    assert t.available_variables == ("name",)
+    assert t.parameters == ("name",)
     assert t.keypath == ("x",)
     assert t.schema == {"type": "string"}
 
@@ -44,7 +44,7 @@ def test_dict_valued_template_is_kept_as_written():
     schema = {
         "type": "dict",
         "required_keys": {
-            "x": {"type": "template", "schema": inner, "available_variables": ["name"]}
+            "x": {"type": "template", "schema": inner, "parameters": ["name"]}
         },
     }
     cfg: ConfigurationDict = {
@@ -62,7 +62,7 @@ def test_list_valued_template_is_kept_as_written():
     schema = {
         "type": "dict",
         "required_keys": {
-            "x": {"type": "template", "schema": inner, "available_variables": ["n"]}
+            "x": {"type": "template", "schema": inner, "parameters": ["n"]}
         },
     }
     cfg: ConfigurationDict = {"x": {"__template__": ["1", "${ n + 1 }"]}}
@@ -99,7 +99,7 @@ def test_unwrapped_value_raises_template_required(value):
             "x": {
                 "type": "template",
                 "schema": {"type": "any"},
-                "available_variables": ["publication"],
+                "parameters": ["publication"],
             }
         },
     }
@@ -110,9 +110,9 @@ def test_unwrapped_value_raises_template_required(value):
 
     assert isinstance(exc.value, exceptions.ResolutionError)
     assert exc.value.keypath == ("x",)
-    assert exc.value.available_variables == ("publication",)
+    assert exc.value.parameters == ("publication",)
     assert exc.value.reason == (
-        "This field is a template (available variables: publication), evaluated later. "
+        "This field is a template (parameters: publication), evaluated later. "
         'Write it as {"__template__": ...}.'
     )
 
@@ -124,7 +124,7 @@ def test_template_required_message_with_no_variables():
             "x": {
                 "type": "template",
                 "schema": {"type": "string"},
-                "available_variables": [],
+                "parameters": [],
             }
         },
     }
@@ -132,8 +132,8 @@ def test_template_required_message_with_no_variables():
     with raises(exceptions.TemplateRequiredError) as exc:
         resolve({"x": "hello"}, schema)
 
-    assert exc.value.available_variables == ()
-    assert "(available variables: none)" in exc.value.reason
+    assert exc.value.parameters == ()
+    assert "(parameters: none)" in exc.value.reason
 
 
 def test_wrapper_is_an_unknown_function_when_template_function_is_unavailable():
@@ -184,7 +184,7 @@ def test_absent_template_with_default_is_a_template_of_the_default():
     t = result["x"]
     assert isinstance(t, Template)
     assert t.source == "Hello ${ name }"
-    assert t.available_variables == ("name",)
+    assert t.parameters == ("name",)
     assert t.keypath == ("x",)
 
 
@@ -196,7 +196,7 @@ def test_absent_template_with_dict_default_is_kept_as_written():
     field = {
         "type": "template",
         "schema": inner,
-        "available_variables": ["name"],
+        "parameters": ["name"],
         "default": {"title": "${ name }", "count": "2"},
     }
     schema = {"type": "dict", "optional_keys": {"x": field}}
@@ -243,7 +243,7 @@ def test_wrapped_null_is_a_template_of_null():
             "x": {
                 "type": "template",
                 "schema": {"type": "string", "nullable": True},
-                "available_variables": [],
+                "parameters": [],
             }
         },
     }
@@ -273,7 +273,7 @@ def test_resolving_the_output_again_leaves_templates_alone():
     schema = {
         "type": "dict",
         "required_keys": {
-            "x": {"type": "template", "schema": inner, "available_variables": ["name"]},
+            "x": {"type": "template", "schema": inner, "parameters": ["name"]},
             "y": {"type": "string"},
         },
     }
@@ -412,14 +412,14 @@ def test_wrapper_on_an_any_field_is_a_template():
     assert isinstance(t, Template)
     assert t.source == {"a": "Hi ${ name }"}
     assert t.schema == {"type": "any"}
-    assert t.available_variables == ()
+    assert t.parameters == ()
     assert t.keypath == ("x",)
 
 
 # invalid template schemas =============================================================
 
 
-@pytest.mark.parametrize("missing", ["schema", "available_variables"])
+@pytest.mark.parametrize("missing", ["schema", "parameters"])
 def test_static_template_schema_missing_a_key_is_an_invalid_schema(missing):
     field = dict(STRING_TEMPLATE)
     del field[missing]

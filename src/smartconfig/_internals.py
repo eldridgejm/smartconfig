@@ -236,7 +236,7 @@ cached. Resolving it:
        variables.
 
 A ``__template__`` wrapper on a field of type ``any`` also gives a _TemplateNode (with
-an ``any`` inner schema and no available variables); see ``_template()`` in _core_functions.py.
+an ``any`` inner schema and no parameters); see ``_template()`` in _core_functions.py.
 Template.evaluate() (in _templates.py) builds and resolves a new tree from the
 template's source, with the given names as the global variables. It marks the root
 with the template's keypath, so that a template field produced while evaluating (by a
@@ -1749,22 +1749,22 @@ class _FunctionCallNode(_Node):
 def _template_schema_parts(
     schema: _types.Schema, keypath: _types.KeyPath
 ) -> tuple[_types.Schema | _types.DynamicSchema, tuple[str, ...]]:
-    """The inner schema and available variables of a template schema.
+    """The inner schema and parameters of a template schema.
 
     Static schemas are not validated by resolve(), so the keys are read defensively.
 
     Raises
     ------
     InvalidSchemaError
-        If the schema has no "schema" or no "available_variables".
+        If the schema has no "schema" or no "parameters".
 
     """
-    for key in ("schema", "available_variables"):
+    for key in ("schema", "parameters"):
         if key not in schema:
             raise InvalidSchemaError(
                 f'A template schema must have a "{key}" key.', keypath + (key,)
             )
-    return schema["schema"], tuple(schema["available_variables"])
+    return schema["schema"], tuple(schema["parameters"])
 
 
 def _look_up_keypath(node: _ConcreteNode, keypath: str) -> Any:
@@ -1902,8 +1902,8 @@ class _TemplateNode(_Node):
         The template schema (``{"type": "template", ...}``).
     inner_schema : Schema | DynamicSchema
         The schema of the template's value once evaluated.
-    available_variables : tuple[str, ...]
-        The variables available to this template field when it is evaluated.
+    parameters : tuple[str, ...]
+        The template field's parameters: the names given each time it is evaluated.
     keypath : KeyPath
         The keypath to this node in the configuration tree.
     resolution_context : ResolutionContext
@@ -1931,7 +1931,7 @@ class _TemplateNode(_Node):
         super().__init__(parent, local_variables)
         self.value = value
         self.template_schema = template_schema
-        self.inner_schema, self.available_variables = _template_schema_parts(
+        self.inner_schema, self.parameters = _template_schema_parts(
             template_schema, keypath
         )
         self.keypath = keypath
@@ -2004,7 +2004,7 @@ class _TemplateNode(_Node):
         self._resolved = Template(
             self.value,
             self.inner_schema,
-            available_variables=self.available_variables,
+            parameters=self.parameters,
             keypath=self.keypath,
             converters=context.converters,
             functions=context.functions,
@@ -2099,7 +2099,7 @@ def _make_template_node(
         If the value is an invalid function call.
 
     """
-    _, available_variables = _template_schema_parts(schema, keypath)
+    _, parameters = _template_schema_parts(schema, keypath)
 
     if isinstance(cfg, Template):
         return _TemplateNode.from_template(
@@ -2136,12 +2136,12 @@ def _make_template_node(
                 local_variables=local_variables,
             )
 
-    names = ", ".join(available_variables) if available_variables else "none"
+    names = ", ".join(parameters) if parameters else "none"
     raise TemplateRequiredError(
-        f"This field is a template (available variables: {names}), evaluated later. "
+        f"This field is a template (parameters: {names}), evaluated later. "
         'Write it as {"__template__": ...}.',
         keypath,
-        available_variables,
+        parameters,
     )
 
 

@@ -388,7 +388,7 @@ the configuration with :ref:`__use__ <func-use>`.
   variables. See :ref:`template_fields_example`.
 - On a field of type ``"any"``, it is a template that can be copied elsewhere
   with ``__use__``: the ``Template`` has schema ``{"type": "any"}`` and no
-  available variables.
+  parameters.
 - On a field of any other type it is an error
   (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`),
   since that field is evaluated now. So is a wrapper inside a template.
@@ -421,7 +421,7 @@ This produces:
 .. testoutput:: python
 
     {'port': 8080,
-     'service_template': Template(at "service_template", available_variables: none)}
+     'service_template': Template(at "service_template", parameters: none)}
     {'host': 'localhost', 'port': '${port}'}
 
 The ``${port}`` reference is kept as written. Resolving the output a second time
@@ -505,7 +505,7 @@ of the destination:
 
 .. testoutput:: python
 
-    {'greeting_template': Template(at "greeting_template", available_variables: none),
+    {'greeting_template': Template(at "greeting_template", parameters: none),
      'message': 'Hello, Alice!',
      'name': 'Alice'}
 
@@ -601,7 +601,7 @@ fields at each use site:
 
 .. testoutput:: python
 
-    {'defaults': Template(at "defaults", available_variables: none),
+    {'defaults': Template(at "defaults", parameters: none),
      'server': {'host': 'localhost', 'port': 9090}}
 
 **Example (on a template field)**:
@@ -636,7 +636,7 @@ evaluated later with :meth:`Template.evaluate <smartconfig.Template.evaluate>`:
                         "points": {"type": "integer"},
                     },
                 },
-                "available_variables": ["publication"],
+                "parameters": ["publication"],
             },
         },
     }

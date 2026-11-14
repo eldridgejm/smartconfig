@@ -1396,7 +1396,7 @@ def test_template_resolves_to_a_template():
     assert result == {
         "foo": Template("Hello ${name}!", schema={"type": "any"}, keypath=["foo"])
     }
-    # it has no available variables, so none may be given
+    # it has no parameters, so none may be given
     with pytest.raises(exceptions.ResolutionError):
         result["foo"].evaluate({"name": "x"})
 

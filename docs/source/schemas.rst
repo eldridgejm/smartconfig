@@ -268,7 +268,7 @@ More precisely, a schema dictionary follows the formal grammar below:
     <TEMPLATE_SCHEMA> = {
         "type": "template",
         "schema": <SCHEMA>,
-        "available_variables": [<NAME>, ...],
+        "parameters": [<NAME>, ...],
         ["nullable": (True | False)]
     }
 
@@ -298,12 +298,12 @@ element depends on its content (e.g., a "type" field).
 A **template schema** marks a field whose value is evaluated later, possibly
 many times: its value is kept as written and resolves to a
 :class:`smartconfig.Template`. ``"schema"`` describes the value once it is
-evaluated, and ``"available_variables"`` lists the variables available to the
-template when it is evaluated (it may be empty). Each call to
+evaluated, and ``"parameters"`` lists the template's parameters: the names
+whose values are given each time it is evaluated (the list may be empty). Like
+a function's parameters, each call to
 :meth:`Template.evaluate <smartconfig.Template.evaluate>` must give exactly
-these variables, no more and no fewer. The inner schema may not have a top-level
-default; put the default on
-the template schema. (See :ref:`template_fields_example`.)
+these, no more and no fewer. The inner schema may not have a top-level default;
+put the default on the template schema. (See :ref:`template_fields_example`.)
 
 Schemas can be validated using the :func:`smartconfig.validate_schema`
 function.
@@ -601,7 +601,7 @@ has ``"type": "template"`` holds such a value. Its value is written in a
                         "points": {"type": "integer"},
                     },
                 },
-                "available_variables": ["publication", "course"],
+                "parameters": ["publication", "course"],
             },
         },
     }
@@ -625,16 +625,16 @@ Output:
 
 .. testoutput::
 
-    Template(at "page", available_variables: publication, course)
+    Template(at "page", parameters: publication, course)
     {'points': '${ publication.points * 2 }',
      'title': '${ course }: ${ publication.name }'}
 
 :meth:`Template.evaluate <smartconfig.Template.evaluate>` evaluates the template:
 interpolation, function calls, type conversion and defaults, as
-:func:`smartconfig.resolve` does. It takes a mapping of the template's
-available variables. A template is evaluated on its own, so the rest of the
+:func:`smartconfig.resolve` does. It takes a mapping from each of the template's
+parameters to its value. A template is evaluated on its own, so the rest of the
 configuration is not visible to it: ``course`` is not part of the template, so
-it is an available variable and is passed in:
+it is a parameter and is passed in:
 
 .. testcode::
 
@@ -672,7 +672,7 @@ function calls inside it are not checked. Recall the schema from above:
                         "points": {"type": "integer"},
                     },
                 },
-                "available_variables": ["publication", "course"],
+                "parameters": ["publication", "course"],
             },
         },
     }
@@ -697,8 +697,8 @@ Output:
     ('page', 'points')
     'Dictionary is missing required key "points".'
 
-**What is checked when the template is evaluated.** First, the variables given
-must be exactly the template's available variables, no more and no fewer:
+**What is checked when the template is evaluated.** First, the names given
+must be exactly the template's parameters, no more and no fewer:
 
 .. testcode::
 
@@ -711,8 +711,7 @@ Output:
 
 .. testoutput::
 
-    ("Missing variables: course. This template's available variables: publication, "
-     'course.')
+    "Missing parameters: course. This template's parameters: publication, course."
 
 Then, the names its strings use. A name that is not defined raises
 :class:`exceptions.UndefinedNameError <smartconfig.exceptions.UndefinedNameError>`,
@@ -723,7 +722,7 @@ which suggests a close name or lists the names that were available:
     typo = smartconfig.Template(
         "${ publcation.name }",
         schema={"type": "string"},
-        available_variables=["publication"],
+        parameters=["publication"],
         keypath=["page", "title"],
     )
 
@@ -772,18 +771,18 @@ listing all the variables it needs:
             "type": "dict",
             "required_keys": {"title": {"type": "string"}},
         },
-        "available_variables": ["publication", "course"],
+        "parameters": ["publication", "course"],
     },
     "footer": {
         "type": "template",
         "schema": {"type": "string"},
-        "available_variables": ["publication"],
+        "parameters": ["publication"],
     },
 
 **Other details.**
 
 - A ``__template__`` wrapper on a field of type ``"any"`` also resolves to a
-  ``Template``, with schema ``{"type": "any"}`` and no available variables. On a
+  ``Template``, with schema ``{"type": "any"}`` and no parameters. On a
   field of any other type it is an error
   (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`).
 - A dynamic schema inside a template is called twice: once when the
@@ -807,7 +806,7 @@ listing all the variables it needs:
               "score": {
                   "type": "template",
                   "schema": score_schema,
-                  "available_variables": ["n"],
+                  "parameters": ["n"],
               }
           },
       }

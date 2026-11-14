@@ -113,7 +113,7 @@ def _template(args: _types.FunctionArgs) -> _ConcreteNode:
     """Defer the input: it resolves to a :class:`Template` of it, as written.
 
     This function is called only on a field of type ``any``, and the Template has
-    schema ``any`` and no available variables. On a template field the wrapper is handled by
+    schema ``any`` and no parameters. On a template field the wrapper is handled by
     the resolver (see ``make_node``), and any other field is evaluated now, so a
     wrapper there is an error.
 
@@ -128,7 +128,7 @@ def _template(args: _types.FunctionArgs) -> _ConcreteNode:
 
     return _TemplateNode(
         args.input,
-        {"type": "template", "schema": {"type": "any"}, "available_variables": []},
+        {"type": "template", "schema": {"type": "any"}, "parameters": []},
         args.keypath,
         args.resolution_context,
         parent=args._function_call_node,

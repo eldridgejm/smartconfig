@@ -38,8 +38,8 @@ class TemplateRequiredError(ResolutionError):
 
     Attributes
     ----------
-    available_variables : tuple[str, ...]
-        The available variables of the template field.
+    parameters : tuple[str, ...]
+        The parameters of the template field.
 
     """
 
@@ -47,10 +47,10 @@ class TemplateRequiredError(ResolutionError):
         self,
         reason: str,
         keypath: _types.KeyPath,
-        available_variables: tuple[str, ...],
+        parameters: tuple[str, ...],
     ):
         super().__init__(reason, keypath)
-        self.available_variables = available_variables
+        self.parameters = parameters
 
 
 class UnexpectedTemplateError(ResolutionError):

@@ -35,7 +35,7 @@ def test_wrapped_null_where_inner_schema_is_not_nullable_is_an_error():
             "x": {
                 "type": "template",
                 "schema": {"type": "string"},
-                "available_variables": [],
+                "parameters": [],
             }
         },
     }
@@ -55,7 +55,7 @@ def test_structure_is_checked_in_a_default():
             "x": {
                 "type": "template",
                 "schema": PAGE,
-                "available_variables": [],
+                "parameters": [],
                 "default": {"count": "3"},
             }
         },
@@ -74,9 +74,7 @@ def test_function_call_is_accepted_and_not_evaluated():
     value: ConfigurationDict = {"title": {"__explode__": {}}}
     schema = {
         "type": "dict",
-        "required_keys": {
-            "x": {"type": "template", "schema": PAGE, "available_variables": []}
-        },
+        "required_keys": {"x": {"type": "template", "schema": PAGE, "parameters": []}},
     }
     cfg: ConfigurationDict = {"x": {"__template__": value}}
 
@@ -88,9 +86,7 @@ def test_function_call_is_accepted_and_not_evaluated():
 def test_structure_inside_a_function_call_input_is_not_checked():
     schema = {
         "type": "dict",
-        "required_keys": {
-            "x": {"type": "template", "schema": PAGE, "available_variables": []}
-        },
+        "required_keys": {"x": {"type": "template", "schema": PAGE, "parameters": []}},
     }
     # the "else" branch is missing a title, but function inputs are not checked
     value: ConfigurationDict = {
@@ -117,9 +113,7 @@ def test_structure_inside_a_function_call_input_is_not_checked():
 def test_wrapper_inside_a_template_is_unexpected(inner, value, keypath):
     schema = {
         "type": "dict",
-        "required_keys": {
-            "x": {"type": "template", "schema": inner, "available_variables": []}
-        },
+        "required_keys": {"x": {"type": "template", "schema": inner, "parameters": []}},
     }
     cfg: ConfigurationDict = {"x": {"__template__": value}}
 
@@ -147,14 +141,14 @@ def test_a_template_field_inside_a_template_is_an_error():
             "body": {
                 "type": "template",
                 "schema": {"type": "string"},
-                "available_variables": ["section"],
+                "parameters": ["section"],
             },
         },
     }
     schema = {
         "type": "dict",
         "required_keys": {
-            "x": {"type": "template", "schema": page, "available_variables": ["page"]}
+            "x": {"type": "template", "schema": page, "parameters": ["page"]}
         },
     }
     value: ConfigurationDict = {"title": "a", "body": {"__template__": "b"}}

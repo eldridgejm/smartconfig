@@ -37,7 +37,8 @@ class Template:
 
     A :class:`Template` is the resolved value of a template field. It holds the
     value as written, along with the schema that the value must match once it is
-    evaluated and the variables available to it.
+    evaluated and its parameters: the names that are given to it each time it is
+    evaluated.
 
     Parameters
     ----------
@@ -46,9 +47,9 @@ class Template:
     schema : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
         The schema that the evaluated value must match. Defaults to
         ``{"type": "any"}``.
-    available_variables : Iterable[str]
-        The variables available to the template when it is evaluated. Exactly these
-        must be given each time it is evaluated.
+    parameters : Iterable[str]
+        The template's parameters: the names whose values are given each time the
+        template is evaluated, exactly these and no others.
     keypath : Iterable[str]
         The keypath where the template was written. Errors raised while evaluating
         the template are reported relative to it.
@@ -72,8 +73,8 @@ class Template:
         The value as written.
     schema : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
         The schema of the evaluated value.
-    available_variables : tuple[str, ...]
-        The variables that must be given, no more and no fewer, when evaluating.
+    parameters : tuple[str, ...]
+        The names that must be given, no more and no fewer, when evaluating.
     keypath : :class:`types.KeyPath`
         Where the template was written.
 
@@ -85,7 +86,7 @@ class Template:
         self,
         source: _types.Configuration,
         schema: _types.Schema | _types.DynamicSchema = {"type": "any"},
-        available_variables: Iterable[str] = (),
+        parameters: Iterable[str] = (),
         keypath: Iterable[str] = (),
         *,
         converters: Mapping[str, Callable] = _DEFAULT,
@@ -96,7 +97,7 @@ class Template:
     ):
         self.source = copy.deepcopy(source)
         self.schema = schema
-        self.available_variables: tuple[str, ...] = tuple(available_variables)
+        self.parameters: tuple[str, ...] = tuple(parameters)
         self.keypath: _types.KeyPath = tuple(keypath)
 
         # the options used by .evaluate(); shared (not copied) by __deepcopy__
@@ -120,8 +121,8 @@ class Template:
         Parameters
         ----------
         variables : Mapping[str, Any] | None
-            The values of the template's variables. Its keys must be exactly the
-            names in :attr:`available_variables`.
+            The values of the template's parameters. Its keys must be exactly the
+            names in :attr:`parameters`.
 
         Returns
         -------
@@ -132,7 +133,7 @@ class Template:
         Raises
         ------
         ResolutionError
-            If a variable is missing, if a name that is not an available variable is
+            If a variable is missing, if a name that is not a parameter is
             given, or if the template cannot be evaluated. The
             keypath is that of the template followed by the path inside it.
 
@@ -143,18 +144,18 @@ class Template:
         if variables is None:
             variables = {}
 
-        # the keys must be exactly the available variables: no more, no fewer
-        missing = [n for n in self.available_variables if n not in variables]
-        unexpected = [n for n in variables if n not in self.available_variables]
+        # the keys must be exactly the parameters: no more and no fewer
+        missing = [n for n in self.parameters if n not in variables]
+        unexpected = [n for n in variables if n not in self.parameters]
         if missing or unexpected:
             problems = []
             if missing:
-                problems.append(f"Missing variables: {', '.join(missing)}.")
+                problems.append(f"Missing parameters: {', '.join(missing)}.")
             if unexpected:
-                problems.append(f"Unexpected variables: {', '.join(unexpected)}.")
-            needs = ", ".join(self.available_variables) or "none"
+                problems.append(f"Unexpected parameters: {', '.join(unexpected)}.")
+            needs = ", ".join(self.parameters) or "none"
             raise ResolutionError(
-                f"{' '.join(problems)} This template's available variables: {needs}.",
+                f"{' '.join(problems)} This template's parameters: {needs}.",
                 self.keypath,
             )
 
@@ -174,7 +175,7 @@ class Template:
         memo[id(self)] = new
         new.source = copy.deepcopy(self.source, memo)
         new.schema = self.schema
-        new.available_variables = self.available_variables
+        new.parameters = self.parameters
         new.keypath = self.keypath
         new._options = self._options
         return new
@@ -185,11 +186,11 @@ class Template:
         return (
             self.source == other.source
             and self.schema == other.schema
-            and self.available_variables == other.available_variables
+            and self.parameters == other.parameters
             and self.keypath == other.keypath
         )
 
     def __repr__(self) -> str:
         keypath = ".".join(self.keypath)
-        names = ", ".join(self.available_variables) or "none"
-        return f'Template(at "{keypath}", available_variables: {names})'
+        names = ", ".join(self.parameters) or "none"
+        return f'Template(at "{keypath}", parameters: {names})'

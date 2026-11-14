@@ -356,7 +356,7 @@ def test_an_undefined_name_in_a_template_suggests_a_variable_or_a_key():
                 "body": {"type": "string"},
             },
         },
-        available_variables=["publication"],
+        parameters=["publication"],
         keypath=["pages", "x"],
     )
 
