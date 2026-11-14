@@ -6,132 +6,68 @@ smartconfig
 and function evaluation, allowing you to build powerful configuration systems for your
 applications.
 
-Use Cases and Quick Start
--------------------------
+.. testsetup:: intro
 
-Python programs that require user configuration often use simple formats like
-JSON, YAML, or TOML. These formats are easier to read and write than code, but
-they may not support more advanced features like string interpolation, date
-parsing, or type checking. Another approach is to use a full-fledged
-programming language to define the configuration, such as Python itself.
-However, this approach vastly increases the possible complexity of the
-configuration file, and it requires that users know how to write Python code.
-
-`smartconfig` aims to bridge the gap between these two approaches by providing a simple way to extend configuration formats with "smart" features. To see how this works, consider the following example. Suppose you have a configuration file in JSON format that looks like this:
-
-**config.json**
-
-.. code:: json
-
-    {
-        "course_name": "Introduction to Computer Science",
-        "start_date": "2025-09-01",
-        "first_homework_due": {"__datetime.parse__": "first tuesday after ${start_date}"},
-        "welcome_msg": "Welcome to ${course_name}!"
-    }
-
-Two of these values are computed from the others. The welcome message refers
-to the course name with ``${course_name}``. The first homework's due date is a
-function call: a dictionary whose single key is a function name wrapped in
-double underscores. Here, ``__datetime.parse__`` reads the date written in
-plain English, "first tuesday after ${start_date}", and works out which day
-that is.
-
-A JSON parser reads all of these as plain strings. `smartconfig` resolves
-them:
-
-**Python Code**
-
-.. testsetup::
-
-    import datetime
     from pprint import pprint as print
 
-.. testcode::
+.. testcode:: intro
 
-    import json
     import smartconfig
 
-    # 1. Load raw configuration
-    with open("config.json") as f:
-        raw_config = json.load(f)
+    # 1) load or define a "raw" configuration. In the example config below, the
+    # "welcome" string contains a placeholder that should be interpolated.
+    config = {
+        "course": "DSC 10",
+        "start": "2025-09-01",
+        "welcome": "Welcome to ${course}!",
+    }
 
-    # 2. Describe the expected structure with a schema
+    # 2) define a schema that specifies the expected structure of the config
     schema = {
         "type": "dict",
         "required_keys": {
-            "course_name": {"type": "string"},
-            "start_date": {"type": "date"},
-            "first_homework_due": {"type": "date"},
-            "welcome_msg": {"type": "string"},
+            "course": {"type": "string"},
+            "start": {"type": "date"},
+            "welcome": {"type": "string"},
         },
     }
 
-    # 3. Resolve
-    resolved = smartconfig.resolve(raw_config, schema)
-    print(resolved)
+    # 3) "resolve" the configuration
+    print(smartconfig.resolve(config, schema))
 
-The resolved configuration is a dictionary with all values computed:
+This results in:
 
-**Output**
+.. testoutput:: intro
 
-.. testoutput::
+    {'course': 'DSC 10',
+     'start': datetime.date(2025, 9, 1),
+     'welcome': 'Welcome to DSC 10!'}
 
-    {'course_name': 'Introduction to Computer Science',
-     'first_homework_due': datetime.date(2025, 9, 2),
-     'start_date': datetime.date(2025, 9, 1),
-     'welcome_msg': 'Welcome to Introduction to Computer Science!'}
+For a more detailed introduction, see :doc:`Features and Quick Start <quick_start>`.
 
-.. testsetup::
+Installation
+------------
 
-    import json
-    import datetime
+Install directly from GitHub using `uv <https://docs.astral.sh/uv/>`_:
 
-    config = {
-        "course_name": "Introduction to Computer Science",
-        "start_date": "2025-09-01",
-        "first_homework_due": {"__datetime.parse__": "first tuesday after ${start_date}"},
-        "welcome_msg": "Welcome to ${course_name}!"
-    }
-    with open("config.json", "w") as f:
-        json.dump(config, f)
+.. code:: bash
 
-Features
---------
+    uv add git+https://github.com/eldridgejm/smartconfig.git
 
-`smartconfig` supports extending configuration formats with the following
-features:
+Or with pip:
 
-- **String interpolation**: Use ``${...}`` to refer to other values in the
-  configuration file. This helps avoid tedious duplication and the errors that
-  can arise from it.
-- **Type conversion and validation**: `smartconfig` includes converters that
-  parse string values into Python types like ``int``, ``float``, ``bool``,
-  ``datetime.date``, and ``datetime.datetime``. Converters also validate that
-  values match the expected type.
-- **Default values**: default values can be provided, so that the user
-  can save typing and highlight what's important by only specifying the values
-  that are different from the default.
-- **Function calls**: `smartconfig` defines a syntax for calling functions in
-  the configuration file. This allows the user to specify complex values that
-  are calculated at runtime. Default functions are provided for conditional
-  logic, list operations, dictionary merging, date manipulation, and more.
-  Developers can also define their own functions.
-- **Complex control flow**: the Jinja2 templating engine is used under
-  the hood, which means that you can use Jinja2's control flow constructs
-  like `if` statements, `for` loops, and more to define complex values in
-  your configuration file. You can also use Jinja2 filters to transform
-  values in your configuration file, as in ``${value | capitalize}`` to capitalize
-  a string.
+.. code:: bash
 
-Additionally, `smartconfig` provides the following features to developers:
+    pip install git+https://github.com/eldridgejm/smartconfig.git
 
-- **Extensibility**: `smartconfig` is designed to be easily extensible.
-  Developers can define custom type converters, custom functions for complex runtime
-  behavior, and custom filters for transforming values during string interpolation.
-- **Format agnostic**: `smartconfig` can be used with any configuration format
-  that can be loaded into a Python dictionary. This includes JSON, YAML, TOML,
-  and any future format that might be developed.
+Table of Contents
+-----------------
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Getting Started
+
+   quick_start
 
 .. toctree::
    :maxdepth: 1
@@ -173,18 +109,3 @@ Additionally, `smartconfig` provides the following features to developers:
    :caption: Recipes
 
    recipes
-
-Installation
-------------
-
-Install directly from GitHub using `uv <https://docs.astral.sh/uv/>`_:
-
-.. code:: bash
-
-    uv add git+https://github.com/eldridgejm/smartconfig.git
-
-Or with pip:
-
-.. code:: bash
-
-    pip install git+https://github.com/eldridgejm/smartconfig.git
