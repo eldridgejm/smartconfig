@@ -2219,7 +2219,7 @@ def _make_template_node(
 
     names = ", ".join(parameters) if parameters else "none"
     raise TemplateRequiredError(
-        f"This field is a template (parameters: {names}), evaluated later. "
+        f"This field expects a template (parameters: {names}). "
         'Write it as {"__template__": ...}.',
         keypath,
         parameters,

@@ -1,6 +1,5 @@
 """Tests of __use__ on template fields and inside templates (run at load)."""
 
-import pytest
 from pytest import raises
 
 from smartconfig import CORE_FUNCTIONS, Template, exceptions, resolve
@@ -76,28 +75,46 @@ def test_use_with_overrides_is_merged_as_written():
 # __use__ inside a template's value ====================================================
 
 
-@pytest.mark.parametrize(
-    "body, expanded",
-    [
-        # in a list
-        ([1, {"__use__": "fragments.part"}], [1, {"p": "${ name }"}]),
-        # inside another function call's input
-        (
-            {"__if__": {"condition": True, "then": {"__use__": "fragments.part"}}},
-            {"__if__": {"condition": True, "then": {"p": "${ name }"}}},
-        ),
-    ],
-    ids=["list", "function-input"],
-)
-def test_use_inside_a_template_is_expanded_at_load(body, expanded):
+def test_use_in_a_list_inside_a_template_is_expanded_at_load():
     cfg: ConfigurationDict = {
         "fragments": {"part": {"__template__": {"p": "${ name }"}}},
-        "x": {"__template__": {"title": "t", "body": body}},
+        "x": {
+            "__template__": {
+                "title": "t",
+                "body": [1, {"__use__": "fragments.part"}],
+            }
+        },
     }
 
     result = resolve(cfg, SCHEMA)
 
-    assert result["x"].source == {"title": "t", "body": expanded}
+    assert result["x"].source == {"title": "t", "body": [1, {"p": "${ name }"}]}
+
+
+def test_use_in_another_function_input_inside_a_template_is_expanded_at_load():
+    # the __use__ is expanded; the __if__ around it is kept as written, to be
+    # evaluated with the template
+    cfg: ConfigurationDict = {
+        "fragments": {"part": {"__template__": {"p": "${ name }"}}},
+        "x": {
+            "__template__": {
+                "title": "t",
+                "body": {
+                    "__if__": {
+                        "condition": True,
+                        "then": {"__use__": "fragments.part"},
+                    }
+                },
+            }
+        },
+    }
+
+    result = resolve(cfg, SCHEMA)
+
+    assert result["x"].source == {
+        "title": "t",
+        "body": {"__if__": {"condition": True, "then": {"p": "${ name }"}}},
+    }
 
 
 def test_a_fragment_that_uses_another_fragment_is_expanded():

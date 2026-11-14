@@ -211,7 +211,7 @@ def test_unwrapped_value_raises_template_required(value):
     assert exc.value.keypath == ("x",)
     assert exc.value.parameters == ("publication",)
     assert exc.value.reason == (
-        "This field is a template (parameters: publication), evaluated later. "
+        "This field expects a template (parameters: publication). "
         'Write it as {"__template__": ...}.'
     )
 
