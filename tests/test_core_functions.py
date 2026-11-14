@@ -2288,6 +2288,50 @@ def test_if_gives_a_template_in_the_branch_the_keypath_of_the_call():
     assert resolved["t"].keypath == ("t",)
 
 
+# The chosen branch must be resolved lazily, like a plain dict in its place. If
+# it were resolved all at once while the __if__ call is evaluated, references
+# from inside the branch back into it would be reported as circular.
+
+
+def test_if_branch_can_refer_to_its_own_keys():
+    # given
+    cfg: ConfigurationDict = {
+        "x": {
+            "__if__": {
+                "condition": "True",
+                "then": {"a": 1, "b": "${x.a}"},
+                "else": 0,
+            }
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, {"type": "any"}, functions={"if": _if})
+
+    # then
+    assert resolved == {"x": {"a": 1, "b": "1"}}
+
+
+def test_if_branch_and_a_sibling_can_refer_to_each_other():
+    # given
+    cfg: ConfigurationDict = {
+        "y": "${x.a}",
+        "x": {
+            "__if__": {
+                "condition": "True",
+                "then": {"a": 1, "b": "${y}"},
+                "else": 0,
+            }
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, {"type": "any"}, functions={"if": _if})
+
+    # then
+    assert resolved == {"y": "1", "x": {"a": 1, "b": "1"}}
+
+
 def test_if_raises_if_keys_are_not_condition_then_else():
     # given
     schema: Schema = {
