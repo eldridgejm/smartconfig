@@ -192,7 +192,11 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
     return node
 
 
-def _if(args: _types.FunctionArgs) -> _types.Configuration:
+# resolve_input=False: otherwise the whole input, both branches included, would be
+# resolved before this function runs, so the branch not taken would be evaluated
+# (and could fail), and the chosen branch would be resolved a second time.
+@_types.Function.new(resolve_input=False)
+def _if(args: _types.FunctionArgs) -> _ConcreteNode:
     """Evaluates configurations, conditionally.
 
     ``args.input`` should be a dictionary with three keys:
@@ -200,6 +204,10 @@ def _if(args: _types.FunctionArgs) -> _types.Configuration:
         - ``condition``: a boolean expression that is evaluated
         - ``then``: the configuration to use if the condition is true
         - ``else``: the configuration to use if the condition is false
+
+    Only the condition and the chosen branch are evaluated. The branch is built
+    as a node at the function's own keypath, so errors and templates inside it
+    report the keypath of the ``__if__`` call.
 
     """
     # check that the input is valid
@@ -215,10 +223,24 @@ def _if(args: _types.FunctionArgs) -> _types.Configuration:
 
     condition = args.resolve(args.input["condition"], schema={"type": "boolean"})
 
-    if condition:
-        return args.resolve(args.input["then"])
-    else:
-        return args.resolve(args.input["else"])
+    branch = args.input["then"] if condition else args.input["else"]
+
+    # Return the branch as a node instead of resolving it here. When a function
+    # returns a plain value, smartconfig resolves that value. That breaks a branch
+    # like {"__raw__": "${b}"}: resolving it here would return the string "${b}",
+    # and smartconfig would resolve that again, yielding the value of b when what
+    # we wanted was the raw string "${b}". On the other hand, if we return a node
+    # it is also resolved by smartconfig, but since we didn't resolve it here, it
+    # is only resolved once in total.
+    fcn = args._function_call_node
+    return make_node(
+        branch,
+        args.schema,
+        args.resolution_context,
+        parent=fcn,
+        keypath=args.keypath,
+        mode=fcn.mode,
+    )
 
 
 @_types.Function.new(resolve_input=False)

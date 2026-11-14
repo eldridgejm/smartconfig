@@ -2199,6 +2199,65 @@ def test_if_resolves_then_branch_only_if_condition_is_true():
         resolve(cfg, schema, functions={"if": _if})
 
 
+def test_if_does_not_evaluate_the_branch_not_taken():
+    # given
+    cfg: ConfigurationDict = {
+        "n": 0,
+        "x": {"__if__": {"condition": "${n == 0}", "then": 0, "else": "${10 // n}"}},
+    }
+
+    # when
+    resolved = resolve(cfg, {"type": "any"}, functions={"if": _if})
+
+    # then
+    assert resolved == {"n": 0, "x": 0}
+
+
+def test_if_keeps_raw_in_the_chosen_branch_raw():
+    # given
+    cfg: ConfigurationDict = {
+        "b": 1,
+        "x": {"__if__": {"condition": "True", "then": {"__raw__": "${b}"}, "else": 0}},
+    }
+
+    # when
+    resolved = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert resolved == {"b": 1, "x": "${b}"}
+
+
+def test_if_reports_errors_in_the_branch_at_the_keypath_of_the_call():
+    # given
+    cfg: ConfigurationDict = {
+        "x": {"__if__": {"condition": "False", "then": 0, "else": "${nope}"}},
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"if": _if})
+
+    # then
+    assert exc.value.keypath == ("x",)
+
+
+def test_if_gives_a_template_in_the_branch_the_keypath_of_the_call():
+    # given
+    cfg: ConfigurationDict = {
+        "t": {
+            "__if__": {"condition": "True", "then": {"__template__": "a"}, "else": 0}
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert isinstance(resolved, dict)
+    assert isinstance(resolved["t"], Template)
+    assert resolved["t"].keypath == ("t",)
+
+
 def test_if_raises_if_keys_are_not_condition_then_else():
     # given
     schema: Schema = {

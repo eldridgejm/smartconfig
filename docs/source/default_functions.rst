@@ -136,6 +136,9 @@ Selects between two configurations based on a condition.
      - Yes
      - The configuration to use if the condition is false.
 
+Only the chosen branch is evaluated, so the other one may contain references
+that would fail, such as ``"${10 // n}"`` when ``n`` is zero.
+
 **Example**:
 
 .. testcode:: python
