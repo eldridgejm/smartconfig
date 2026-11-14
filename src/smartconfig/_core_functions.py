@@ -40,7 +40,10 @@ def _splice(args: _types.FunctionArgs) -> _ConcreteNode:
         raise ResolutionError(f"Keypath '{args.input}' does not exist.", args.keypath)
 
     # Resolve the source, then rebuild with the target schema so that type
-    # conversion is applied according to the splice destination.
+    # conversion is applied according to the splice destination. The rebuild is
+    # in RAW mode because the data is already resolved: resolving it again would
+    # interpolate a __raw__ value like "${b}" or evaluate a dict like
+    # {"__splice__": "c"} that __raw__ produced.
     spliced_data = source_node.resolve()
     return make_node(
         spliced_data,
@@ -48,7 +51,7 @@ def _splice(args: _types.FunctionArgs) -> _ConcreteNode:
         args.resolution_context,
         parent=args._function_call_node,
         keypath=args.keypath,
-        mode=ResolutionMode.STANDARD,
+        mode=ResolutionMode.RAW,
     )
 
 

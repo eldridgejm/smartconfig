@@ -1722,13 +1722,20 @@ class _FunctionCallNode(_Node):
         ):
             result = output
         else:
+            # By default the output is configuration, resolved in this call's mode.
+            # With resolve_output=False it is finished data: RAW mode converts it to
+            # the schema without interpolating it or evaluating function calls in it.
+            if self.function.resolve_output:
+                output_mode = self.mode
+            else:
+                output_mode = ResolutionMode.RAW
             result = make_node(
                 output,
                 self.schema,
                 self.resolution_context,
                 parent=self,
                 keypath=self.keypath,
-                mode=self.mode,
+                mode=output_mode,
             )
 
         # the result may be a function call itself, in which case we need to evaluate it

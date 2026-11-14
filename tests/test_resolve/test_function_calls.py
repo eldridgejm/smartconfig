@@ -650,3 +650,58 @@ def test_mixed_flat_and_namespaced_functions():
 
     # then
     assert result == {"x": 10, "y": 12}
+
+
+# resolve_output =======================================================================
+
+
+def test_function_with_resolve_output_false_returns_its_result_without_interpolating():
+    # given
+    @Function.new(resolve_output=False)
+    def template_text(args: FunctionArgs) -> str:
+        return "Hello ${ name }"
+
+    # when
+    result = resolve(
+        {"name": "x", "greeting": {"__template_text__": None}},
+        {"type": "any"},
+        functions={"template_text": template_text},
+    )
+
+    # then
+    assert result == {"name": "x", "greeting": "Hello ${ name }"}
+
+
+def test_function_with_resolve_output_false_does_not_evaluate_function_calls_it_returns():
+    # given
+    @Function.new(resolve_output=False)
+    def make_call(args: FunctionArgs) -> ConfigurationDict:
+        return {"__double__": 5}
+
+    def double(args):
+        return args.input * 2
+
+    # when
+    result = resolve(
+        {"x": {"__make_call__": None}},
+        {"type": "any"},
+        functions={"make_call": make_call, "double": double},
+    )
+
+    # then
+    assert result == {"x": {"__double__": 5}}
+
+
+def test_function_with_resolve_output_false_still_converts_its_result_to_the_schema():
+    # given
+    @Function.new(resolve_output=False)
+    def five(args: FunctionArgs) -> str:
+        return "5"
+
+    schema: Schema = {"type": "dict", "required_keys": {"x": {"type": "integer"}}}
+
+    # when
+    result = resolve({"x": {"__five__": None}}, schema, functions={"five": five})
+
+    # then
+    assert result == {"x": 5}

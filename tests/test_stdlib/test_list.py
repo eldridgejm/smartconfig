@@ -2,7 +2,7 @@
 
 import typing
 
-from smartconfig import resolve, exceptions
+from smartconfig import resolve, exceptions, CORE_FUNCTIONS
 from smartconfig.stdlib.list import concatenate, zip_, range_, loop, filter_
 from smartconfig.types import Schema, ConfigurationDict, ConfigurationList
 
@@ -648,3 +648,68 @@ def test_range_raises_if_extra_keys_are_provided():
         resolve(cfg, schema, functions={"range": range_})
 
     assert "must be a dictionary with keys" in str(exc.value)
+
+
+# raw values in input or body ==========================================================
+#
+# A __raw__ value resolves to its literal contents. These functions return it as
+# part of their result, and it must not be interpolated or evaluated again.
+
+_raw = CORE_FUNCTIONS["raw"]
+_ANY_LIST: Schema = {"type": "list", "element_schema": {"type": "any"}}
+
+
+def test_concatenate_keeps_raw_values_literal():
+    # given
+    cfg: ConfigurationList = [[{"__raw__": "${q}"}], [{"__raw__": {"__splice__": "c"}}]]
+
+    # when
+    resolved = resolve(
+        {"__concatenate__": cfg},
+        _ANY_LIST,
+        functions={"concatenate": concatenate, "raw": _raw},
+    )
+
+    # then
+    assert resolved == ["${q}", {"__splice__": "c"}]
+
+
+def test_zip_keeps_raw_values_literal():
+    # given
+    cfg: ConfigurationDict = {"__zip__": [[{"__raw__": "${q}"}], [1]]}
+
+    # when
+    resolved = resolve(cfg, _ANY_LIST, functions={"zip": zip_, "raw": _raw})
+
+    # then
+    assert resolved == [["${q}", 1]]
+
+
+def test_loop_keeps_raw_values_in_the_body_literal():
+    # given
+    cfg: ConfigurationDict = {
+        "__loop__": {"variable": "i", "over": [1, 2], "in": {"__raw__": "${q}"}}
+    }
+
+    # when
+    resolved = resolve(cfg, _ANY_LIST, functions={"loop": loop, "raw": _raw})
+
+    # then
+    assert resolved == ["${q}", "${q}"]
+
+
+def test_filter_keeps_raw_values_literal():
+    # given
+    cfg: ConfigurationDict = {
+        "__filter__": {
+            "iterable": [{"__raw__": "${q}"}],
+            "variable": "v",
+            "condition": "True",
+        }
+    }
+
+    # when
+    resolved = resolve(cfg, _ANY_LIST, functions={"filter": filter_, "raw": _raw})
+
+    # then
+    assert resolved == ["${q}"]

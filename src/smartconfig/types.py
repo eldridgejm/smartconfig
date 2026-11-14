@@ -313,14 +313,25 @@ class Function:
     resolve_input : bool
         If `True`, the input will be resolved before being passed to the function.
         Defaults to `True`.
+    resolve_output : bool
+        If `True`, the function's return value is treated as configuration: it is
+        resolved, so ``${...}`` strings in it are interpolated and function calls
+        in it are evaluated. If `False`, it is treated as finished data: it is
+        converted to the schema, but nothing in it is interpolated or evaluated.
+        Use `False` when the function returns values that are already resolved,
+        such as the result of ``args.resolve``. Defaults to `True`.
 
     """
 
     def __init__(
-        self, fn: Callable[[FunctionArgs], _FunctionResult], resolve_input: bool = True
+        self,
+        fn: Callable[[FunctionArgs], _FunctionResult],
+        resolve_input: bool = True,
+        resolve_output: bool = True,
     ):
         self.fn = fn
         self.resolve_input = resolve_input
+        self.resolve_output = resolve_output
 
     def __call__(self, args: FunctionArgs) -> _FunctionResult:
         """Call the function.
@@ -333,7 +344,7 @@ class Function:
 
     @classmethod
     def new(
-        cls, resolve_input: bool = True
+        cls, resolve_input: bool = True, resolve_output: bool = True
     ) -> Callable[[Callable[[FunctionArgs], _FunctionResult]], Function]:
         """Decorator for creating a new Function object.
 
@@ -341,6 +352,9 @@ class Function:
         ----------
         resolve_input : bool
             If `True`, the input will be resolved before being passed to the function.
+        resolve_output : bool
+            If `True`, the return value will be resolved as configuration. If
+            `False`, it is only converted to the schema. See :class:`Function`.
 
         Example
         -------
@@ -355,7 +369,7 @@ class Function:
         """
 
         def decorator(fn: Callable[[FunctionArgs], _FunctionResult]) -> Function:
-            result = cls(fn, resolve_input)
+            result = cls(fn, resolve_input, resolve_output)
             result.__doc__ = fn.__doc__
             return result
 

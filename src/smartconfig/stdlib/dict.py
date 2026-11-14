@@ -24,6 +24,7 @@ def _all_elements_are_instances_of(container, type_):
 # functions ============================================================================
 
 
+@Function.new(resolve_output=False)
 def update_shallow(args: FunctionArgs) -> ConfigurationDict:
     """Update the entries of the first dictionary with the entries of the later ones.
 
@@ -53,6 +54,7 @@ def update_shallow(args: FunctionArgs) -> ConfigurationDict:
     return first
 
 
+@Function.new(resolve_output=False)
 def update(args: FunctionArgs) -> ConfigurationDict:
     """Recursively update the first dictionary with the entries of the later ones.
 
@@ -77,7 +79,7 @@ def update(args: FunctionArgs) -> ConfigurationDict:
     return deep_update(input)
 
 
-@Function.new(resolve_input=False)
+@Function.new(resolve_input=False, resolve_output=False)
 def from_items(args: FunctionArgs) -> ConfigurationDict:
     """Creates a dictionary from a list of key-value pairs.
 

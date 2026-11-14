@@ -24,6 +24,7 @@ def _all_elements_are_instances_of(container, type_):
 # functions ============================================================================
 
 
+@Function.new(resolve_output=False)
 def concatenate(args: FunctionArgs) -> ConfigurationList:
     """Concatenates lists.
 
@@ -48,6 +49,7 @@ def concatenate(args: FunctionArgs) -> ConfigurationList:
     return list(itertools.chain(*input))
 
 
+@Function.new(resolve_output=False)
 def zip_(args: FunctionArgs) -> ConfigurationList:
     """Zips lists together.
 
@@ -108,7 +110,7 @@ def range_(args: FunctionArgs) -> ConfigurationList:
     return list(range(start, stop, step))
 
 
-@Function.new(resolve_input=False)
+@Function.new(resolve_input=False, resolve_output=False)
 def loop(args: FunctionArgs) -> Configuration:
     """Loops over a list of configurations.
 
@@ -153,7 +155,7 @@ def loop(args: FunctionArgs) -> Configuration:
     return result
 
 
-@Function.new(resolve_input=False)
+@Function.new(resolve_input=False, resolve_output=False)
 def filter_(args: FunctionArgs) -> ConfigurationList:
     """Filters a list.
 

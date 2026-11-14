@@ -304,6 +304,36 @@ def test_splice_referenced_value_is_a_function_call():
     assert result == {"items": [1, 2, 1, 2], "copy": [1, 2, 1, 2]}
 
 
+def test_splice_of_a_raw_string_is_not_interpolated():
+    # given
+    cfg: ConfigurationDict = {
+        "b": 1,
+        "r": {"__raw__": "${b}"},
+        "x": {"__splice__": "r"},
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions={"raw": _raw, "splice": _splice})
+
+    # then — x is a copy of r's resolved value, which is the literal "${b}"
+    assert result == {"b": 1, "r": "${b}", "x": "${b}"}
+
+
+def test_splice_of_a_raw_function_call_is_not_evaluated():
+    # given
+    cfg: ConfigurationDict = {
+        "c": 7,
+        "r": {"__raw__": {"__splice__": "c"}},
+        "x": {"__splice__": "r"},
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions={"raw": _raw, "splice": _splice})
+
+    # then — r resolves to a plain dict, and x is a copy of it
+    assert result["x"] == {"__splice__": "c"}
+
+
 def test_splice_with_nested_keypath():
     # given
     schema: Schema = {

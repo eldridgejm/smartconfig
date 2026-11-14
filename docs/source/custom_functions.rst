@@ -150,6 +150,52 @@ The result will be:
 
     ['hello']
 
+How return values are resolved
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, a function's return value is treated as configuration and resolved
+like any other part of the configuration: ``${...}`` strings in it are
+interpolated, function calls in it are evaluated, and the result is converted to
+the field's schema. This lets a function act like a macro, returning
+configuration that is filled in afterwards:
+
+.. testcode:: python
+
+    def use_name(args: FunctionArgs) -> Configuration:
+        return "Hello ${ name }"
+
+    config = {"name": "Ada", "greeting": {"__use_name__": None}}
+    result = smartconfig.resolve(config, {"type": "any"}, functions={"use_name": use_name})
+    print(result["greeting"])
+
+.. testoutput:: python
+
+    'Hello Ada'
+
+If a function returns values that are already resolved, such as the result of
+``args.resolve``, resolving them again can change them. For example, a value
+produced by ``__raw__`` would be interpolated after all. Set
+``resolve_output=False`` to treat the return value as finished data: it is still
+converted to the field's schema, but nothing in it is interpolated or evaluated.
+
+.. testcode:: python
+
+    @Function.new(resolve_output=False)
+    def use_name_literally(args: FunctionArgs) -> Configuration:
+        return "Hello ${ name }"
+
+    config = {"name": "Ada", "greeting": {"__use_name_literally__": None}}
+    functions = {"use_name_literally": use_name_literally}
+    result = smartconfig.resolve(config, {"type": "any"}, functions=functions)
+    print(result["greeting"])
+
+.. testoutput:: python
+
+    'Hello ${ name }'
+
+Many of the stdlib functions, such as ``list.concatenate`` and ``dict.update``,
+use ``resolve_output=False``.
+
 Examples
 --------
 
@@ -220,7 +266,7 @@ To accomplish this, we define the function:
 
    from smartconfig.types import Function, FunctionArgs, Configuration
 
-   @Function.new(resolve_input=False)
+   @Function.new(resolve_input=False, resolve_output=False)
    def my_loop(args: FunctionArgs) -> Configuration:
         # we should probably do some error checking here, but for simplicity
         # we'll omit it
@@ -238,7 +284,9 @@ To accomplish this, we define the function:
 
 Notice the use of ``args.resolve`` to dynamically evaluate the body of the
 loop, as well as the use of the ``local_variables`` argument to bind the loop
-variable ``x`` to the current iteration number.
+variable ``x`` to the current iteration number. Because the body is resolved
+here, the function sets ``resolve_output=False`` so that the results are not
+resolved a second time (see `How return values are resolved`_).
 
 Now we test it out:
 

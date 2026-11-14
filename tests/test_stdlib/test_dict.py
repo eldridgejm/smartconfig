@@ -2,7 +2,7 @@
 
 import typing
 
-from smartconfig import resolve, exceptions
+from smartconfig import resolve, exceptions, CORE_FUNCTIONS
 from smartconfig.stdlib.dict import update, update_shallow, from_items
 from smartconfig.stdlib.list import loop
 from smartconfig.types import Schema, ConfigurationDict, ConfigurationList
@@ -524,3 +524,56 @@ def test_from_items_raises_if_input_is_not_a_list_of_dicts_each_with_keys_key_an
     # when
     with raises(exceptions.ResolutionError):
         resolve(cfg, schema, functions={"from_items": from_items})
+
+
+# raw values in input ==================================================================
+#
+# A __raw__ value resolves to its literal contents. These functions return it as
+# part of their result, and it must not be interpolated or evaluated again.
+
+_raw = CORE_FUNCTIONS["raw"]
+_ANY: Schema = {"type": "any"}
+
+
+def test_update_keeps_raw_values_literal():
+    # given
+    cfg: ConfigurationDict = {
+        "__update__": [
+            {"a": {"__raw__": "${q}"}},
+            {"b": {"__raw__": {"__splice__": "c"}}},
+        ]
+    }
+
+    # when
+    resolved = resolve(cfg, _ANY, functions={"update": update, "raw": _raw})
+
+    # then
+    assert resolved == {"a": "${q}", "b": {"__splice__": "c"}}
+
+
+def test_update_shallow_keeps_raw_values_literal():
+    # given
+    cfg: ConfigurationDict = {
+        "__update_shallow__": [{"a": {"__raw__": "${q}"}}, {"b": 1}]
+    }
+
+    # when
+    resolved = resolve(
+        cfg, _ANY, functions={"update_shallow": update_shallow, "raw": _raw}
+    )
+
+    # then
+    assert resolved == {"a": "${q}", "b": 1}
+
+
+def test_from_items_keeps_raw_values_literal():
+    # given
+    cfg: ConfigurationDict = {
+        "__from_items__": [{"key": "a", "value": {"__raw__": "${q}"}}]
+    }
+
+    # when
+    resolved = resolve(cfg, _ANY, functions={"from_items": from_items, "raw": _raw})
+
+    # then
+    assert resolved == {"a": "${q}"}
