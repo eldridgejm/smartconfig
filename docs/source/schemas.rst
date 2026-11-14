@@ -77,11 +77,11 @@ element depends on its content (e.g., a "type" field).
 
 A **template schema** marks a field whose value is evaluated later, possibly
 many times: its value is kept as written and resolves to a
-:class:`smartconfig.Template`. ``"schema"`` describes the value once it is
+:class:`smartconfig.types.Template`. ``"schema"`` describes the value once it is
 evaluated, and ``"parameters"`` lists the template's parameters: the names
 whose values are given each time it is evaluated (the list may be empty). Like
 a function's parameters, each call to
-:meth:`Template.evaluate <smartconfig.Template.evaluate>` must give exactly
+:meth:`Template.evaluate <smartconfig.types.Template.evaluate>` must give exactly
 these, no more and no fewer. The inner schema may not have a top-level default;
 put the default on the template schema. (See :ref:`template_fields_example`.)
 
@@ -364,7 +364,7 @@ Some values can only be evaluated later, by whoever uses the configuration:
 for example, a page that is made once for each homework. A field whose schema
 has ``"type": "template"`` holds such a value. Its value is written in a
 ``__template__`` wrapper, kept as written, and resolves to a
-:class:`smartconfig.Template`:
+:class:`smartconfig.types.Template`:
 
 .. testcode::
 
@@ -409,7 +409,7 @@ Output:
     {'points': '${ publication.points * 2 }',
      'title': '${ course }: ${ publication.name }'}
 
-:meth:`Template.evaluate <smartconfig.Template.evaluate>` evaluates the template:
+:meth:`Template.evaluate <smartconfig.types.Template.evaluate>` evaluates the template:
 interpolation, function calls, type conversion and defaults, as
 :func:`smartconfig.resolve` does. It takes a mapping from each of the template's
 parameters to its value. A template is evaluated on its own, so the rest of the
@@ -502,7 +502,7 @@ which suggests a close name or lists the names that were available:
 
 .. testcode::
 
-    typo = smartconfig.Template(
+    typo = smartconfig.types.Template(
         "${ publcation.name }",
         schema={"type": "string"},
         parameters=["publication"],

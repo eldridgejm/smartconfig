@@ -379,8 +379,8 @@ template
 
 Marks a value as a template: it is kept as written (``${...}`` references are
 not interpolated and function calls are not evaluated) and resolves to a
-:class:`smartconfig.Template`, which can be evaluated later with
-:meth:`Template.evaluate <smartconfig.Template.evaluate>`, or copied elsewhere in
+:class:`smartconfig.types.Template`, which can be evaluated later with
+:meth:`Template.evaluate <smartconfig.types.Template.evaluate>`, or copied elsewhere in
 the configuration with :ref:`__use__ <func-use>`.
 
 - On a field whose schema is a template schema, the ``Template`` gets that
@@ -441,7 +441,7 @@ use
 
 Copies a template from elsewhere, with optional overrides. The target must be a
 template: a value written with :ref:`__template__ <func-template>` (on a field
-of type ``"any"`` or on a template field), or a :class:`smartconfig.Template`
+of type ``"any"`` or on a template field), or a :class:`smartconfig.types.Template`
 passed in from outside.
 
 The target keypath is looked up exactly as a ``${...}`` reference would be:
@@ -474,7 +474,7 @@ there by hand:
      - It is resolved now, under that field's schema: ``${...}`` is
        interpolated and values are converted.
    * - A template field
-     - It is kept as written, and becomes a :class:`smartconfig.Template` with
+     - It is kept as written, and becomes a :class:`smartconfig.types.Template` with
        that field's inner schema and parameters, evaluated later. A ``__use__``
        here takes the place of the ``__template__`` wrapper.
    * - Inside a template's value
@@ -533,7 +533,7 @@ of the destination:
      'name': 'Alice'}
 
 Notice that the template itself remains wrapped (the ``${name}`` reference is
-kept as written in the :class:`smartconfig.Template`), but the copy produced by
+kept as written in the :class:`smartconfig.types.Template`), but the copy produced by
 ``__use__`` has ``${name}`` resolved to ``"Alice"``.
 
 **Example (a template from a global variable)**:
@@ -630,7 +630,7 @@ fields at each use site:
 **Example (on a template field)**:
 
 On a template field the copy is kept as written, overrides included, and
-evaluated later with :meth:`Template.evaluate <smartconfig.Template.evaluate>`:
+evaluated later with :meth:`Template.evaluate <smartconfig.types.Template.evaluate>`:
 
 .. testcode:: python
 

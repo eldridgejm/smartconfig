@@ -4,7 +4,8 @@ import datetime
 
 from pytest import raises
 
-from smartconfig import DEFAULT_FUNCTIONS, Template, exceptions, resolve
+from smartconfig import DEFAULT_FUNCTIONS, exceptions, resolve
+from smartconfig.types import Template
 from smartconfig.types import ConfigurationDict, FunctionArgs
 
 

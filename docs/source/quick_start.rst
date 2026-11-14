@@ -406,7 +406,7 @@ template can refer to. In the configuration, a template is marked with the
     page = smartconfig.resolve(config, schema)["homework_page"]
 
 Resolving the configuration leaves the template unevaluated. The template field
-will be an instance of :class:`smartconfig.Template`, which keeps the value as
+will be an instance of :class:`smartconfig.types.Template`, which keeps the value as
 written in its ``source`` attribute:
 
 .. testcode:: templates

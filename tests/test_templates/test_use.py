@@ -2,7 +2,8 @@
 
 from pytest import raises
 
-from smartconfig import CORE_FUNCTIONS, Template, exceptions, resolve
+from smartconfig import CORE_FUNCTIONS, exceptions, resolve
+from smartconfig.types import Template
 from smartconfig.types import ConfigurationDict
 
 

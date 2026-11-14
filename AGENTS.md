@@ -35,11 +35,10 @@ src/smartconfig/
 ├── _resolve.py            # resolve() function, defaults, function flattening
 ├── _internals.py          # Node types, unresolved containers, make_node() (see docstring)
 ├── _core_functions.py     # Core functions: if, let, raw, resolve, fully_resolve, splice, template, use
-├── _templates.py          # Template class (the resolved value of a template field)
 ├── _schemas.py            # Schema validation
 ├── _utils.py              # Shared utilities (deep_update)
 ├── converters.py          # Type converters (int, float, bool, date, datetime)
-├── types.py               # Type definitions and protocols
+├── types.py               # Type definitions, protocols and the Template class
 ├── exceptions.py          # Error, InvalidSchemaError, ResolutionError (and subclasses), ConversionError
 └── stdlib/                # Namespaced built-in functions
     ├── __init__.py         # STDLIB_FUNCTIONS aggregation

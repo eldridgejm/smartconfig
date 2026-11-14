@@ -1,6 +1,7 @@
 """Tests for error messages and exception keypaths."""
 
-from smartconfig import Template, resolve, exceptions
+from smartconfig import resolve, exceptions
+from smartconfig.types import Template
 from smartconfig.types import (
     ConfigurationDict,
     ConfigurationList,

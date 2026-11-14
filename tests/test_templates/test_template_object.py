@@ -1,10 +1,10 @@
-"""Tests for the smartconfig.Template class as a data object (no resolution)."""
+"""Tests for the smartconfig.types.Template class as a data object (no resolution)."""
 
 import copy
 from typing import Any
 
 
-from smartconfig import Template
+from smartconfig.types import Template
 
 
 # constructor ==========================================================================

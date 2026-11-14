@@ -218,7 +218,7 @@ Template Fields
 A field whose schema has ``"type": "template"`` is represented by a _TemplateNode.
 When a configuration containing a template field is resolved, the field is not
 resolved to an ordinary value (an int, a string, a dict, etc.). Rather, the node
-resolves to a :class:`smartconfig.Template` holding the value as written.
+resolves to a :class:`smartconfig.types.Template` holding the value as written.
 
 The resolver does not unwrap a template field's value itself. make_node() (through
 _make_template_node()) builds an ordinary _FunctionCallNode for it, whose function is
@@ -249,7 +249,7 @@ Resolving it:
 
 A ``__template__`` wrapper on a field of type ``any`` also gives a _TemplateNode (with
 an ``any`` inner schema and no parameters); see ``_template()`` in _core_functions.py.
-Template.evaluate() (in _templates.py) builds and resolves a new tree from the
+Template.evaluate() (in types.py) builds and resolves a new tree from the
 template's source, with the given names as the global variables. It marks the root
 with the template's keypath, so that a template field produced while evaluating (by a
 function call, say) is rejected too.
@@ -282,7 +282,7 @@ from .exceptions import (
     UnexpectedTemplateError,
 )
 from ._schemas import validate_schema as _validate_schema
-from ._templates import Template
+from .types import Template
 from ._utils import deep_update
 
 

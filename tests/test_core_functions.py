@@ -3,7 +3,8 @@
 import datetime
 import typing
 
-from smartconfig import resolve, exceptions, CORE_FUNCTIONS, Template
+from smartconfig import resolve, exceptions, CORE_FUNCTIONS
+from smartconfig.types import Template
 from smartconfig.types import (
     ConfigurationDict,
     ConfigurationList,

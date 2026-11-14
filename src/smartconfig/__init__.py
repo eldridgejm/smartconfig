@@ -7,7 +7,6 @@ from ._schemas import validate_schema
 from .stdlib import STDLIB_FUNCTIONS
 from ._core_functions import CORE_FUNCTIONS
 from ._internals import StrictUndefined
-from ._templates import Template
 
 __all__ = [
     "exceptions",
@@ -21,5 +20,4 @@ __all__ = [
     "DEFAULT_CONVERTERS",
     "STDLIB_FUNCTIONS",
     "StrictUndefined",
-    "Template",
 ]

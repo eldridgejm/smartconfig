@@ -2,7 +2,8 @@
 
 from pytest import raises
 
-from smartconfig import Template, exceptions, resolve
+from smartconfig import exceptions, resolve
+from smartconfig.types import Template
 from smartconfig.types import ConfigurationDict, Schema
 
 # a template defined outside the document, as an application might pass in a resolved
