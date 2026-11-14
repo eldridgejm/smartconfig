@@ -37,6 +37,7 @@ JSON file:
         "welcome_msg": "Welcome to ${course_name}! My name is ${instructor}.",
     }
 
+
 Here, ``${course_name}`` and ``${instructor}`` are intended to be placeholders
 that will be replaced with the values of ``course_name`` and ``instructor``
 when the configuration is loaded. Of course, this is not a standard feature of
@@ -44,9 +45,17 @@ JSON, so if you were to load this configuration with the standard Python
 ``json`` library, you wouldn't get the expected result; instead, you'd get what
 you might call the "raw" configuration, with the placeholders still in place.
 
+.. note::
+
+    `smartconfig` does not actually read the input file; that is left to
+    third-party packages for reading configuration formats (like `PyYaml` or
+    the `json` module). Instead, `smartconfig` accepts as input the standard
+    Python types returned by those libraries; this makes it agnostic to the
+    configuration format used and very general in its applicability.
+
 Let's use `smartconfig` to "resolve" the raw configuration loaded by the
 ``json`` library into one where the placeholders have been replaced. First, you
-must defined a *schema* that describes the expected structure of the
+must define a *schema* that describes the expected structure of the
 configuration. Among other things, the schema enables basic type validation and
 error checking, so that if the configuration is missing a required field or has
 the wrong type, an error will be raised. For more information on schemas (and
