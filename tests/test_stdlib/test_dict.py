@@ -479,6 +479,17 @@ def test_from_items_generated_within_loop_checks_schema_for_required_keys():
     assert "missing required key" in str(exc.value)
 
 
+def test_from_items_raises_if_a_key_is_not_a_string():
+    # dictionary keys must be strings, but this key is the integer 1
+    cfg: ConfigurationDict = {"x": {"__from_items__": [{"key": 1, "value": "a"}]}}
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"from_items": from_items})
+
+    assert exc.value.keypath == ("x",)
+    assert "key" in str(exc.value)
+
+
 def test_from_items_raises_if_input_is_not_a_list():
     # given
     schema: Schema = {

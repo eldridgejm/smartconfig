@@ -107,7 +107,12 @@ def from_items(args: FunctionArgs) -> ConfigurationDict:
     for item in input_:
         assert isinstance(item, dict)
         key = item["key"]
-        assert isinstance(key, str)
+        # dictionary keys must be strings; a bare assert would give no keypath
+        if not isinstance(key, str):
+            raise ResolutionError(
+                f"Each 'key' in 'from_items' must be a string, but got {key!r}.",
+                args.keypath,
+            )
         dct[key] = item["value"]
 
     return dct

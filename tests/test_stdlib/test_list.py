@@ -378,6 +378,37 @@ def test_loop_raises_if_does_not_contain_keys_variable_over_and_in():
     assert "must be a dictionary with keys" in str(exc.value)
 
 
+def test_loop_under_an_any_schema():
+    # the schema is "any", so it has no element_schema for the loop's elements;
+    # they should be resolved under "any" too
+    cfg: ConfigurationDict = {
+        "x": {"__loop__": {"variable": "i", "over": [1, 2], "in": "${ i }"}}
+    }
+
+    resolved = resolve(cfg, {"type": "any"}, functions={"loop": loop})
+
+    # "${ i }" is interpolated into a string, and the "any" type doesn't convert
+    # it, so the numbers come out as strings
+    assert resolved == {"x": ["1", "2"]}
+
+
+def test_loop_raises_if_variable_is_not_a_string():
+    # the loop variable must be a name, but it's the integer 1
+    cfg: ConfigurationDict = {
+        "x": {"__loop__": {"variable": 1, "over": [1], "in": "a"}}
+    }
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"x": {"type": "list", "element_schema": {"type": "string"}}},
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"loop": loop})
+
+    assert exc.value.keypath == ("x",)
+    assert "'variable'" in str(exc.value)
+
+
 def test_loop_with_function_returning_over():
     def over(_):
         return [1, 2, 3]
@@ -626,6 +657,17 @@ def test_range_raises_if_non_integer_values_are_provided():
         resolve(cfg, schema, functions={"range": range_})
 
     assert "must be integers" in str(exc.value)
+
+
+def test_range_raises_if_step_is_zero():
+    # a step of 0 would never reach stop
+    cfg: ConfigurationDict = {"x": {"__range__": {"stop": 3, "step": 0}}}
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"range": range_})
+
+    assert exc.value.keypath == ("x",)
+    assert "'step'" in str(exc.value)
 
 
 def test_range_raises_if_extra_keys_are_provided():

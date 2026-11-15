@@ -510,6 +510,13 @@ def first(args: FunctionArgs) -> datetimelib.datetime:
             "The 'weekday' key must be a string or list of strings.", args.keypath
         )
 
+    # with no weekdays to match, the search below would never stop (until the date
+    # overflowed)
+    if not weekdays:
+        raise ResolutionError(
+            "The 'weekday' key must name at least one day.", args.keypath
+        )
+
     skip_dates: set[datetimelib.date] = set()
     if "skip" in args.input:
         skip_dates = _read_skip_dates(args.input["skip"], args.keypath)
@@ -517,15 +524,23 @@ def first(args: FunctionArgs) -> datetimelib.datetime:
     direction_key = "before" if has_before else "after"
     reference = _read_datetime(args.input[direction_key], args.keypath)
 
-    result = _find_first_weekday(reference, weekdays, before=has_before)
+    # searching past the first or last representable date raises a bare
+    # OverflowError, with no keypath
+    try:
+        result = _find_first_weekday(reference, weekdays, before=has_before)
 
-    if skip_dates:
-        result = _skip_excluded(
-            result,
-            skip_dates,
-            lambda dt: _find_first_weekday(dt, weekdays, before=has_before),
+        if skip_dates:
+            result = _skip_excluded(
+                result,
+                skip_dates,
+                lambda dt: _find_first_weekday(dt, weekdays, before=has_before),
+                args.keypath,
+            )
+    except OverflowError:
+        raise ResolutionError(
+            f"The first {raw_weekday} {direction_key} {reference} is out of range.",
             args.keypath,
-        )
+        ) from None
 
     return result
 

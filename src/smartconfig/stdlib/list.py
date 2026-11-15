@@ -107,6 +107,12 @@ def range_(args: FunctionArgs) -> ConfigurationList:
             args.keypath,
         )
 
+    # range() raises a bare ValueError for a step of 0, with no keypath
+    if step == 0:
+        raise ResolutionError(
+            "The value of 'step' in 'range' must not be 0.", args.keypath
+        )
+
     return list(range(start, stop, step))
 
 
@@ -139,10 +145,18 @@ def loop(args: FunctionArgs) -> Configuration:
         args.input["over"], schema={"type": "list", "element_schema": {"type": "any"}}
     )
 
-    element_schema = args.schema["element_schema"]
+    # an "any" schema has no element_schema; resolve the elements under "any"
+    # too. Under any other non-list schema, the list this returns is reported as
+    # the wrong shape, as usual
+    element_schema = args.schema.get("element_schema", {"type": "any"})
 
     assert isinstance(over, list)
-    assert isinstance(args.input["variable"], str)
+
+    # the variable is a name, bound in the body; a bare assert would give no keypath
+    if not isinstance(args.input["variable"], str):
+        raise ResolutionError(
+            "The value of 'variable' in 'loop' must be a string.", args.keypath
+        )
 
     result = []
     for element in over:

@@ -830,6 +830,32 @@ def test_first_raises_if_invalid_weekday():
     assert "Invalid day of week" in str(exc.value)
 
 
+def test_first_raises_if_no_weekdays_are_given():
+    # an empty list of weekdays can never be matched
+    cfg: ConfigurationDict = {
+        "due": {"__datetime.first__": {"weekday": [], "after": "2021-09-10"}}
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"datetime": {"first": first}})
+
+    assert exc.value.keypath == ("due",)
+    assert "weekday" in str(exc.value)
+
+
+def test_first_raises_if_the_result_would_be_out_of_range():
+    # the first monday after the last representable date doesn't exist
+    cfg: ConfigurationDict = {
+        "due": {"__datetime.first__": {"weekday": "monday", "after": "9999-12-31"}}
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"datetime": {"first": first}})
+
+    assert exc.value.keypath == ("due",)
+    assert "out of range" in str(exc.value)
+
+
 # first + skip ===================================================================
 
 
