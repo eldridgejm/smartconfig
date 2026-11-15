@@ -16,6 +16,16 @@ def test_raises_if_type_field_is_omitted():
         validate_schema(schema)
 
 
+def test_raises_if_the_type_is_not_a_string():
+    # the type is a list of names, not a name
+    schema = {"type": ["dict"]}
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("type",)
+
+
 # dict schemata ========================================================================
 
 
@@ -31,6 +41,27 @@ def test_dict_schema_smoke():
     }
 
     validate_schema(schema)
+
+
+@pytest.mark.parametrize(
+    "section, value, keypath",
+    [
+        # a list of key names, not a mapping from names to schemas
+        ("required_keys", ["a"], ("required_keys",)),
+        ("optional_keys", ["a"], ("optional_keys",)),
+        # a mapping, but the key 1 is not a string, so no configuration key matches it
+        ("required_keys", {1: {"type": "integer"}}, ("required_keys", "1")),
+    ],
+)
+def test_raises_if_a_keys_section_is_not_a_mapping_from_strings(
+    section, value, keypath
+):
+    schema = {"type": "dict", section: value}
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == keypath
 
 
 def test_raises_if_unknown_key_is_provided_for_dict_schema():

@@ -104,6 +104,21 @@ def _validate_dict_schema(
         allow_default=allow_default,
     )
 
+    # required_keys and optional_keys map key names to schemas. Check that before
+    # reading them below, where a list would raise a bare AttributeError. A key
+    # must be a string, since configuration keys are, or no key could match it
+    for section in ("required_keys", "optional_keys"):
+        keys_schemas = dict_schema.get(section, {})
+        if not isinstance(keys_schemas, Mapping):
+            raise _exceptions.InvalidSchemaError(
+                "Must be a mapping from key names to schemas.", keypath + (section,)
+            )
+        for key in keys_schemas:
+            if not isinstance(key, str):
+                raise _exceptions.InvalidSchemaError(
+                    "A key name must be a string.", keypath + (section, str(key))
+                )
+
     # a key that is both required and optional is ambiguous: it is unclear
     # whether it may be missing, and which schema applies to it
     for key in dict_schema.get("optional_keys", {}):
@@ -343,6 +358,13 @@ def validate_schema(
     if "type" not in schema:
         raise _exceptions.InvalidSchemaError(
             "Required key missing.", keypath + ("type",)
+        )
+
+    # the type is compared with names and looked up in a set of them below; a list
+    # or dict there would raise a bare TypeError (unhashable type)
+    if not isinstance(schema["type"], str):
+        raise _exceptions.InvalidSchemaError(
+            "Must be the name of a type (a string).", keypath + ("type",)
         )
 
     # the names a value schema's type may have. `value_types` is used by the
