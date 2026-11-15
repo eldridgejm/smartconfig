@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from ..types import Configuration, FunctionArgs, FunctionMapping, KeyPath
 from ..exceptions import ResolutionError
+from ._integers import to_integer
 
 
 # helpers ==============================================================================
@@ -450,7 +451,14 @@ def offset(args: FunctionArgs) -> datetimelib.datetime:
 
     direction_key = "before" if has_before else "after"
     reference = _read_datetime(args.input[direction_key], args.keypath)
-    delta = _read_offset(args.input["by"], args.keypath)
+    by = args.input["by"]
+    # convert the values of a dict of units, so that a value written as "${ n }",
+    # which interpolates to a string, is accepted
+    if isinstance(by, dict):
+        by = {
+            unit: to_integer(n, f"by.{unit}", "offset", args) for unit, n in by.items()
+        }
+    delta = _read_offset(by, args.keypath)
 
     result = reference - delta if has_before else reference + delta
 

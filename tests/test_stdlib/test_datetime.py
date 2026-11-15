@@ -259,6 +259,29 @@ def test_offset_before_dict():
     assert resolved == {"deadline": datetime.datetime(2021, 10, 2)}
 
 
+def test_offset_dict_values_can_come_from_references():
+    # given — days is "${ n }", which interpolates to the string "3", not the
+    # integer 3
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"deadline": {"type": "datetime"}},
+    }
+    cfg: ConfigurationDict = {
+        "deadline": {
+            "__datetime.offset__": {"before": "2021-10-05", "by": {"days": "${ n }"}}
+        }
+    }
+
+    resolved = resolve(
+        cfg,
+        schema,
+        functions={"datetime": {"offset": offset}},
+        global_variables={"n": 3},
+    )
+
+    assert resolved == {"deadline": datetime.datetime(2021, 10, 2)}
+
+
 def test_offset_after_dict_multiple_units():
     schema: Schema = {
         "type": "dict",

@@ -600,6 +600,21 @@ def test_range_with_step_of_3():
     assert resolved == [1, 4, 7]
 
 
+def test_range_values_can_come_from_references():
+    # given — stop is "${ n }", which interpolates to the string "3", not the
+    # integer 3
+    schema: Schema = {"type": "list", "element_schema": {"type": "integer"}}
+    cfg: ConfigurationDict = {"__range__": {"stop": "${ n }"}}
+
+    # when
+    resolved = resolve(
+        cfg, schema, functions={"range": range_}, global_variables={"n": 3}
+    )
+
+    # then
+    assert resolved == [0, 1, 2]
+
+
 def test_range_raises_if_input_is_not_a_dict():
     # given
     schema: Schema = {
@@ -656,7 +671,7 @@ def test_range_raises_if_non_integer_values_are_provided():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"range": range_})
 
-    assert "must be integers" in str(exc.value)
+    assert "'stop' in 'range' must be an integer" in str(exc.value)
 
 
 def test_range_raises_if_step_is_zero():

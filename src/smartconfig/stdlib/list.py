@@ -11,6 +11,7 @@ from ..types import (
     Configuration,
 )
 from ..exceptions import ResolutionError
+from ._integers import to_integer
 
 
 # helpers ==============================================================================
@@ -97,15 +98,11 @@ def range_(args: FunctionArgs) -> ConfigurationList:
             args.keypath,
         )
 
-    if (
-        not isinstance(start, int)
-        or not isinstance(stop, int)
-        or not isinstance(step, int)
-    ):
-        raise ResolutionError(
-            "The values of 'start', 'stop' and 'step' in 'range' must be integers.",
-            args.keypath,
-        )
+    # convert rather than check the type, so that a value written as "${ n }",
+    # which interpolates to a string, is accepted
+    start = to_integer(start, "start", "range", args)
+    stop = to_integer(stop, "stop", "range", args)
+    step = to_integer(step, "step", "range", args)
 
     # range() raises a bare ValueError for a step of 0, with no keypath
     if step == 0:
