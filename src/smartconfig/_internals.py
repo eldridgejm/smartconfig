@@ -1525,9 +1525,17 @@ class _ValueNode(_Node):
         The interpolated string.
 
         """
+        # Jinja changes text even where there is nothing to interpolate (it
+        # converts line endings to \n and drops a trailing newline), so a string
+        # with no template syntax is returned exactly as written
+        if not any(marker in s for marker in ("${", "{%", "{#")):
+            return s
+
         environment = _Environment(
             variable_start_string="${",
             variable_end_string="}",
+            # without this, Jinja drops a single trailing newline from the result
+            keep_trailing_newline=True,
             # inserting a dict or list into a string is an error
             finalize=_refuse_containers,
         )

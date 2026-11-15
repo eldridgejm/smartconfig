@@ -636,3 +636,28 @@ def test_interpolate_entire_list_raises_exception():
 
     # then
     assert "Expected a list, but got the string" in str(exc.value)
+
+
+# strings are kept as written ==========================================================
+
+
+def test_interpolation_keeps_a_trailing_newline():
+    # given — the string is interpolated, and ends with a newline
+    cfg: ConfigurationDict = {"n": 2, "line": "${ n }\n"}
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result["line"] == "2\n"
+
+
+def test_a_string_without_template_syntax_is_unchanged():
+    # given — a plain string, with Windows line endings and a trailing newline
+    cfg: ConfigurationDict = {"text": "a\r\nb\r\n"}
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result["text"] == "a\r\nb\r\n"

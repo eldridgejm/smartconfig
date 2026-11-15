@@ -92,6 +92,23 @@ This would output:
 
     {'course_name': 'Advanced Python', 'is_advanced': True, 'name_length': 15}
 
+Besides ``${ ... }``, Jinja2 also reads ``{% ... %}`` as a block tag (such as a
+``for`` loop) and ``{# ... #}`` as a comment. To write ``{%`` or ``{#`` literally,
+insert it as a string:
+
+.. testcode:: python
+
+    config = {"note": "Issue ${ '{#' }123}, 50${ '{%' } off"}
+
+    pprint(smartconfig.resolve(config, {"type": "any"}))
+
+.. testoutput:: python
+
+    {'note': 'Issue {#123}, 50{% off'}
+
+A string without any of ``${``, ``{%`` or ``{#`` is not passed to Jinja2 at all,
+so it is kept exactly as written.
+
 Conversion
 ~~~~~~~~~~
 
