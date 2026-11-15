@@ -365,6 +365,16 @@ class StrictUndefined(jinja2.StrictUndefined):
         # Undefined.__getattr__, which asks for this message again, forever
         obj = self._undefined_obj
         name = self._undefined_name
+
+        # before the check below, since a list's missing element is usually named
+        # by an integer index, which would get Jinja's message naming the
+        # internal container class
+        if isinstance(obj, _UnresolvedList):
+            keypath = getattr(obj.list_node, "keypath", ())
+            where = ".".join(str(k) for k in keypath) or "The list"
+            element = f'"{name}"' if isinstance(name, str) else str(name)
+            return f'"{where}" has no element {element}.'
+
         if obj is jinja2.utils.missing or not isinstance(name, str):
             return super()._undefined_message
 
@@ -378,11 +388,6 @@ class StrictUndefined(jinja2.StrictUndefined):
             )
             keys = [str(k) for k in getattr(obj.dict_node, "children", {})]
             return message + (_did_you_mean(name, keys) or "")
-
-        if isinstance(obj, _UnresolvedList):
-            keypath = getattr(obj.list_node, "keypath", ())
-            where = ".".join(str(k) for k in keypath) or "The list"
-            return f'"{where}" has no element "{name}".'
 
         if isinstance(obj, typing.Mapping):
             keys = [str(k) for k in obj]
@@ -441,6 +446,13 @@ def _key_reference(where: str, key: str) -> str:
     if key.isidentifier():
         return f"${{ {where}.{key} }}"
     return f'${{ {where}["{key}"] }}'
+
+
+def _resolve_for_json(value: typing.Any) -> typing.Any:
+    """Plain data for an unresolved container, for Jinja's ``tojson`` filter."""
+    if isinstance(value, (_UnresolvedDict, _UnresolvedList)):
+        return value.resolve()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def _refuse_containers(value: typing.Any) -> typing.Any:
@@ -580,9 +592,10 @@ class _UnresolvedDict(_types.UnresolvedDict):
     def keys(self):
         return self.dict_node.children.keys()
 
-    def values(self):
-        for key in self.keys():
-            yield self[key]
+    # Mapping's default `in` looks the value up, which would resolve it, and could
+    # even report a circular reference. Checking the keys doesn't resolve anything
+    def __contains__(self, key) -> bool:
+        return key in self.dict_node.children
 
     def resolve(self) -> _types.ConfigurationDict:
         """Resolve all values recursively, returning a ConfigurationDict."""
@@ -602,9 +615,17 @@ class _UnresolvedList(_types.UnresolvedList):
     def __init__(self, list_node: _ListNode):
         self.list_node = list_node
 
+    @typing.overload
     def __getitem__(
-        self, ix
-    ) -> _UnresolvedDict | _UnresolvedList | _types.Configuration:
+        self, ix: int
+    ) -> _UnresolvedDict | _UnresolvedList | _types.Configuration: ...
+
+    @typing.overload
+    def __getitem__(
+        self, ix: slice
+    ) -> list[_types.UnresolvedDict | _types.UnresolvedList | _types.Configuration]: ...
+
+    def __getitem__(self, ix):
         """Access an element in the unresolved list.
 
         If the element is a _ValueNode, this resolves it. If the element is a _DictNode
@@ -612,9 +633,19 @@ class _UnresolvedList(_types.UnresolvedList):
         _FunctionCallNode, this evaluates the function and returns an unresolved
         container if the result is a collection, or the resolved value otherwise.
 
-        If the index is out of range, an IndexError is raised.
+        If the index is out of range, an IndexError is raised. A negative index
+        counts from the end, and a slice gives a plain list of the elements.
 
         """
+        # a slice gives a list of the elements, each looked up as below (so a
+        # container in it stays unresolved), as slicing a list would
+        if isinstance(ix, slice):
+            return [self[i] for i in range(len(self))[ix]]
+
+        # a negative index counts from the end, as for a list
+        if isinstance(ix, int) and -len(self) <= ix < 0:
+            ix += len(self)
+
         if ix not in range(len(self)):
             raise IndexError(ix)
 
@@ -887,7 +918,7 @@ class _Node(abc.ABC):
             # so that an error raised while resolving the value isn't mistaken for
             # a missing name (see _has_item)
             if _has_item(root_container, key):
-                return root_container[key]  # type: ignore[index]
+                return root_container[key]  # type: ignore[index, call-overload]
 
         return global_variables[key]
 
@@ -1568,6 +1599,13 @@ class _ValueNode(_Node):
 
         # register the custom filters
         environment.filters.update(self.resolution_context.filters)
+
+        # json can't serialize the unresolved containers, so tojson resolves them to
+        # plain data first (sort_keys is Jinja's default for tojson)
+        environment.policies["json.dumps_kwargs"] = {
+            "sort_keys": True,
+            "default": _resolve_for_json,
+        }
 
         # make undefined references raise an error
         environment.undefined = StrictUndefined

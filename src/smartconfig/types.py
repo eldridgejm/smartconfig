@@ -8,9 +8,12 @@ from typing import (
     Any,
     Callable,
     Iterable,
+    Iterator,
     Protocol,
 )
 import abc
+import typing
+import collections.abc
 import copy
 import dataclasses
 import datetime
@@ -36,10 +39,15 @@ type Configuration = ConfigurationContainer | ConfigurationValue
 # necessary, without exposing the user to the details of how resolution is performed
 
 
-class UnresolvedDict(abc.ABC):
+# a Mapping and a Sequence, so that in ${...} expressions they have the methods and
+# behaviour of the dicts and lists they resolve to (items(), get(), negative
+# indexes, slices, ...), and filters that expect a dict or list accept them
+class UnresolvedDict(collections.abc.Mapping[str, Any]):
     """A dictionary that lazily resolves its values.
 
-    This is an abstract base class and is not meant to be instantiated directly.
+    This is an abstract base class and is not meant to be instantiated directly. It
+    is a :class:`collections.abc.Mapping`, so it has ``keys()``, ``values()``,
+    ``items()`` and ``get()``; ``keys()`` and ``in`` do not trigger resolution.
 
     """
 
@@ -68,22 +76,8 @@ class UnresolvedDict(abc.ABC):
         """Get the number of items in the dictionary. Does not trigger resolution."""
 
     @abc.abstractmethod
-    def __iter__(self) -> Iterable[str]:
+    def __iter__(self) -> Iterator[str]:
         """Iterate over the keys of the dictionary. Does not trigger resolution."""
-
-    @abc.abstractmethod
-    def keys(self) -> Iterable[str]:
-        """Get the keys of the dictionary. Does not trigger resolution."""
-
-    @abc.abstractmethod
-    def values(
-        self,
-    ) -> Iterable[UnresolvedDict | UnresolvedList | Configuration]:
-        """Get the values of the dictionary.
-
-        This will trigger the resolution of leaf values and function nodes.
-
-        """
 
     @abc.abstractmethod
     def resolve(self) -> ConfigurationDict:
@@ -99,15 +93,27 @@ class UnresolvedDict(abc.ABC):
         """
 
 
-class UnresolvedList(abc.ABC):
+class UnresolvedList(collections.abc.Sequence[Any]):
     """A list that lazily resolves its values.
 
     This is an abstract base class and is not meant to be instantiated directly.
 
     """
 
+    # overloaded like Sequence.__getitem__: an index gives one element, a slice
+    # gives a list of them
+    @typing.overload
+    def __getitem__(
+        self, ix: int
+    ) -> UnresolvedDict | UnresolvedList | Configuration: ...
+
+    @typing.overload
+    def __getitem__(
+        self, ix: slice
+    ) -> list[UnresolvedDict | UnresolvedList | Configuration]: ...
+
     @abc.abstractmethod
-    def __getitem__(self, ix) -> UnresolvedDict | UnresolvedList | Configuration:
+    def __getitem__(self, ix):
         """Get an item from the list.
 
         The semantics of this depend on the type of object being retrieved. If the
@@ -127,7 +133,7 @@ class UnresolvedList(abc.ABC):
     @abc.abstractmethod
     def __iter__(
         self,
-    ) -> Iterable[UnresolvedDict | UnresolvedList | Configuration]:
+    ) -> Iterator[UnresolvedDict | UnresolvedList | Configuration]:
         """Iterate over the items in the list.
 
         This will trigger the resolution of leaf values and function nodes.
