@@ -792,6 +792,24 @@ def test_let_references_previous_in_list():
     assert result == [{"x": 10}, {"x": 11}]
 
 
+def test_let_references_previous_that_is_a_function_call():
+    # given — the previous element is a function call (a splice of v), not a value
+    # written in place, so it has to be evaluated before it can be used
+    cfg: ConfigurationDict = {
+        "v": 5,
+        "l": [
+            {"__splice__": "v"},
+            {"__let__": {"references": {"prev": "__previous__"}, "in": "${ prev }"}},
+        ],
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then — prev is the splice's value
+    assert result == {"v": 5, "l": [5, "5"]}
+
+
 def test_let_references_previous_raises_on_first_element():
     # given
     schema: Schema = {

@@ -179,6 +179,22 @@ def test_function_call_other_nodes_can_reference_keys_within_dict_computed_by_fu
     assert result["foo"] == 30
 
 
+def test_function_call_returning_a_container_from_args_root():
+    # given — the function returns args.root["a"], which is an unresolved
+    # container, not a plain dict
+    def grab(args):
+        return args.root["a"]
+
+    cfg: ConfigurationDict = {"a": {"x": 1}, "b": {"__grab__": None}}
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions={"grab": grab})
+
+    # then — b is a plain dict
+    assert result == {"a": {"x": 1}, "b": {"x": 1}}
+    assert type(result["b"]) is dict
+
+
 def test_function_call_with_input_not_resolved():
     # given
     schema: Schema = {

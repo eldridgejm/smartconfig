@@ -2449,6 +2449,17 @@ def make_node(
         The root node of the configuration tree.
 
     """
+    # In some instances, the provided configuration is an UnresolvedDict or
+    # UnresolvedList; for example, when a function returns `args.root["a"]`. The code
+    # below wouldn't recognize it as a dict or list, so it would be treated as a single
+    # value, and the result would contain an _UnresolvedDict object instead of a dict.
+    # Resolving it gives a plain dict or list. After that, its values are already
+    # resolved, so the node is built in RAW mode, which converts the values without
+    # interpolating them a second time.
+    if isinstance(cfg, (_UnresolvedDict, _UnresolvedList)):
+        cfg = cfg.resolve()
+        mode = ResolutionMode.RAW
+
     if callable(schema):
         # dynamic schema: call the function to get the actual schema
         schema = schema(cfg, keypath)

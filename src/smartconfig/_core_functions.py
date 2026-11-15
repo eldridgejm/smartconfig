@@ -335,6 +335,10 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
                         args.keypath,
                     )
                 prev_node = parent.children[index - 1]
+                # a function call is evaluated first, so that prev is its result,
+                # not the call itself (which would leak into strings as an object)
+                if isinstance(prev_node, _FunctionCallNode):
+                    prev_node = prev_node.evaluate()
                 if isinstance(prev_node, (_ValueNode, _TemplateNode)):
                     node.local_variables[name] = prev_node.resolve()
                 else:
