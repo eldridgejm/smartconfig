@@ -474,3 +474,88 @@ def test_values_from_dicts_and_lists_can_still_be_inserted():
     }
 
     assert resolve(cfg, _ANY)["x"] == "1 y x, y"
+
+
+# errors in referenced values ==========================================================
+#
+# An error raised while resolving a referenced value must be reported as that
+# error, not as an undefined name or a circular reference. These tests check the
+# message rather than the exception type, since errors that aren't smartconfig's
+# own may later be wrapped in a ResolutionError.
+
+
+def _assert_reports_the_real_error(exc: BaseException, message: str) -> None:
+    assert message in str(exc)
+    assert "Circular reference" not in str(exc)
+    assert not isinstance(exc, exceptions.UndefinedNameError)
+
+
+def test_error_in_a_value_referenced_by_attribute_is_reported():
+    # given — a.f fails: it adds a string and an int
+    cfg: ConfigurationDict = {"b": "${a.f}", "a": {"f": "${'x' + 1}"}}
+
+    # when
+    with raises(Exception) as exc:
+        resolve(cfg, _ANY)
+
+    # then
+    _assert_reports_the_real_error(exc.value, "can only concatenate")
+
+
+def test_error_in_a_list_element_referenced_by_index_is_reported():
+    # given — l[0] fails: it adds a string and an int
+    cfg: ConfigurationDict = {"b": "${l[0]}", "l": ["${'x' + 1}"]}
+
+    # when
+    with raises(Exception) as exc:
+        resolve(cfg, _ANY)
+
+    # then
+    _assert_reports_the_real_error(exc.value, "can only concatenate")
+
+
+def test_error_in_a_value_referenced_by_name_is_reported():
+    # given — x fails: the function it calls raises an IndexError
+    def fails(args):
+        raise IndexError("the real problem")
+
+    cfg: ConfigurationDict = {"c": "${x}", "x": {"__fails__": None}}
+
+    # when
+    with raises(Exception) as exc:
+        resolve(cfg, _ANY, functions={"fails": fails})
+
+    # then
+    _assert_reports_the_real_error(exc.value, "the real problem")
+
+
+def test_splice_of_an_index_that_does_not_exist_reports_the_keypath():
+    # given — x splices l.5, but l has only one element
+    cfg: ConfigurationDict = {"c": "${x}", "x": {"__splice__": "l.5"}, "l": [1]}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, _ANY)
+
+    # then
+    assert "Keypath 'l.5' does not exist" in str(exc.value)
+
+
+def test_a_value_that_failed_reports_the_same_error_when_referenced_again():
+    # given — a.f fails: it adds a string and an int. retry catches that error,
+    # then references a.f again; the second attempt must not look circular
+    def retry(args):
+        try:
+            args.resolve("${a.f}", schema={"type": "any"})
+        except Exception:
+            pass
+        return args.resolve("${a.f}", schema={"type": "any"})
+
+    cfg: ConfigurationDict = {"c": {"__retry__": None}, "a": {"f": "${'x' + 1}"}}
+
+    # when
+    with raises(Exception) as exc:
+        resolve(cfg, _ANY, functions={"retry": retry})
+
+    # then
+    _assert_reports_the_real_error(exc.value, "can only concatenate")

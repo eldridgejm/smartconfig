@@ -477,12 +477,48 @@ class _Environment(jinja2.Environment):
     """
 
     def getattr(self, obj: typing.Any, attribute: str) -> typing.Any:
-        if isinstance(obj, (_UnresolvedDict, _UnresolvedList, _UnresolvedFunctionCall)):
-            try:
-                return obj[attribute]
-            except (LookupError, TypeError):
-                pass
+        # Check that the item exists before looking it up, rather than catching
+        # LookupError or TypeError from obj[attribute]: the lookup also resolves the
+        # item, so catching would hide an error raised while resolving it.
+        if _is_unresolved_container(obj) and _has_item(obj, attribute):
+            return obj[attribute]
         return super().getattr(obj, attribute)
+
+    def getitem(self, obj: typing.Any, argument: typing.Any) -> typing.Any:
+        # Override Jinja's getitem for the same reason as getattr: it catches lookup
+        # and type errors from obj[argument], hiding errors raised while resolving
+        # the item.
+        if _is_unresolved_container(obj) and _has_item(obj, argument):
+            return obj[argument]
+        return super().getitem(obj, argument)
+
+
+def _is_unresolved_container(obj: typing.Any) -> bool:
+    return isinstance(obj, (_UnresolvedDict, _UnresolvedList, _UnresolvedFunctionCall))
+
+
+def _has_item(container: typing.Any, key: typing.Any) -> bool:
+    """Whether the container has an item at key, found without resolving the item.
+
+    ``container[key]`` resolves the item too, so catching a KeyError or IndexError
+    from it can't tell a missing key from an error raised while resolving the
+    value. Code that looks up a name checks with this first, then looks it up
+    without catching anything, so errors in the value are reported as themselves.
+
+    """
+    if isinstance(container, _UnresolvedFunctionCall):
+        container = container._evaluate_to_unresolved_container()
+    if isinstance(container, _UnresolvedDict):
+        children = container.dict_node.children
+    elif isinstance(container, _UnresolvedList):
+        # mirrors _UnresolvedList.__getitem__: integer indices in range only
+        return isinstance(key, int) and key in range(len(container))
+    else:
+        children = container
+    try:
+        return key in children
+    except TypeError:  # an unhashable key
+        return False
 
 
 class _UnresolvedDict(_types.UnresolvedDict):
@@ -660,13 +696,21 @@ def _get_node_at_keypath(
     ``_FunctionCallNode`` instances encountered along the path are evaluated so that
     their children can be traversed.
 
+    If there is no node at the keypath, a KeyError is raised.
+
     """
     if isinstance(keypath, str):
         keypath = tuple(keypath.split("."))
 
     head_key, *rest = keypath
 
-    child: _ConcreteNode = node.children[cast_key(head_key)]
+    # A list index that is out of range or not an integer raises IndexError or
+    # ValueError here. Raise KeyError instead, which is what callers such as
+    # __splice__ catch to report that the keypath does not exist.
+    try:
+        child: _ConcreteNode = node.children[cast_key(head_key)]
+    except (IndexError, ValueError):
+        raise KeyError(head_key) from None
 
     # if the child is a function call, evaluate it to get the underlying node
     if isinstance(child, _FunctionCallNode):
@@ -821,10 +865,11 @@ class _Node(abc.ABC):
             isinstance(root, _FunctionCallNode)
             and root._evaluated is _FunctionCallNode.PENDING
         ):
-            try:
+            # check before looking up, rather than catching KeyError or IndexError,
+            # so that an error raised while resolving the value isn't mistaken for
+            # a missing name (see _has_item)
+            if _has_item(root_container, key):
                 return root_container[key]  # type: ignore[index]
-            except (KeyError, IndexError):
-                pass
 
         return global_variables[key]
 
@@ -1356,9 +1401,19 @@ class _ValueNode(_Node):
             self._resolved = typing.cast(_types.ConfigurationValue, self._resolved)
             return self._resolved
 
-        # if we've reached this point, we're resolving this node for the first time
+        # if we've reached this point, we're resolving this node for the first time.
+        # If resolving fails, clear the marker, so that a later attempt reports the
+        # same error rather than a circular reference.
         self._resolved = _ValueNode._PENDING
+        try:
+            self._resolved = self._resolve_uncached()
+        except BaseException:
+            self._resolved = _ValueNode._UNDISCOVERED
+            raise
+        return typing.cast(_types.ConfigurationValue, self._resolved)
 
+    def _resolve_uncached(self) -> _types.ConfigurationValue:
+        """Interpolate and convert the value, without caching."""
         # Step 1: interpolate the string (if its a string and mode is not RAW)
         value: _types.ConfigurationValue
         if isinstance(self.value, str) and self.mode != ResolutionMode.RAW:
@@ -1370,14 +1425,10 @@ class _ValueNode(_Node):
         else:
             value = self.value
 
-        # Step 2: convert the value to the expected type (if it's not None) and cache
-        # the result
+        # Step 2: convert the value to the expected type (if it's not None)
         if self.nullable and self.value is None:
-            self._resolved = None
-        else:
-            self._resolved = self._safely_evaluate(self._convert, value, self.type_)
-
-        return typing.cast(_types.ConfigurationValue, self._resolved)
+            return None
+        return self._safely_evaluate(self._convert, value, self.type_)
 
     def _make_custom_jinja_context(
         self, global_variables: Mapping[str, Any], inject_root_as: str | None = None
@@ -1669,9 +1720,19 @@ class _FunctionCallNode(_Node):
             )
             return self._evaluated
 
-        # at this point, we're evaluating the function for the first time
+        # at this point, we're evaluating the function for the first time.
+        # If resolving fails, clear the marker, so that a later attempt reports the
+        # same error rather than a circular reference.
         self._evaluated = _FunctionCallNode.PENDING
+        try:
+            self._evaluated = self._evaluate_uncached()
+        except BaseException:
+            self._evaluated = _FunctionCallNode.UNDISCOVERED
+            raise
+        return self._evaluated
 
+    def _evaluate_uncached(self) -> _DictNode | _ListNode | _ValueNode | _TemplateNode:
+        """Call the function and build its result, without caching."""
         # if the function wants its input to be resolved, we resolve it by creating
         # a node out of its input configuration and resolving it
         if self.function.resolve_input:
@@ -1743,7 +1804,6 @@ class _FunctionCallNode(_Node):
             # this will evaluate the function call recursively
             result = result.evaluate()
 
-        self._evaluated = result
         return result
 
     def resolve(self) -> _types.Configuration:
@@ -2054,8 +2114,18 @@ class _TemplateNode(_Node):
         if self._resolved is not _TemplateNode._UNDISCOVERED:
             return self._resolved
 
+        # If resolving fails, clear the marker, so that a later attempt reports the
+        # same error rather than a circular reference.
         self._resolved = _TemplateNode._PENDING
+        try:
+            self._resolved = self._resolve_uncached()
+        except BaseException:
+            self._resolved = _TemplateNode._UNDISCOVERED
+            raise
+        return self._resolved
 
+    def _resolve_uncached(self) -> Template:
+        """Expand, check and build the Template, without caching."""
         # replace every __use__ in the value with the value it stands for, so
         # that the template's source does not depend on the rest of the document
         self.value = self._expand_uses(self.value, self.keypath)
@@ -2070,7 +2140,7 @@ class _TemplateNode(_Node):
         self._check(tree)
 
         context = self.resolution_context
-        self._resolved = Template(
+        return Template(
             self.value,
             self.inner_schema,
             parameters=self.parameters,
@@ -2081,7 +2151,6 @@ class _TemplateNode(_Node):
             inject_root_as=context.inject_root_as,
             check_for_function_call=context.check_for_function_call,
         )
-        return self._resolved
 
     def _expand_uses(
         self, value: _types.Configuration, keypath: _types.KeyPath
