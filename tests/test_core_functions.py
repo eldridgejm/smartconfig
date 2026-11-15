@@ -503,6 +503,17 @@ def test_splice_raises_if_data_does_not_match_target_schema():
     assert "missing required key" in str(exc.value)
 
 
+def test_splice_at_the_root_is_not_reported_as_a_circular_reference():
+    # the whole configuration is a splice, so there is nothing else to copy from;
+    # there is no circular reference, so the message shouldn't say there is
+    cfg: ConfigurationDict = {"__splice__": "a"}
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"splice": _splice})
+
+    assert "Circular reference" not in str(exc.value)
+
+
 def test_splice_raises_when_root_is_a_splice():
     # given
     schema: Schema = {

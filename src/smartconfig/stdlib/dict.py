@@ -35,12 +35,13 @@ def update_shallow(args: FunctionArgs) -> ConfigurationDict:
         args.input, dict
     ):
         raise ResolutionError(
-            "Input to 'update_shallow' must be a list of dictionaries.", args.keypath
+            "Input to 'dict.update_shallow' must be a list of dictionaries.",
+            args.keypath,
         )
 
     if len(args.input) == 0:
         raise ResolutionError(
-            "Input to 'update_shallow' must be a non-empty list of dictionaries.",
+            "Input to 'dict.update_shallow' must be a non-empty list of dictionaries.",
             args.keypath,
         )
 
@@ -65,12 +66,13 @@ def update(args: FunctionArgs) -> ConfigurationDict:
         args.input, dict
     ):
         raise ResolutionError(
-            "Input to 'update' must be a list of dictionaries.", args.keypath
+            "Input to 'dict.update' must be a list of dictionaries.", args.keypath
         )
 
     if len(args.input) == 0:
         raise ResolutionError(
-            "Input to 'update' must be a non-empty list of dictionaries.", args.keypath
+            "Input to 'dict.update' must be a non-empty list of dictionaries.",
+            args.keypath,
         )
 
     # true since we checked _all_elements_are_instances_of(args.input, dict) above
@@ -89,6 +91,22 @@ def from_items(args: FunctionArgs) -> ConfigurationDict:
         - ``value``: the value of the dictionary
 
     """
+    # the input is resolved under a list schema below, whose error wouldn't say
+    # which function it came from; a function call is allowed (it may produce one)
+    context = args.resolution_context
+    try:
+        is_call = isinstance(args.input, dict) and (
+            context.check_for_function_call(args.input, context.functions) is not None
+        )
+    except ValueError:
+        is_call = False
+    if not isinstance(args.input, list) and not is_call:
+        raise ResolutionError(
+            "Input to 'dict.from_items' must be a list of dictionaries with keys "
+            "'key' and 'value'.",
+            args.keypath,
+        )
+
     input_ = args.resolve(
         args.input,
         schema={
@@ -110,7 +128,7 @@ def from_items(args: FunctionArgs) -> ConfigurationDict:
         # dictionary keys must be strings; a bare assert would give no keypath
         if not isinstance(key, str):
             raise ResolutionError(
-                f"Each 'key' in 'from_items' must be a string, but got {key!r}.",
+                f"Each 'key' in 'dict.from_items' must be a string, but got {key!r}.",
                 args.keypath,
             )
         dct[key] = item["value"]

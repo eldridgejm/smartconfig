@@ -34,6 +34,15 @@ def _splice(args: _types.FunctionArgs) -> _ConcreteNode:
         raise ResolutionError("Input to 'splice' must be a string.", args.keypath)
     root = args._root_node
     assert isinstance(root, (_DictNode, _ListNode, _FunctionCallNode))
+    # if the splice is the whole configuration, there is nothing else to copy
+    # from; looking the keypath up would evaluate this call again, which would be
+    # reported as a circular reference
+    if root is args._function_call_node:
+        raise ResolutionError(
+            "A __splice__ can't be the whole configuration: there is nothing else "
+            "to copy from.",
+            args.keypath,
+        )
     try:
         source_node = root.get_keypath(args.input)
     except KeyError:

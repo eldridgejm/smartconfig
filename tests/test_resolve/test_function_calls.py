@@ -724,3 +724,16 @@ def test_function_with_resolve_output_false_still_converts_its_result_to_the_sch
 
     # then
     assert result == {"x": 5}
+
+
+def test_function_call_with_another_key_names_the_key():
+    # given — a function call is a dict with exactly one key, but this one also
+    # has the key "b"
+    cfg: ConfigurationDict = {"a": {"__if__": 1, "b": 2}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then — the message says what's wrong, not just "Invalid function call"
+    assert "'b'" in str(exc.value)

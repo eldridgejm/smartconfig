@@ -105,7 +105,9 @@ def test_update_shallow_raises_if_input_is_not_a_list():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update_shallow": update_shallow})
 
-    assert "Input to 'update_shallow' must be a list of dictionaries." in str(exc.value)
+    assert "Input to 'dict.update_shallow' must be a list of dictionaries." in str(
+        exc.value
+    )
 
 
 def test_update_shallow_raises_if_input_is_not_a_list_of_dicts():
@@ -129,7 +131,9 @@ def test_update_shallow_raises_if_input_is_not_a_list_of_dicts():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update_shallow": update_shallow})
 
-    assert "Input to 'update_shallow' must be a list of dictionaries." in str(exc.value)
+    assert "Input to 'dict.update_shallow' must be a list of dictionaries." in str(
+        exc.value
+    )
 
 
 def test_update_shallow_raises_if_input_is_empty():
@@ -153,8 +157,9 @@ def test_update_shallow_raises_if_input_is_empty():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update_shallow": update_shallow})
 
-    assert "Input to 'update_shallow' must be a non-empty list of dictionaries." in str(
-        exc.value
+    assert (
+        "Input to 'dict.update_shallow' must be a non-empty list of dictionaries."
+        in str(exc.value)
     )
 
 
@@ -316,7 +321,7 @@ def test_update_raises_if_input_is_not_a_list():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update": update})
 
-    assert "Input to 'update' must be a list of dictionaries." in str(exc.value)
+    assert "Input to 'dict.update' must be a list of dictionaries." in str(exc.value)
 
 
 def test_update_raises_if_input_is_not_a_list_of_dicts():
@@ -340,7 +345,7 @@ def test_update_raises_if_input_is_not_a_list_of_dicts():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update": update})
 
-    assert "Input to 'update' must be a list of dictionaries." in str(exc.value)
+    assert "Input to 'dict.update' must be a list of dictionaries." in str(exc.value)
 
 
 def test_update_raises_if_input_is_empty():
@@ -364,7 +369,7 @@ def test_update_raises_if_input_is_empty():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update": update})
 
-    assert "Input to 'update' must be a non-empty list of dictionaries." in str(
+    assert "Input to 'dict.update' must be a non-empty list of dictionaries." in str(
         exc.value
     )
 

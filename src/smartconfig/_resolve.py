@@ -81,7 +81,13 @@ def _check_for_dunder_function_call(
 
     if is_potential_function_call:
         if len(dct) != 1:
-            raise ValueError("Invalid function call.")
+            # name the other keys: a function call is a dict with exactly one key
+            function_key = next(key for key in dct if _is_dunder(key))
+            others = ", ".join(repr(key) for key in dct if key != function_key)
+            raise ValueError(
+                f"A function call must be a dict with exactly one key, but "
+                f"{function_key!r} has the other key(s) {others}."
+            )
         else:
             key = next(iter(dct.keys()))
             function_name = key[2:-2]

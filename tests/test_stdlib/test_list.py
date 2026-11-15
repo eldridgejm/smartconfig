@@ -75,7 +75,7 @@ def test_concatenate_raises_if_input_is_not_a_list():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"concatenate": concatenate})
 
-    assert "Input to 'concatenate' must be a list of lists." in str(exc.value)
+    assert "Input to 'list.concatenate' must be a list of lists." in str(exc.value)
 
 
 def test_concatenate_raises_if_input_is_not_a_list_of_lists():
@@ -96,7 +96,7 @@ def test_concatenate_raises_if_input_is_not_a_list_of_lists():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"concatenate": concatenate})
 
-    assert "Input to 'concatenate' must be a list of lists." in str(exc.value)
+    assert "Input to 'list.concatenate' must be a list of lists." in str(exc.value)
 
 
 def test_concatenate_raises_if_input_is_empty():
@@ -117,7 +117,9 @@ def test_concatenate_raises_if_input_is_empty():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"concatenate": concatenate})
 
-    assert "Input to 'concatenate' must be a non-empty list of lists." in str(exc.value)
+    assert "Input to 'list.concatenate' must be a non-empty list of lists." in str(
+        exc.value
+    )
 
 
 # zip ==================================================================================
@@ -201,7 +203,7 @@ def test_zip_raises_if_input_is_not_a_list_of_lists():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"zip": zip_})
 
-    assert "Input to 'zip' must be a list of lists." in str(exc.value)
+    assert "Input to 'list.zip' must be a list of lists." in str(exc.value)
 
 
 def test_zip_raises_if_input_is_empty():
@@ -220,7 +222,7 @@ def test_zip_raises_if_input_is_empty():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"zip": zip_})
 
-    assert "Input to 'zip' must be a non-empty list of lists." in str(exc.value)
+    assert "Input to 'list.zip' must be a non-empty list of lists." in str(exc.value)
 
 
 # loop =================================================================================
@@ -334,6 +336,29 @@ def test_loop_producing_list_of_dicts():
         {"x": 3, "y": 4},
         {"x": 5, "y": 6},
     ]
+
+
+def test_loop_reports_an_error_in_its_body_at_the_element():
+    # the body divides by i - 2, so it fails for the second element (i = 2): the
+    # error should say which element, x.1.v, not just x.v
+    cfg: ConfigurationDict = {
+        "x": {
+            "__loop__": {
+                "variable": "i",
+                "over": [1, 2],
+                "in": {"v": "${ 10 // (i - 2) }"},
+            }
+        }
+    }
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"x": {"type": "list", "element_schema": {"type": "any"}}},
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"loop": loop})
+
+    assert exc.value.keypath == ("x", "1", "v")
 
 
 def test_loop_raises_if_input_is_not_a_dict():
@@ -671,7 +696,7 @@ def test_range_raises_if_non_integer_values_are_provided():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"range": range_})
 
-    assert "'stop' in 'range' must be an integer" in str(exc.value)
+    assert "'stop' in 'list.range' must be an integer" in str(exc.value)
 
 
 def test_range_raises_if_step_is_zero():

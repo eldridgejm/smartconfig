@@ -252,6 +252,11 @@ class Resolver(Protocol):
     local_variables : Mapping[str, Configuration] | None
         Local variables that are made available during string interpolation. Defaults to
         `None`, in which case no local variables are available.
+    relative_keypath : KeyPath
+        Where the configuration is, relative to the function call, for error
+        messages. For example, a loop resolving its body for its second element
+        passes ``("1",)``, so that an error in it is reported at ``<call>.1``.
+        Defaults to ``()``: at the function call itself.
 
     """
 
@@ -260,6 +265,7 @@ class Resolver(Protocol):
         configuration: Configuration,
         schema: Schema | None = None,
         local_variables: Mapping[str, Configuration] | None = None,
+        relative_keypath: KeyPath = (),
     ) -> Configuration: ...
 
 

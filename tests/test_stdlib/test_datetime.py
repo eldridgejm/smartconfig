@@ -83,7 +83,7 @@ def test_at_raises_if_input_is_not_a_dict():
     cfg: ConfigurationDict = {"result": {"__datetime.at__": "not a dict"}}
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, AT_SCHEMA, functions=AT_FUNCTIONS)
-    assert "Input to 'at' must be a dictionary" in str(exc.value)
+    assert "Input to 'datetime.at' must be a dictionary" in str(exc.value)
 
 
 def test_at_raises_if_date_missing():
@@ -378,7 +378,7 @@ def test_offset_raises_if_input_is_not_a_dict():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"datetime": {"offset": offset}})
 
-    assert "Input to 'offset' must be a dictionary" in str(exc.value)
+    assert "Input to 'datetime.offset' must be a dictionary" in str(exc.value)
 
 
 def test_offset_raises_if_no_reference_provided():
@@ -793,7 +793,7 @@ def test_first_raises_if_input_is_not_a_dict():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"datetime": {"first": first}})
 
-    assert "Input to 'first' must be a dictionary" in str(exc.value)
+    assert "Input to 'datetime.first' must be a dictionary" in str(exc.value)
 
 
 def test_first_raises_if_weekday_missing():

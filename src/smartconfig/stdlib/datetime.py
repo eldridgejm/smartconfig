@@ -409,14 +409,20 @@ def at(args: FunctionArgs) -> datetimelib.datetime:
 
     """
     if not isinstance(args.input, dict):
-        raise ResolutionError("Input to 'at' must be a dictionary.", args.keypath)
-    _check_keys(args.input, {"date", "time"}, "at", args.keypath)
+        raise ResolutionError(
+            "Input to 'datetime.at' must be a dictionary.", args.keypath
+        )
+    _check_keys(args.input, {"date", "time"}, "datetime.at", args.keypath)
 
     if "date" not in args.input:
-        raise ResolutionError("Input to 'at' must contain 'date'.", args.keypath)
+        raise ResolutionError(
+            "Input to 'datetime.at' must contain 'date'.", args.keypath
+        )
 
     if "time" not in args.input:
-        raise ResolutionError("Input to 'at' must contain 'time'.", args.keypath)
+        raise ResolutionError(
+            "Input to 'datetime.at' must contain 'time'.", args.keypath
+        )
 
     reference = _read_datetime(args.input["date"], args.keypath)
 
@@ -461,25 +467,32 @@ def offset(args: FunctionArgs) -> datetimelib.datetime:
 
     """
     if not isinstance(args.input, dict):
-        raise ResolutionError("Input to 'offset' must be a dictionary.", args.keypath)
-    _check_keys(args.input, {"before", "after", "by", "skip"}, "offset", args.keypath)
+        raise ResolutionError(
+            "Input to 'datetime.offset' must be a dictionary.", args.keypath
+        )
+    _check_keys(
+        args.input, {"before", "after", "by", "skip"}, "datetime.offset", args.keypath
+    )
 
     has_before = "before" in args.input
     has_after = "after" in args.input
 
     if not has_before and not has_after:
         raise ResolutionError(
-            "Input to 'offset' must contain either 'before' or 'after'.", args.keypath
+            "Input to 'datetime.offset' must contain either 'before' or 'after'.",
+            args.keypath,
         )
 
     if has_before and has_after:
         raise ResolutionError(
-            "Input to 'offset' must not contain both 'before' and 'after'.",
+            "Input to 'datetime.offset' must not contain both 'before' and 'after'.",
             args.keypath,
         )
 
     if "by" not in args.input:
-        raise ResolutionError("Input to 'offset' must contain 'by'.", args.keypath)
+        raise ResolutionError(
+            "Input to 'datetime.offset' must contain 'by'.", args.keypath
+        )
 
     skip_dates: set[datetimelib.date] = set()
     if "skip" in args.input:
@@ -492,7 +505,8 @@ def offset(args: FunctionArgs) -> datetimelib.datetime:
     # which interpolates to a string, is accepted
     if isinstance(by, dict):
         by = {
-            unit: to_integer(n, f"by.{unit}", "offset", args) for unit, n in by.items()
+            unit: to_integer(n, f"by.{unit}", "datetime.offset", args)
+            for unit, n in by.items()
         }
     delta = _read_offset(by, args.keypath)
 
@@ -524,25 +538,33 @@ def first(args: FunctionArgs) -> datetimelib.datetime:
 
     """
     if not isinstance(args.input, dict):
-        raise ResolutionError("Input to 'first' must be a dictionary.", args.keypath)
+        raise ResolutionError(
+            "Input to 'datetime.first' must be a dictionary.", args.keypath
+        )
     _check_keys(
-        args.input, {"weekday", "before", "after", "skip"}, "first", args.keypath
+        args.input,
+        {"weekday", "before", "after", "skip"},
+        "datetime.first",
+        args.keypath,
     )
 
     if "weekday" not in args.input:
-        raise ResolutionError("Input to 'first' must contain 'weekday'.", args.keypath)
+        raise ResolutionError(
+            "Input to 'datetime.first' must contain 'weekday'.", args.keypath
+        )
 
     has_before = "before" in args.input
     has_after = "after" in args.input
 
     if not has_before and not has_after:
         raise ResolutionError(
-            "Input to 'first' must contain either 'before' or 'after'.", args.keypath
+            "Input to 'datetime.first' must contain either 'before' or 'after'.",
+            args.keypath,
         )
 
     if has_before and has_after:
         raise ResolutionError(
-            "Input to 'first' must not contain both 'before' and 'after'.",
+            "Input to 'datetime.first' must not contain both 'before' and 'after'.",
             args.keypath,
         )
 
@@ -656,7 +678,9 @@ def parse(args: FunctionArgs) -> datetimelib.datetime:
 
     """
     if not isinstance(args.input, str):
-        raise ResolutionError("Input to 'parse' must be a string.", args.keypath)
+        raise ResolutionError(
+            "Input to 'datetime.parse' must be a string.", args.keypath
+        )
 
     s, time_override = _parse_and_remove_time(args.input, args.keypath)
 

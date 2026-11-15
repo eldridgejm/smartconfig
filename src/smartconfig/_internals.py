@@ -1769,6 +1769,7 @@ class _FunctionCallNode(_Node):
             configuration: _types.Configuration,
             schema: _types.Schema | None = None,
             local_variables: Mapping[str, _types.Configuration] | None = None,
+            relative_keypath: _types.KeyPath = (),
         ) -> _types.Configuration:
             if schema is None:
                 schema = self.schema
@@ -1777,7 +1778,8 @@ class _FunctionCallNode(_Node):
                 schema,
                 self.resolution_context,
                 parent=self,
-                keypath=self.keypath,
+                # relative_keypath places it under the call, for error messages
+                keypath=self.keypath + tuple(relative_keypath),
                 local_variables=local_variables,
                 mode=self.mode,
             )

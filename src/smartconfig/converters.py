@@ -210,6 +210,15 @@ def date(value: str | datetimelib.date | datetimelib.datetime) -> datetimelib.da
     raise exceptions.ConversionError(f"Cannot convert to date: '{value}'.")
 
 
+def _is_iso_date(s: str) -> bool:
+    """Whether ``s`` is an ISO date, like ``2021-10-05``."""
+    try:
+        datetimelib.date.fromisoformat(s.strip())
+    except ValueError:
+        return False
+    return True
+
+
 def datetime(
     value: str | datetimelib.date | datetimelib.datetime,
 ) -> datetimelib.datetime:
@@ -255,7 +264,9 @@ def datetime(
         )
 
     if isinstance(value, str):
-        if not _contains_time_component(value):
+        # advise adding a time only if the string is a date; for anything else
+        # (like "tomorrow"), adding a time wouldn't help
+        if not _contains_time_component(value) and _is_iso_date(value):
             raise exceptions.ConversionError(
                 f"Cannot implicitly convert date string '{value}' into datetime. "
                 "Please include a time component.",

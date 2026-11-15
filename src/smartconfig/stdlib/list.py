@@ -36,12 +36,13 @@ def concatenate(args: FunctionArgs) -> ConfigurationList:
         args.input, list
     ):
         raise ResolutionError(
-            "Input to 'concatenate' must be a list of lists.", args.keypath
+            "Input to 'list.concatenate' must be a list of lists.", args.keypath
         )
 
     if len(args.input) == 0:
         raise ResolutionError(
-            "Input to 'concatenate' must be a non-empty list of lists.", args.keypath
+            "Input to 'list.concatenate' must be a non-empty list of lists.",
+            args.keypath,
         )
 
     # true since we checked _all_elements_are_instances_of(args.input, list) above
@@ -60,11 +61,13 @@ def zip_(args: FunctionArgs) -> ConfigurationList:
     if not isinstance(args.input, list) or not _all_elements_are_instances_of(
         args.input, list
     ):
-        raise ResolutionError("Input to 'zip' must be a list of lists.", args.keypath)
+        raise ResolutionError(
+            "Input to 'list.zip' must be a list of lists.", args.keypath
+        )
 
     if len(args.input) == 0:
         raise ResolutionError(
-            "Input to 'zip' must be a non-empty list of lists.", args.keypath
+            "Input to 'list.zip' must be a non-empty list of lists.", args.keypath
         )
 
     return [list(entry) for entry in zip(*args.input)]
@@ -81,11 +84,14 @@ def range_(args: FunctionArgs) -> ConfigurationList:
 
     """
     if not isinstance(args.input, dict):
-        raise ResolutionError("Input to 'range' must be a dictionary.", args.keypath)
+        raise ResolutionError(
+            "Input to 'list.range' must be a dictionary.", args.keypath
+        )
 
     if "stop" not in args.input:
         raise ResolutionError(
-            "Input to 'range' must be a dictionary with a key 'stop'.", args.keypath
+            "Input to 'list.range' must be a dictionary with a key 'stop'.",
+            args.keypath,
         )
 
     start = args.input.get("start", 0)
@@ -94,20 +100,20 @@ def range_(args: FunctionArgs) -> ConfigurationList:
 
     if set(args.input.keys()) - {"start", "stop", "step"}:
         raise ResolutionError(
-            "Input to 'range' must be a dictionary with keys 'start', 'stop' and 'step'.",
+            "Input to 'list.range' must be a dictionary with keys 'start', 'stop' and 'step'.",
             args.keypath,
         )
 
     # convert rather than check the type, so that a value written as "${ n }",
     # which interpolates to a string, is accepted
-    start = to_integer(start, "start", "range", args)
-    stop = to_integer(stop, "stop", "range", args)
-    step = to_integer(step, "step", "range", args)
+    start = to_integer(start, "start", "list.range", args)
+    stop = to_integer(stop, "stop", "list.range", args)
+    step = to_integer(step, "step", "list.range", args)
 
     # range() raises a bare ValueError for a step of 0, with no keypath
     if step == 0:
         raise ResolutionError(
-            "The value of 'step' in 'range' must not be 0.", args.keypath
+            "The value of 'step' in 'list.range' must not be 0.", args.keypath
         )
 
     return list(range(start, stop, step))
@@ -134,7 +140,7 @@ def loop(args: FunctionArgs) -> Configuration:
         or "in" not in args.input
     ):
         raise ResolutionError(
-            "Input to 'loop' must be a dictionary with keys 'variable', 'over' and 'in'.",
+            "Input to 'list.loop' must be a dictionary with keys 'variable', 'over' and 'in'.",
             args.keypath,
         )
 
@@ -152,15 +158,19 @@ def loop(args: FunctionArgs) -> Configuration:
     # the variable is a name, bound in the body; a bare assert would give no keypath
     if not isinstance(args.input["variable"], str):
         raise ResolutionError(
-            "The value of 'variable' in 'loop' must be a string.", args.keypath
+            "The value of 'variable' in 'list.loop' must be a string.", args.keypath
         )
 
     result = []
-    for element in over:
+    for i, element in enumerate(over):
         local_variables = {args.input["variable"]: element}
         result.append(
             args.resolve(
-                args.input["in"], local_variables=local_variables, schema=element_schema
+                args.input["in"],
+                local_variables=local_variables,
+                schema=element_schema,
+                # so that an error in the body says which element it was for
+                relative_keypath=(str(i),),
             )
         )
     return result
@@ -185,7 +195,7 @@ def filter_(args: FunctionArgs) -> ConfigurationList:
         or "condition" not in args.input
     ):
         raise ResolutionError(
-            "Input to 'filter' must be a dictionary with keys 'iterable', 'variable' and 'condition'.",
+            "Input to 'list.filter' must be a dictionary with keys 'iterable', 'variable' and 'condition'.",
             args.keypath,
         )
 
