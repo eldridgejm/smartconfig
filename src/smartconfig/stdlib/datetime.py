@@ -430,7 +430,22 @@ def at(args: FunctionArgs) -> datetimelib.datetime:
     except ValueError:
         raise ResolutionError(f"Invalid time: '{raw_time}'.", args.keypath)
 
-    return datetimelib.datetime.combine(reference, time)
+    # through _combine, so that the date's time zone is kept
+    return _combine(reference, time)
+
+
+def _combine(
+    reference: datetimelib.datetime, time: datetimelib.time
+) -> datetimelib.datetime:
+    """The date of ``reference`` at ``time``, keeping ``reference``'s time zone.
+
+    ``datetime.combine`` takes the time zone from ``time``, so a time without one
+    (like ``10:00:00``) would drop the time zone of an aware reference. A time with
+    its own time zone (like ``10:00:00+05:00``) keeps it, as the more specific.
+
+    """
+    tzinfo = time.tzinfo if time.tzinfo is not None else reference.tzinfo
+    return datetimelib.datetime.combine(reference, time, tzinfo=tzinfo)
 
 
 # offset -------------------------------------------------------------------------------
@@ -656,7 +671,8 @@ def parse(args: FunctionArgs) -> datetimelib.datetime:
         raise ResolutionError(f"Cannot parse date: '{args.input}'.", args.keypath)
 
     if time_override is not None:
-        result = datetimelib.datetime.combine(result, time_override)
+        # through _combine, so that the date's time zone is kept
+        result = _combine(result, time_override)
 
     return result
 

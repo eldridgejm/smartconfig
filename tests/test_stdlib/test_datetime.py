@@ -63,6 +63,22 @@ def test_at_datetime_object_overrides_time():
     assert resolved == {"result": datetime.datetime(2021, 10, 5, 23, 59)}
 
 
+def test_at_keeps_the_timezone_of_the_date():
+    # the date is in UTC+2; the time has no timezone of its own, so the result
+    # should be 10:00 in UTC+2, not a naive 10:00
+    cfg: ConfigurationDict = {
+        "result": {
+            "__datetime.at__": {"date": "2021-10-05T12:00:00+02:00", "time": "10:00:00"}
+        }
+    }
+    resolved = resolve(cfg, AT_SCHEMA, functions=AT_FUNCTIONS)
+
+    utc_plus_2 = datetime.timezone(datetime.timedelta(hours=2))
+    assert resolved == {
+        "result": datetime.datetime(2021, 10, 5, 10, 0, tzinfo=utc_plus_2)
+    }
+
+
 def test_at_raises_if_input_is_not_a_dict():
     cfg: ConfigurationDict = {"result": {"__datetime.at__": "not a dict"}}
     with raises(exceptions.ResolutionError) as exc:
@@ -1291,3 +1307,16 @@ def test_parse_raises_if_invalid_weekday():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, PARSE_SCHEMA, functions=PARSE_FUNCTIONS)
     assert "Invalid day of week" in str(exc.value)
+
+
+def test_parse_at_keeps_the_timezone_of_the_date():
+    # the date is in UTC+2; "at 10:00:00" changes the time but not the timezone
+    cfg: ConfigurationDict = {
+        "result": {"__datetime.parse__": "2021-10-05T12:00:00+02:00 at 10:00:00"}
+    }
+    resolved = resolve(cfg, AT_SCHEMA, functions={"datetime": {"parse": parse}})
+
+    utc_plus_2 = datetime.timezone(datetime.timedelta(hours=2))
+    assert resolved == {
+        "result": datetime.datetime(2021, 10, 5, 10, 0, tzinfo=utc_plus_2)
+    }
