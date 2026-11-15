@@ -18,7 +18,7 @@ import typing
 
 from . import converters as _converters, types as _types
 from ._core_functions import CORE_FUNCTIONS
-from ._internals import make_node
+from ._internals import make_node, resolve_catching_recursion_errors
 from ._schemas import validate_schema
 from .stdlib import STDLIB_FUNCTIONS
 
@@ -383,7 +383,8 @@ def resolve(
 
     root = make_node(cfg, schema, resolution_context)
 
-    resolved = root.resolve()
+    # so that a tree too deep to resolve is a ResolutionError, not a RecursionError
+    resolved = resolve_catching_recursion_errors(root)
 
     if not preserve_type or _is_leaf(resolved):
         # a leaf at the root (e.g. a Template) has no structure to preserve

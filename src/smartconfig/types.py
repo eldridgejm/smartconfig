@@ -576,6 +576,7 @@ class Template:
             _FunctionCallNode,
             check_keys_are_not_parameters,
             make_template_tree,
+            resolve_catching_recursion_errors,
         )
         from ._resolve import _make_resolution_context
         from .exceptions import ResolutionError
@@ -611,7 +612,8 @@ class Template:
         keyed = root.evaluate() if isinstance(root, _FunctionCallNode) else root
         check_keys_are_not_parameters(keyed, self.parameters)
 
-        return root.resolve()
+        # as in resolve(): a tree too deep to resolve is a ResolutionError
+        return resolve_catching_recursion_errors(root)
 
     # copying, comparison, display -----------------------------------------------------
 

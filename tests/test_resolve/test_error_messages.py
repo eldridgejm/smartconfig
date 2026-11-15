@@ -570,3 +570,20 @@ def test_a_value_that_failed_reports_the_same_error_when_referenced_again():
 
     # then
     _assert_reports_the_real_error(exc.value, "can only concatenate")
+
+
+# limits ===============================================================================
+
+
+def test_a_chain_of_references_too_long_to_resolve_is_reported():
+    # given — k0 refers to k1, which refers to k2, and so on, 2000 deep: each
+    # reference is resolved inside the one before it, which exhausts the stack
+    cfg: ConfigurationDict = {f"k{i}": f"${{ k{i + 1} }}" for i in range(2000)}
+    cfg["k2000"] = "end"
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert "too deep" in str(exc.value)

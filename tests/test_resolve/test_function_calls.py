@@ -489,9 +489,12 @@ def test_function_call_with_infinite_recursion():
     def add_one(args):
         return {"__add_one__": args.input + 1}
 
-    # when
-    with raises(RecursionError):
+    # when — add_one returns another call to add_one, so this never ends; the
+    # RecursionError is reported as a ResolutionError
+    with raises(exceptions.ResolutionError) as exc:
         resolve({"foo": {"__add_one__": 10}}, schema, functions={"add_one": add_one})
+
+    assert "never ends" in str(exc.value)
 
 
 def test_function_with_custom_call_syntax():

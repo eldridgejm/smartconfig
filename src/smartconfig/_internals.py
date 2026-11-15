@@ -1855,6 +1855,26 @@ def _nested_template_field_error(
     )
 
 
+def resolve_catching_recursion_errors(root: _ConcreteNode) -> _types.Configuration:
+    """Resolve the root of a tree, reporting a too-deep tree as a ResolutionError.
+
+    Resolution is recursive: a node's children, and the values its references
+    point to, are resolved inside it. A configuration nested deeply enough, or a
+    long enough chain of references (a few hundred, with Python's default limit)
+    or of function calls that return function calls, exhausts the stack and raises
+    a bare RecursionError, with no explanation.
+
+    """
+    try:
+        return root.resolve()
+    except RecursionError:
+        raise ResolutionError(
+            "The configuration is nested too deeply to resolve, or has a chain of "
+            "references or of function calls that is too long (or never ends).",
+            (),
+        ) from None
+
+
 def make_template_tree(
     value: _types.Configuration,
     schema: _types.Schema | _types.DynamicSchema,
