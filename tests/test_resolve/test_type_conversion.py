@@ -82,8 +82,10 @@ def test_raises_if_no_converter_provided_for_type():
 
     cfg: ConfigurationDict = {"foo": "42"}
 
-    # when
-    with raises(exceptions.ResolutionError) as exc:
+    # when — with no converters, "integer" isn't a valid type, so the schema is
+    # rejected before anything is resolved
+    with raises(exceptions.InvalidSchemaError) as exc:
         resolve(cfg, schema, converters={})
 
-    assert "No converter provided" in str(exc.value)
+    assert exc.value.keypath == ("required_keys", "foo", "type")
+    assert "must be the name of a converter" in str(exc.value)

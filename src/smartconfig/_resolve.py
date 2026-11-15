@@ -19,6 +19,7 @@ import typing
 from . import converters as _converters, types as _types
 from ._core_functions import CORE_FUNCTIONS
 from ._internals import make_node
+from ._schemas import validate_schema
 from .stdlib import STDLIB_FUNCTIONS
 
 
@@ -374,6 +375,11 @@ def resolve(
     )
 
     schema = typing.cast(_types.Schema, spec)
+
+    # validate the schema first: an invalid one would otherwise fail later with an
+    # unhelpful error (e.g. a KeyError), or be silently accepted. Dynamic schemas
+    # are validated when they are called
+    validate_schema(schema, converters=resolution_context.converters)
 
     root = make_node(cfg, schema, resolution_context)
 

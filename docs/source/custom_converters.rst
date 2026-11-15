@@ -25,7 +25,9 @@ specify. These include ``integer``, ``float``, ``string``, ``boolean``,
 ``date``, and ``datetime``. For example, you might want to
 override the default ``integer`` converter to accept hexadecimal strings, or
 override ``boolean`` to accept ``"yes"`` and ``"no"`` in addition to ``"True"``
-and ``"False"``.
+and ``"False"``. You can also add a converter under a new name, such as
+``"hex"``, and use that name as a type in a schema. A schema whose type has no
+converter is rejected with an :class:`~smartconfig.exceptions.InvalidSchemaError`.
 
 Converters are responsible for validating their input and raising an appropriate
 exception if the input cannot be converted to the expected type. When a converter

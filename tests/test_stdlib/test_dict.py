@@ -194,12 +194,7 @@ def test_update_is_recursive():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "x": {
-                "type": "any",
-                "required_keys": {
-                    "a": {"type": "dict", "required_keys": {"foo": {"type": "integer"}}}
-                },
-            }
+            "x": {"type": "any"},
         },
     }
 

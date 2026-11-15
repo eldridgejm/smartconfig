@@ -1,4 +1,6 @@
-from smartconfig import validate_schema, exceptions
+from typing import Callable
+
+from smartconfig import DEFAULT_CONVERTERS, exceptions, resolve, validate_schema
 from smartconfig.types import Schema
 import pytest
 from pytest import raises
@@ -58,6 +60,20 @@ def test_raises_if_unknown_key_is_provided_for_optional_key_spec():
 
     with raises(exceptions.InvalidSchemaError):
         validate_schema(schema)
+
+
+def test_raises_if_a_key_is_both_required_and_optional():
+    # "a" is listed twice, so it's unclear whether it may be missing
+    schema = {
+        "type": "dict",
+        "required_keys": {"a": {"type": "integer"}},
+        "optional_keys": {"a": {"type": "integer", "default": 0}},
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("optional_keys", "a")
 
 
 def test_raises_if_extra_keys_schema_is_not_a_valid_schema():
@@ -136,6 +152,16 @@ def test_allow_defaults_to_be_null():
     }
 
     validate_schema(schema)
+
+
+def test_raises_if_nullable_is_not_a_boolean():
+    # "no" is a string, not False
+    schema = {"type": "integer", "nullable": "no"}
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("nullable",)
 
 
 # any types ============================================================================
@@ -405,3 +431,39 @@ def test_raises_if_function_is_provided_and_allow_dynamic_is_false():
 
     with raises(exceptions.InvalidSchemaError):
         validate_schema(schema, allow_dynamic=False)
+
+
+# resolve() validates schemas ==========================================================
+
+
+def test_resolve_raises_if_the_schema_is_invalid():
+    # a list schema needs an element_schema
+    schema = {"type": "list"}
+
+    with raises(exceptions.InvalidSchemaError):
+        resolve([1], schema)
+
+
+def test_a_type_with_a_custom_converter_is_valid_wherever_resolve_validates():
+    # "hex" isn't a built-in type, but there is a converter for it. It's used in a
+    # static schema (x), a dynamic schema (y), and the dynamic schema of a missing
+    # optional key with a default (z): each place that resolve() validates a schema
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {"type": "hex"},
+            "y": lambda cfg, keypath: {"type": "hex"},
+        },
+        "optional_keys": {
+            "z": lambda cfg, keypath: {"type": "hex", "default": "10"},
+        },
+    }
+
+    def hex_converter(s: str) -> int:
+        return int(s, 16)
+
+    converters: dict[str, Callable] = {**DEFAULT_CONVERTERS, "hex": hex_converter}
+
+    result = resolve({"x": "ff", "y": "a"}, schema, converters=converters)
+
+    assert result == {"x": 255, "y": 10, "z": 16}
