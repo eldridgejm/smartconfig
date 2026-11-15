@@ -13,6 +13,7 @@ from typing import (
     Mapping,
 )
 import copy
+import functools
 import typing
 
 from . import converters as _converters, types as _types
@@ -99,26 +100,54 @@ def _is_leaf(x: _types.Configuration) -> bool:
     return not isinstance(x, dict) and not isinstance(x, list)
 
 
-def _copy_into(dst, src):
-    """Recursively copy the leaf values from src to dst.
+def _preserve_types(
+    original: Any,
+    resolved: _types.Configuration,
+    is_function_call: Callable[[_types.ConfigurationDict], bool],
+) -> Any:
+    """``resolved``, with each container replaced by ``original``'s where it has one.
 
-    Used when preserve_type = True in resolve()
+    Used when preserve_type = True in resolve(). ``original`` is a copy of the
+    input and is filled in place. The resolved output is walked, not the input,
+    because their structures can differ: a function call in the input can produce
+    a container, and defaults add keys the input doesn't have. Where the input has
+    no container of the same kind (it has a function call, or nothing), the
+    resolved value is used as is.
 
     """
-    assert isinstance(dst, (dict, list))
+    if isinstance(resolved, dict):
+        # a function call is a dict in the input, but its result has nothing to do
+        # with that dict, so there is no container to preserve
+        if not isinstance(original, dict) or is_function_call(original):
+            return resolved
+        for key, value in resolved.items():
+            # keys only in resolved (filled in by defaults) get original.get(key)
+            # of None, so their resolved values are used
+            original[key] = _preserve_types(original.get(key), value, is_function_call)
+        return original
 
-    if isinstance(dst, dict):
-        keys = dst.keys()
-    else:
-        # dst must be a list
-        keys = range(len(dst))
+    if isinstance(resolved, list):
+        # a list in the input resolves to one of the same length, so a different
+        # length means the input has no matching list
+        if not isinstance(original, list) or len(original) != len(resolved):
+            return resolved
+        for i, value in enumerate(resolved):
+            original[i] = _preserve_types(original[i], value, is_function_call)
+        return original
 
-    for key in keys:
-        x = src[key]
-        if _is_leaf(x):
-            dst[key] = src[key]
-        else:
-            _copy_into(dst[key], src[key])
+    # a leaf (a number, string, date, Template, ...) has no type to preserve
+    return resolved
+
+
+def _is_function_call(
+    cfg: _types.ConfigurationDict, context: _types.ResolutionContext
+) -> bool:
+    """Whether ``cfg`` is a function call, by the same check that resolve() uses."""
+    try:
+        return context.check_for_function_call(cfg, context.functions) is not None
+    except ValueError:
+        # an invalid function call would already have failed to resolve
+        return False
 
 
 def _ensure_function(
@@ -354,6 +383,8 @@ def resolve(
         # a leaf at the root (e.g. a Template) has no structure to preserve
         return resolved
     else:
-        output = copy.deepcopy(cfg)
-        _copy_into(output, resolved)
-        return output
+        # pass _preserve_types only the check it needs, not the whole context
+        is_function_call = functools.partial(
+            _is_function_call, context=resolution_context
+        )
+        return _preserve_types(copy.deepcopy(cfg), resolved, is_function_call)

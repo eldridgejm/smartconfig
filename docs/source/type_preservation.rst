@@ -12,5 +12,9 @@ object with :code:`preserve_type = False`, then we'll lose these comments; there
 should use :code:`preserve_type = True`.
 
 At present, type preservation is done by constructing the resolved output as
-normal, but then making a deep copy of `cfg` and recursively copying each leaf
-value into this deep copy. Therefore, there is a performance cost.
+normal, but then making a deep copy of `cfg` and recursively copying the resolved
+values into this deep copy. Therefore, there is a performance cost.
+
+Only containers that appear in `cfg` are preserved. Where `cfg` has a function
+call, the function's result is used as is, and keys filled in by defaults are
+added to the preserved container.
