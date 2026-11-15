@@ -193,6 +193,17 @@ def test_function_calls_are_not_mistaken_for_dicts():
     assert result == {"x": "${ not interpolated }"}
 
 
+def test_a_key_that_is_not_a_string_is_an_error():
+    # keys must be strings, but the key 2 is an integer (YAML reads "2: y" this way)
+    cfg = {"a": {2: "y"}}
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})  # type: ignore[arg-type]
+
+    assert exc.value.keypath == ("a", "2")
+    assert "must be a string" in str(exc.value)
+
+
 # template errors ======================================================================
 
 

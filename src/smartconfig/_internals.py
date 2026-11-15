@@ -2438,6 +2438,18 @@ def make_node(
         else:
             raise ResolutionError("Unexpectedly null.", keypath)
 
+    # keys must be strings: keypaths and ${...} references name keys, and checking
+    # for a function call reads them as strings. YAML reads "2: y" as the key 2.
+    # Checked here, before the function-call checks below, so every dict is covered
+    if isinstance(cfg, dict):
+        for key in cfg:
+            if not isinstance(key, str):
+                raise ResolutionError(
+                    f"A key must be a string, but this key is {type(key).__name__} "
+                    f"{key!r}.",
+                    keypath + (str(key),),
+                )
+
     if schema.get("type") == "template":
         return _make_template_node(
             cfg, schema, resolution_context, parent, keypath, local_variables, mode
