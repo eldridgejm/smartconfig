@@ -259,21 +259,30 @@ This produces:
 resolve
 ~~~~~~~
 
-Explicitly resolves the input with a single pass of interpolation. This is the
-default behavior, but is useful when referring to a raw template — a reference
-like ``${template}`` is expanded once, but any ``${...}`` placeholders in the
-result are left as-is.
+Resolves the input with a single pass of interpolation. A single pass is already
+the default, so ``__resolve__`` only makes a difference inside
+:ref:`__fully_resolve__ <func-fully-resolve>`, where it switches part of the
+input back to a single pass. Inside ``__raw__`` it has no effect, since nothing
+there is evaluated.
 
 **Input**: Any configuration. The input is resolved with a single interpolation pass.
 
-**Example**:
+**Example**: below, ``template`` holds the string ``"hello ${name}"``. Inside
+``__fully_resolve__``, ``filled_in`` is interpolated until it stops changing, so
+``${name}`` is filled in too. ``as_written`` uses ``__resolve__``, so
+``${template}`` is expanded once and the ``${name}`` it contains is kept.
 
 .. testcode:: python
 
     config = {
         "name": "world",
         "template": {"__raw__": "hello ${name}"},
-        "result": {"__resolve__": "${template}"}
+        "result": {
+            "__fully_resolve__": {
+                "filled_in": "${template}",
+                "as_written": {"__resolve__": "${template}"},
+            }
+        },
     }
 
     schema = {
@@ -281,17 +290,17 @@ result are left as-is.
         "required_keys": {
             "name": {"type": "string"},
             "template": {"type": "string"},
-            "result": {"type": "string"}
-        }
+            "result": {"type": "dict", "extra_keys_schema": {"type": "string"}},
+        },
     }
 
-    print(smartconfig.resolve(config, schema))
+    print(smartconfig.resolve(config, schema)["result"])
 
 This produces:
 
 .. testoutput:: python
 
-    {'name': 'world', 'result': 'hello ${name}', 'template': 'hello ${name}'}
+    {'as_written': 'hello ${name}', 'filled_in': 'hello world'}
 
 .. _func-fully-resolve:
 
