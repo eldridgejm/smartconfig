@@ -1128,6 +1128,30 @@ def test_let_raises_if_does_not_contain_in_key():
     assert "must contain an 'in' key" in str(exc.value)
 
 
+def test_let_raises_if_a_reference_target_is_unknown():
+    # the only reference targets are __this__ and __previous__
+    cfg: ConfigurationDict = {
+        "__let__": {"references": {"r": "__nope__"}, "in": "a"},
+    }
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"let": _let})
+
+    assert "__nope__" in str(exc.value)
+
+
+def test_let_raises_if_there_is_an_unknown_key():
+    # "extra" isn't one of let's keys (variables, references and in)
+    cfg: ConfigurationDict = {
+        "__let__": {"variables": {"v": 1}, "in": "a", "extra": 1},
+    }
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"let": _let})
+
+    assert "extra" in str(exc.value)
+
+
 def test_let_raises_if_variables_is_not_a_dict():
     # given
     schema: Schema = {"type": "integer"}

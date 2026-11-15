@@ -536,6 +536,12 @@ class Template:
     ):
         self.source = copy.deepcopy(source)
         self.schema = schema
+        # a string is an iterable of characters, so "abc" would be the parameters a,
+        # b and c; it is almost certainly a mistake for ["abc"]
+        if isinstance(parameters, str):
+            raise TypeError(
+                f"parameters must be a list of names, not the string {parameters!r}."
+            )
         self.parameters: tuple[str, ...] = tuple(parameters)
         self.keypath: KeyPath = tuple(keypath)
 

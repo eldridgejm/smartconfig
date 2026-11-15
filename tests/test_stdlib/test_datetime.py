@@ -6,6 +6,7 @@ from smartconfig import resolve, exceptions
 from smartconfig.stdlib.datetime import at, first, offset, parse
 from smartconfig.types import Schema, ConfigurationDict
 
+import pytest
 from pytest import raises
 
 
@@ -809,6 +810,30 @@ def test_first_raises_if_no_direction_provided():
         resolve(cfg, schema, functions={"datetime": {"first": first}})
 
     assert "must contain either 'before' or 'after'" in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "function, input_, unknown",
+    [
+        # "zone" isn't one of at's keys
+        ("at", {"date": "2025-01-01", "time": "10:00:00", "zone": "UTC"}, "zone"),
+        # "skp" is a misspelling of "skip"
+        ("offset", {"after": "2025-01-01", "by": "1 day", "skp": []}, "skp"),
+        # "colour" isn't one of first's keys
+        (
+            "first",
+            {"weekday": "monday", "after": "2025-01-01", "colour": "red"},
+            "colour",
+        ),
+    ],
+)
+def test_datetime_functions_raise_on_an_unknown_key(function, input_, unknown):
+    cfg: ConfigurationDict = {"x": {f"__datetime.{function}__": input_}}
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    assert unknown in str(exc.value)
 
 
 def test_first_raises_if_both_directions_provided():

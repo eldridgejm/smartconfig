@@ -269,6 +269,15 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
             args.keypath,
         )
 
+    # an unknown key (a misspelling of "variables", say) would otherwise be ignored
+    unknown = set(args.input) - {"variables", "references", "in"}
+    if unknown:
+        raise ResolutionError(
+            f"Unknown key(s) in the input to 'let': {', '.join(sorted(unknown))}. "
+            "Its keys are 'variables', 'references' and 'in'.",
+            args.keypath,
+        )
+
     has_variables = "variables" in args.input
     has_references = "references" in args.input
 
@@ -343,6 +352,14 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
                     node.local_variables[name] = prev_node.resolve()
                 else:
                     node.local_variables[name] = _make_unresolved_container(prev_node)
+            else:
+                # an unknown target (a misspelling of "__previous__", say) would
+                # otherwise leave the name undefined, with no error saying why
+                raise ResolutionError(
+                    f"Unknown reference target {target!r} for '{name}' in 'let'. "
+                    "The targets are '__this__' and '__previous__'.",
+                    args.keypath,
+                )
 
     return node
 

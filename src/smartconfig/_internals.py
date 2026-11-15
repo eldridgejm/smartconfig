@@ -981,6 +981,18 @@ def _populate_required_children(
                 f'Dictionary is missing required key "{key}".', (keypath + (key,))
             )
 
+        # make_node validates a dynamic schema's result with defaults allowed, as
+        # for an optional key. A required key is never missing, so a default for
+        # it is a mistake, and is rejected here as it would be in a static schema
+        if callable(key_schema):
+            key_schema = key_schema(dct[key], keypath + (key,))
+            _validate_schema(
+                key_schema,
+                keypath + (key,),
+                allow_default=False,
+                converters=resolution_context.converters,
+            )
+
         existing_children[key] = make_node(
             dct[key],
             key_schema,
@@ -2530,9 +2542,9 @@ def make_node(
     }
 
     if cfg is None:
-        if ("nullable" in schema and schema["nullable"]) or (
-            "type" in schema and schema["type"] == "any"
-        ):
+        # "any" accepts None unless the schema says explicitly that it isn't
+        # nullable; other types accept it only if they are nullable
+        if schema.get("nullable", schema.get("type") == "any"):
             kwargs: _CommonKwargs = {**common_kwargs, "schema": {"type": "any"}}
             return _ValueNode.from_configuration(None, **kwargs)
         else:

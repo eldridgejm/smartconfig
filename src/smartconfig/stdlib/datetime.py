@@ -378,6 +378,25 @@ def _skip_excluded(
 # at -----------------------------------------------------------------------------------
 
 
+def _check_keys(
+    input_: dict, allowed: set[str], function: str, keypath: KeyPath
+) -> None:
+    """Raise if the input to ``function`` has a key that isn't in ``allowed``.
+
+    An unknown key is otherwise ignored, so a misspelling like "skp" for "skip"
+    would silently do nothing.
+
+    """
+    unknown = set(input_) - allowed
+    if unknown:
+        raise ResolutionError(
+            f"Unknown key(s) in the input to '{function}': "
+            f"{', '.join(sorted(map(str, unknown)))}. Its keys are "
+            f"{', '.join(repr(k) for k in sorted(allowed))}.",
+            keypath,
+        )
+
+
 def at(args: FunctionArgs) -> datetimelib.datetime:
     """Combine a date (or datetime) with a time, returning a new datetime.
 
@@ -391,6 +410,7 @@ def at(args: FunctionArgs) -> datetimelib.datetime:
     """
     if not isinstance(args.input, dict):
         raise ResolutionError("Input to 'at' must be a dictionary.", args.keypath)
+    _check_keys(args.input, {"date", "time"}, "at", args.keypath)
 
     if "date" not in args.input:
         raise ResolutionError("Input to 'at' must contain 'date'.", args.keypath)
@@ -427,6 +447,7 @@ def offset(args: FunctionArgs) -> datetimelib.datetime:
     """
     if not isinstance(args.input, dict):
         raise ResolutionError("Input to 'offset' must be a dictionary.", args.keypath)
+    _check_keys(args.input, {"before", "after", "by", "skip"}, "offset", args.keypath)
 
     has_before = "before" in args.input
     has_after = "after" in args.input
@@ -489,6 +510,9 @@ def first(args: FunctionArgs) -> datetimelib.datetime:
     """
     if not isinstance(args.input, dict):
         raise ResolutionError("Input to 'first' must be a dictionary.", args.keypath)
+    _check_keys(
+        args.input, {"weekday", "before", "after", "skip"}, "first", args.keypath
+    )
 
     if "weekday" not in args.input:
         raise ResolutionError("Input to 'first' must contain 'weekday'.", args.keypath)

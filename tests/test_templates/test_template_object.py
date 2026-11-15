@@ -4,6 +4,8 @@ import copy
 from typing import Any
 
 
+from pytest import raises
+
 from smartconfig.types import Template
 
 
@@ -30,6 +32,13 @@ def test_variables_and_keypath_are_tuples():
     assert t.parameters == ("name",)
     assert t.keypath == ("a", "b")
     assert t.schema == {"type": "string"}
+
+
+def test_parameters_given_as_a_string_is_an_error():
+    # a string is an iterable of characters, so "abc" would mean the parameters
+    # a, b and c; it is almost certainly a mistake for ["abc"]
+    with raises(TypeError):
+        Template("x", parameters="abc")
 
 
 def test_source_is_a_deep_copy_of_what_was_passed():
