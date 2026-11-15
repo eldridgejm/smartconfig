@@ -1320,3 +1320,31 @@ def test_parse_at_keeps_the_timezone_of_the_date():
     assert resolved == {
         "result": datetime.datetime(2021, 10, 5, 10, 0, tzinfo=utc_plus_2)
     }
+
+
+@pytest.mark.parametrize(
+    "time, expected",
+    [
+        # without seconds
+        ("23:59", datetime.datetime(2021, 10, 5, 23, 59)),
+        # a one-digit hour, without seconds
+        ("9:00", datetime.datetime(2021, 10, 5, 9, 0)),
+    ],
+)
+def test_parse_at_accepts_a_time_without_seconds(time, expected):
+    cfg: ConfigurationDict = {"result": {"__datetime.parse__": f"2021-10-05 at {time}"}}
+
+    resolved = resolve(cfg, AT_SCHEMA, functions={"datetime": {"parse": parse}})
+
+    assert resolved == {"result": expected}
+
+
+def test_parse_offset_units_are_not_case_sensitive():
+    # "After" is matched whatever its case, so "Days" should be too
+    cfg: ConfigurationDict = {
+        "result": {"__datetime.parse__": "3 Days After 2021-10-05"}
+    }
+
+    resolved = resolve(cfg, AT_SCHEMA, functions={"datetime": {"parse": parse}})
+
+    assert resolved == {"result": datetime.datetime(2021, 10, 8)}

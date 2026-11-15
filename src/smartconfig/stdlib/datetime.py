@@ -116,11 +116,14 @@ def _read_offset(value: Configuration, keypath: KeyPath) -> datetimelib.timedelt
         kwargs: dict[str, int] = {}
         parts = [p.strip() for p in value.split(",")]
         for part in parts:
-            match = re.match(r"^(\d+)\s+(week|day|hour|minute|second)s?$", part)
+            # case-insensitive, like the rest of a date phrase ("3 Days After ...")
+            match = re.match(
+                r"^(\d+)\s+(week|day|hour|minute|second)s?$", part, flags=re.IGNORECASE
+            )
             if not match:
                 raise ResolutionError(f"Cannot parse offset: '{value}'.", keypath)
             amount, unit = match.groups()
-            kwargs[unit + "s"] = int(amount)
+            kwargs[unit.lower() + "s"] = int(amount)
         return datetimelib.timedelta(**kwargs)
 
     raise ResolutionError(
@@ -212,12 +215,12 @@ def _parse_weekdays(raw: str, keypath: KeyPath) -> set[_DaysOfTheWeek]:
 def _parse_and_remove_time(
     s: str, keypath: KeyPath
 ) -> tuple[str, datetimelib.time | None]:
-    """Extract and remove an ``at HH:MM:SS`` suffix from a string.
+    """Extract and remove an ``at HH:MM`` or ``at HH:MM:SS`` suffix from a string.
 
     Parameters
     ----------
     s : str
-        The input string, possibly ending with ``" at HH:MM:SS"``.
+        The input string, possibly ending with ``" at HH:MM"`` or ``" at HH:MM:SS"``.
     keypath : tuple of str
         The keypath for error reporting.
 
@@ -234,11 +237,16 @@ def _parse_and_remove_time(
     ('2021-10-05', None)
 
     """
-    time_pattern = r" at (\d{2}):(\d{2}):(\d{2})$"
+    # seconds are optional and the hour may have one digit ("at 9:00"), as people
+    # write times by hand. Without this, a time like "at 23:59" wouldn't match, so
+    # it would be left on the end of the date, and the date would be reported as
+    # invalid instead
+    time_pattern = r" at (\d{1,2}):(\d{2})(?::(\d{2}))?$"
     match = re.search(time_pattern, s, flags=re.IGNORECASE)
 
     if match:
-        hours, minutes, seconds = [int(x) for x in match.groups()]
+        hours, minutes = int(match.group(1)), int(match.group(2))
+        seconds = int(match.group(3) or 0)
         try:
             time = datetimelib.time(hours, minutes, seconds)
         except ValueError:
@@ -673,8 +681,8 @@ def parse(args: FunctionArgs) -> datetimelib.datetime:
         - An offset: ``"3 days after 2021-10-05"``
         - A first-weekday: ``"first monday, friday after 2021-09-14"``
 
-    Any form may end with an ``" at HH:MM:SS"`` suffix to override the time
-    component of the result.
+    Any form may end with an ``" at HH:MM"`` or ``" at HH:MM:SS"`` suffix to
+    override the time component of the result.
 
     """
     if not isinstance(args.input, str):

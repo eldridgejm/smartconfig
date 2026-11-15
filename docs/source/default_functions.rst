@@ -1040,7 +1040,8 @@ Parses a natural language date/datetime string.
 - A first-weekday: ``"first monday after 2021-09-14"`` (multiple day names can be
   separated by commas, e.g., ``"first monday, wednesday after 2021-09-14"``)
 
-Any form may end with ``" at HH:MM:SS"`` to override the time component.
+Any form may end with ``" at HH:MM"`` or ``" at HH:MM:SS"`` to override the time
+component; the hour may have one digit, as in ``" at 9:00"``.
 
 **Example**:
 
