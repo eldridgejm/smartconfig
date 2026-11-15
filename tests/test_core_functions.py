@@ -1290,6 +1290,32 @@ def test_resolve_on_raw():
     assert result == {"foo": "hello", "bar": "${foo}"}
 
 
+def test_resolve_inside_fully_resolve_does_a_single_pass():
+    # t is "hello ${name}". __fully_resolve__ alone would fill in name too, but
+    # __resolve__ inside it switches back to a single pass
+    cfg: ConfigurationDict = {
+        "name": "world",
+        "t": {"__raw__": "hello ${name}"},
+        "r": {"__fully_resolve__": {"a": {"__resolve__": "${t}"}}},
+    }
+
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    assert result["r"] == {"a": "hello ${name}"}
+
+
+def test_resolve_inside_raw_has_no_effect():
+    # nothing inside __raw__ is evaluated, so the __resolve__ is kept as written
+    cfg: ConfigurationDict = {
+        "x": 1,
+        "r": {"__raw__": {"a": {"__resolve__": "${x}"}}},
+    }
+
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    assert result["r"] == {"a": {"__resolve__": "${x}"}}
+
+
 def test_resolve_does_standard_not_full_resolution():
     # given
     schema: Schema = {

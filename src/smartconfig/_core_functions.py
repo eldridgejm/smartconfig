@@ -86,8 +86,9 @@ def _raw(args: _types.FunctionArgs) -> _ConcreteNode:
 def _resolve(args: _types.FunctionArgs) -> _ConcreteNode:
     """Explicitly resolve the input with a single pass of interpolation.
 
-    This is the default behavior, but is useful when nested inside a ``raw`` or
-    ``fully_resolve`` block to override the inherited mode.
+    This is the default behavior, but is useful inside a ``fully_resolve`` block
+    to switch back to a single pass. It has no effect inside ``raw``, where nothing
+    is evaluated.
 
     """
     node = make_node(

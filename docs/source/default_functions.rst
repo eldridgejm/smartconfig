@@ -20,7 +20,9 @@ Default functions are organized into two groups:
 
 The default functions are available by default — :func:`smartconfig.resolve`
 uses :data:`smartconfig.DEFAULT_FUNCTIONS` as the default value for its
-``functions`` parameter. To disable functions, pass ``functions=None``.
+``functions`` parameter. Pass ``functions=None`` to make no functions available;
+a function call is then an error. (To turn off function-call detection entirely,
+see ``check_for_function_call`` in :doc:`custom_functions`.)
 
 The default functions are summarized in the tables below:
 
@@ -39,7 +41,7 @@ The default functions are summarized in the tables below:
    * - :ref:`__raw__ <func-raw>`
      - Prevent interpolation
    * - :ref:`__resolve__ <func-resolve>`
-     - Single-pass interpolation (override inherited mode)
+     - Single-pass interpolation (e.g., inside ``__fully_resolve__``)
    * - :ref:`__fully_resolve__ <func-fully-resolve>`
      - Repeated interpolation until stable
    * - :ref:`__splice__ <func-splice>`

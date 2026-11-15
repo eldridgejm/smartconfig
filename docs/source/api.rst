@@ -38,8 +38,9 @@ checking the validity of schemas.
         nested to provide namespaced functions (e.g., ``{"list": {"loop": loop_fn}}``
         becomes callable as ``__list.loop__``).
 
-        Defaults to :data:`DEFAULT_FUNCTIONS`. Pass ``None`` to disable
-        function calls entirely.
+        Defaults to :data:`DEFAULT_FUNCTIONS`. Pass ``None`` to make no functions
+        available, so that any function call is an error. To turn off function calls
+        entirely, use ``check_for_function_call=None``.
         See :doc:`default_functions` for more information on the default functions.
         See :doc:`custom_functions` for how to define custom functions.
     global_variables : Optional[Mapping[str, Any]]
