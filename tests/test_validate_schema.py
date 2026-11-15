@@ -1,5 +1,6 @@
 from smartconfig import validate_schema, exceptions
 from smartconfig.types import Schema
+import pytest
 from pytest import raises
 
 
@@ -276,6 +277,28 @@ def test_template_type_raises_if_a_variable_is_not_an_identifier():
         validate_schema(schema)
 
     assert exc.value.keypath == ("parameters", "1")
+
+
+@pytest.mark.parametrize("section", ["required_keys", "optional_keys"])
+def test_template_type_raises_if_a_key_of_its_schema_is_named_like_a_parameter(
+    section,
+):
+    # the inner schema declares a key "name", and "name" is also a parameter. A
+    # template's top-level keys can be referenced by name, like its parameters, so
+    # the two would be ambiguous
+    key_schema = {"type": "string"}
+    if section == "optional_keys":
+        key_schema["default"] = "x"
+    schema = {
+        "type": "template",
+        "schema": {"type": "dict", section: {"name": key_schema}},
+        "parameters": ["name"],
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("parameters", "0")
 
 
 def test_template_type_raises_if_globals_is_given():

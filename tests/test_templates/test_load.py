@@ -73,6 +73,27 @@ def test_list_valued_template_is_kept_as_written():
     assert result["x"].source == ["1", "${ n + 1 }"]
 
 
+def test_a_key_named_like_a_parameter_is_an_error():
+    # the template's value has a key "name", which is also a parameter; the inner
+    # schema allows any keys, so only the value shows the clash
+    inner = {"type": "dict", "extra_keys_schema": {"type": "any"}}
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {"type": "template", "schema": inner, "parameters": ["name"]}
+        },
+    }
+    cfg: ConfigurationDict = {
+        "x": {"__template__": {"name": "x", "greet": "hi ${ name }"}}
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema)
+
+    assert exc.value.keypath == ("x", "name")
+    assert "parameter" in str(exc.value)
+
+
 def test_template_function_works_under_another_name():
     schema = {"type": "dict", "required_keys": {"x": STRING_TEMPLATE}}
     cfg: ConfigurationDict = {"x": {"__tmpl__": "Hi ${ name }"}}

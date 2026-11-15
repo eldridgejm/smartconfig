@@ -261,6 +261,7 @@ from __future__ import annotations
 from typing import (
     Any,
     Callable,
+    Iterable,
     Mapping,
     TypedDict,
 )
@@ -1868,6 +1869,34 @@ def make_template_tree(
     return tree
 
 
+def check_keys_are_not_parameters(
+    tree: _ConcreteNode, parameters: Iterable[str]
+) -> None:
+    """Raise if a top-level key of a template's tree is named like a parameter.
+
+    A template's top-level keys can be referenced by name, like its parameters, so
+    ``${ name }`` would be ambiguous if both a key and a parameter were called
+    ``name``. Nested keys are not names, so they are not checked.
+
+    Raises
+    ------
+    ResolutionError
+        At the keypath of the first key named like a parameter.
+
+    """
+    if not isinstance(tree, _DictNode):
+        return
+    for key, child in tree.children.items():
+        if key in parameters:
+            raise ResolutionError(
+                f'"{key}" is both a key of this template and one of its '
+                "parameters. A template's keys can be referenced by name, like its "
+                "parameters, so the name is ambiguous. Rename the key or the "
+                "parameter.",
+                child.keypath,
+            )
+
+
 def _is_template_function(function: _types.Function) -> bool:
     """Whether ``function`` is the core ``template`` function, whatever its name."""
     # imported here: _core_functions imports this module
@@ -2138,6 +2167,10 @@ class _TemplateNode(_Node):
             self.value, self.inner_schema, self.resolution_context, self.keypath
         )
         self._check(tree)
+
+        # report a key named like a parameter now, when the configuration is
+        # resolved, rather than only when the program evaluates the template
+        check_keys_are_not_parameters(tree, self.parameters)
 
         context = self.resolution_context
         return Template(

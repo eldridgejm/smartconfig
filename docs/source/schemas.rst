@@ -82,8 +82,11 @@ evaluated, and ``"parameters"`` lists the template's parameters: the names
 whose values are given each time it is evaluated (the list may be empty). Like
 a function's parameters, each call to
 :meth:`Template.evaluate <smartconfig.types.Template.evaluate>` must give exactly
-these, no more and no fewer. The inner schema may not have a top-level default;
-put the default on the template schema. (See :ref:`template_fields_example`.)
+these, no more and no fewer. A parameter may not have the same name as one of
+the template's top-level keys: both can be referenced by name, so ``${ name }``
+would be ambiguous. Nested keys are not affected. The inner schema may not have
+a top-level default; put the default on the template schema. (See
+:ref:`template_fields_example`.)
 
 Schemas can be validated using the :func:`smartconfig.validate_schema`
 function.

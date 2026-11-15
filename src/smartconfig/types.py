@@ -572,7 +572,11 @@ class Template:
 
         """
         # imported here: these modules import this one
-        from ._internals import make_template_tree
+        from ._internals import (
+            _FunctionCallNode,
+            check_keys_are_not_parameters,
+            make_template_tree,
+        )
         from ._resolve import _make_resolution_context
         from .exceptions import ResolutionError
 
@@ -600,6 +604,13 @@ class Template:
 
         # a template field in the tree would be a template inside this one
         root = make_template_tree(self.source, self.schema, context, self.keypath)
+
+        # Keys named like parameters are also checked when a template field is
+        # resolved, but a function call's keys are only known once it is evaluated,
+        # and a Template can be made directly, without resolve().
+        keyed = root.evaluate() if isinstance(root, _FunctionCallNode) else root
+        check_keys_are_not_parameters(keyed, self.parameters)
+
         return root.resolve()
 
     # copying, comparison, display -----------------------------------------------------

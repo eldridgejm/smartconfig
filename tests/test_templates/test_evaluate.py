@@ -156,6 +156,33 @@ def test_a_template_with_no_parameters_takes_none():
         template.evaluate({"a": 1})
 
 
+# A template's top-level keys can be referenced by name, like its parameters, so a
+# key and a parameter with the same name would be ambiguous. That is an error.
+
+
+def test_a_function_call_producing_a_key_named_like_a_parameter_is_an_error():
+    # the __if__ produces a dict with a key "name", which is also a parameter;
+    # the key isn't known until the template is evaluated
+    template = Template(
+        {"__if__": {"condition": "True", "then": {"name": "x"}, "else": {}}},
+        parameters=["name"],
+        keypath=["t"],
+    )
+
+    with raises(exceptions.ResolutionError) as exc:
+        template.evaluate({"name": "bob"})
+
+    assert exc.value.keypath == ("t", "name")
+    assert "parameter" in str(exc.value)
+
+
+def test_a_nested_key_named_like_a_parameter_is_allowed():
+    # "name" is a key of page, not a top-level key, so ${ name } is unambiguous
+    template = Template({"page": {"name": "${ name }"}}, parameters=["name"])
+
+    assert template.evaluate({"name": "bob"}) == {"page": {"name": "bob"}}
+
+
 # options ==============================================================================
 
 

@@ -5,7 +5,7 @@ done by resolve().
 
 """
 
-from collections.abc import Set
+from collections.abc import Mapping, Set
 from . import exceptions as _exceptions, types as _types
 
 # helpers ==============================================================================
@@ -236,6 +236,23 @@ def _validate_template_schema(
         allow_default=False,
         allow_dynamic=allow_dynamic,
     )
+
+    # A template's top-level keys can be referenced by name, like its parameters,
+    # so a parameter named like a key that the inner schema declares would be
+    # ambiguous. Catch it here, where it is visible from the schema alone.
+    inner = template_schema["schema"]
+    declared: set[str] = set()
+    if isinstance(inner, Mapping) and inner["type"] == "dict":
+        declared = {*inner.get("required_keys", {}), *inner.get("optional_keys", {})}
+    for i, name in enumerate(template_schema["parameters"]):
+        if name in declared:
+            raise _exceptions.InvalidSchemaError(
+                f'The parameter "{name}" has the same name as a key of the '
+                "template's schema. A template's keys can be referenced by name, "
+                "like its parameters, so the name would be ambiguous. Rename the "
+                "parameter or the key.",
+                keypath + ("parameters", str(i)),
+            )
 
 
 # implementation =======================================================================
