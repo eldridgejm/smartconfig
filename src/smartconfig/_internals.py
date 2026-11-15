@@ -287,6 +287,23 @@ from .types import Template
 from ._utils import deep_update
 
 
+# Exceptions that are not wrapped in a ResolutionError when raised by an expression,
+# a filter or a function: smartconfig's own errors already say where they happened;
+# an AssertionError is a bug in the code, not a mistake in the configuration; and a
+# RecursionError is reported by resolve_catching_recursion_errors, at the root.
+_NOT_WRAPPED = (Error, AssertionError, RecursionError)
+
+
+def _wrapped(exc: Exception, keypath: _types.KeyPath) -> ResolutionError:
+    """A ResolutionError at ``keypath`` for an exception that isn't smartconfig's.
+
+    The exception's type is kept in the message, since some messages (a KeyError's
+    ``'x'``, say) mean little without it. Raise it ``from exc`` to keep the cause.
+
+    """
+    return ResolutionError(f"{type(exc).__name__}: {exc}", keypath)
+
+
 class ResolutionMode(enum.Enum):
     """Controls the level of interpolation / function evaluation."""
 
@@ -1572,6 +1589,13 @@ class _ValueNode(_Node):
             raise ResolutionError(str(exc), self.keypath)
         except _InsertedContainer as exc:
             raise ResolutionError(exc.message, self.keypath) from None
+        # an exception raised by the expression or a filter in it gets this string's
+        # keypath. One from a value it refers to was already wrapped where it was
+        # raised, so it is a ResolutionError by now and passes through unchanged
+        except _NOT_WRAPPED:
+            raise
+        except Exception as exc:
+            raise _wrapped(exc, self.keypath) from exc
 
         if full and result != s:
             # if the string changed, we need to interpolate again
@@ -1784,8 +1808,15 @@ class _FunctionCallNode(_Node):
             _function_call_node=self,
         )
 
-        # evaluate the function itself
-        output = self.function(args)
+        # evaluate the function itself. An exception it raises that isn't
+        # smartconfig's gets the call's keypath, so that it is reported where the
+        # function was called, not wherever the call happened to be referenced from
+        try:
+            output = self.function(args)
+        except _NOT_WRAPPED:
+            raise
+        except Exception as exc:
+            raise _wrapped(exc, self.keypath) from exc
 
         # see the comment at the top of this method: privately, functions are allowed to
         # return node types directly, in which case we skip make_node and use the

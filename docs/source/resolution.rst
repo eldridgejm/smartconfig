@@ -109,6 +109,11 @@ insert it as a string:
 A string without any of ``${``, ``{%`` or ``{#`` is not passed to Jinja2 at all,
 so it is kept exactly as written.
 
+An exception raised while evaluating an expression, such as ``${ 10 / n }`` when
+``n`` is zero, or raised by a filter, is reported as a
+:class:`~smartconfig.exceptions.ResolutionError` at the keypath of the string,
+with the original exception as its ``__cause__``.
+
 Conversion
 ~~~~~~~~~~
 

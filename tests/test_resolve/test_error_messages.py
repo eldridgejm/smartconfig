@@ -572,6 +572,78 @@ def test_a_value_that_failed_reports_the_same_error_when_referenced_again():
     _assert_reports_the_real_error(exc.value, "can only concatenate")
 
 
+# errors raised by expressions, filters and functions ==================================
+#
+# An exception that isn't smartconfig's own, raised by an expression, a filter or a
+# function, is wrapped in a ResolutionError at the keypath where it was raised. The
+# original is kept as the cause.
+
+
+def test_an_error_in_an_expression_is_reported_at_its_keypath():
+    # given — the expression divides by zero
+    cfg: ConfigurationDict = {"n": 0, "a": "${ 10 / n }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, _ANY)
+
+    # then
+    assert exc.value.keypath == ("a",)
+    assert "ZeroDivisionError" in str(exc.value)
+    assert isinstance(exc.value.__cause__, ZeroDivisionError)
+
+
+def test_an_error_in_a_filter_is_reported_at_its_keypath():
+    # given — the filter raises a ValueError
+    def fails(value):
+        raise ValueError("bad value")
+
+    cfg: ConfigurationDict = {"a": "${ 1 | fails }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, _ANY, filters={"fails": fails})
+
+    # then
+    assert exc.value.keypath == ("a",)
+    assert "bad value" in str(exc.value)
+    assert isinstance(exc.value.__cause__, ValueError)
+
+
+def test_an_error_in_a_function_is_reported_at_the_call_not_where_it_is_referenced():
+    # given — the function at a raises its own exception, and b refers to a, so
+    # the exception passes through b's string on its way out
+    class OwnError(Exception):
+        pass
+
+    def fails(args):
+        raise OwnError("from the function")
+
+    cfg: ConfigurationDict = {"b": "${ a }", "a": {"__fails__": None}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, _ANY, functions={"fails": fails})
+
+    # then — reported at a, where it was raised, not re-wrapped at b
+    assert exc.value.keypath == ("a",)
+    assert "from the function" in str(exc.value)
+    assert isinstance(exc.value.__cause__, OwnError)
+
+
+def test_an_assertion_error_is_not_wrapped():
+    # given — the function fails an assert. That is a bug in the code, not a
+    # mistake in the configuration, so it is not reported as a ResolutionError
+    def fails(args):
+        assert False, "a bug"
+
+    cfg: ConfigurationDict = {"a": {"__fails__": None}}
+
+    # when / then
+    with raises(AssertionError):
+        resolve(cfg, _ANY, functions={"fails": fails})
+
+
 # limits ===============================================================================
 
 

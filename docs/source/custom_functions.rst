@@ -22,6 +22,12 @@ which contains all the information the function needs to perform its task. The f
 should return a :class:`smartconfig.types.Configuration` representing the result of
 the function call.
 
+If the function raises an exception that isn't one of `smartconfig`'s own, it is
+reported as a :class:`smartconfig.exceptions.ResolutionError` at the keypath of the
+function call, with the original exception as its ``__cause__``. An
+``AssertionError`` is not wrapped, since it signals a bug in the function rather
+than a mistake in the configuration.
+
 .. class:: smartconfig.types.FunctionArgs
    :no-index:
 
