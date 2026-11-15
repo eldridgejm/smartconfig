@@ -286,6 +286,18 @@ def _validate_template_schema(
         value_types=value_types,
     )
 
+    # a template's value can't be a template field (templates don't nest), so an
+    # inner schema that is itself a template schema can never be satisfied. The
+    # error at resolve time would advise making the field a sibling of the
+    # template, which isn't possible here, so the schema is rejected instead
+    inner_schema = template_schema["schema"]
+    if isinstance(inner_schema, Mapping) and inner_schema.get("type") == "template":
+        raise _exceptions.InvalidSchemaError(
+            "The schema of a template can't itself be a template schema: templates "
+            "don't nest. Use the inner template schema in place of the outer one.",
+            keypath + ("schema",),
+        )
+
     # A template's top-level keys can be referenced by name, like its parameters,
     # so a parameter named like a key that the inner schema declares would be
     # ambiguous. Catch it here, where it is visible from the schema alone.

@@ -399,6 +399,21 @@ def test_template_type_validates_inner_schema_recursively():
     )
 
 
+def test_template_type_raises_if_its_schema_is_a_template():
+    # the template's inner schema is itself a template schema, so its value would
+    # be a template inside a template, which can never be resolved
+    schema = {
+        "type": "template",
+        "schema": {"type": "template", "schema": {"type": "string"}, "parameters": []},
+        "parameters": [],
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("schema",)
+
+
 def test_template_type_inner_schema_may_be_dynamic():
     def inner(_):
         return {"type": "string"}
