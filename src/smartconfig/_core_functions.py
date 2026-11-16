@@ -169,7 +169,7 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
     - a string keypath (e.g., ``"foo.bar"``), or
     - a dictionary with a ``"template"`` key (a keypath string) and an optional
       ``"overrides"`` key (a dictionary that is deep-merged on top of the
-      resolved template).
+      template as written).
 
     The template's value is copied as written, the overrides are merged into it,
     and the result is treated as if it had been written here:

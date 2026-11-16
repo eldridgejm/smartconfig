@@ -603,8 +603,9 @@ and so on), not the ones the template was created with.
 
 **Example (with overrides)**:
 
-When the template resolves to a dictionary, ``__use__`` accepts an ``overrides``
-key that is deep-merged on top of the template contents before resolution. This
+When the template is written as a dictionary (not as a function call that makes
+one), ``__use__`` accepts an ``overrides`` key that is deep-merged on top of the
+template as written, before anything in it is evaluated. This
 lets you define shared defaults in one place and selectively override individual
 fields at each use site:
 

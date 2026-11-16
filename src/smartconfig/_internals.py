@@ -2117,7 +2117,8 @@ def _expand_use(
     ------
     ResolutionError
         If the input is malformed, the target does not exist or is not a template,
-        or overrides are given for a template that is not a dict.
+        or overrides are given for a template that is not written as a dict (or is
+        written as a function call).
 
     """
     # parse the input: a keypath string, or a dict with "template" and "overrides"
@@ -2165,10 +2166,28 @@ def _expand_use(
     if overrides is not None:
         if not isinstance(value, dict):
             raise ResolutionError(
-                "Overrides can only be applied when the template resolves to a "
+                "Overrides can only be applied when the template is written as a "
                 "dictionary.",
                 keypath,
             )
+
+        # a template written as a function call is a dict too, but merging into it
+        # would add keys to the call, not to the dict it makes. An invalid call
+        # (ValueError) is call-shaped as well, so it is rejected the same way
+        context = node.resolution_context
+        try:
+            is_call = (
+                context.check_for_function_call(value, context.functions) is not None
+            )
+        except ValueError:
+            is_call = True
+        if is_call:
+            raise ResolutionError(
+                "Overrides can only be applied when the template is written as a "
+                "dictionary, not a function call.",
+                keypath,
+            )
+
         assert isinstance(overrides, dict)  # checked when the input was parsed
         value = deep_update([value, overrides])
 

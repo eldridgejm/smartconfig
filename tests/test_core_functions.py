@@ -2087,6 +2087,35 @@ def test_use_with_overrides_raises_if_template_contents_is_not_dict():
     assert "dictionary" in str(exc.value).lower()
 
 
+def test_use_with_overrides_raises_if_template_is_written_as_a_function_call():
+    # given: the template makes a dict, but is written as a call, so the overrides
+    # would be merged into the call itself
+    schema: Schema = {"type": "any"}
+
+    cfg: ConfigurationDict = {
+        "template": {
+            "__template__": {"__dict.from_items__": [{"key": "a", "value": 1}]}
+        },
+        "result": {
+            "__use__": {
+                "template": "template",
+                "overrides": {"a": 2},
+            }
+        },
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert exc.value.keypath == ("result",)
+    assert exc.value.reason == (
+        "Overrides can only be applied when the template is written as a "
+        "dictionary, not a function call."
+    )
+
+
 def test_use_raises_if_dict_missing_template_key():
     # given
     schema: Schema = {"type": "any"}
