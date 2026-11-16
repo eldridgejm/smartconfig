@@ -2,7 +2,7 @@
 
 import typing
 
-from smartconfig import resolve, exceptions
+from smartconfig import resolve, exceptions, CORE_FUNCTIONS
 from smartconfig.stdlib.dict import update, update_shallow, from_items
 from smartconfig.stdlib.list import loop
 from smartconfig.types import Schema, ConfigurationDict, ConfigurationList
@@ -105,7 +105,9 @@ def test_update_shallow_raises_if_input_is_not_a_list():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update_shallow": update_shallow})
 
-    assert "Input to 'update_shallow' must be a list of dictionaries." in str(exc.value)
+    assert "Input to 'dict.update_shallow' must be a list of dictionaries." in str(
+        exc.value
+    )
 
 
 def test_update_shallow_raises_if_input_is_not_a_list_of_dicts():
@@ -129,7 +131,9 @@ def test_update_shallow_raises_if_input_is_not_a_list_of_dicts():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update_shallow": update_shallow})
 
-    assert "Input to 'update_shallow' must be a list of dictionaries." in str(exc.value)
+    assert "Input to 'dict.update_shallow' must be a list of dictionaries." in str(
+        exc.value
+    )
 
 
 def test_update_shallow_raises_if_input_is_empty():
@@ -153,8 +157,9 @@ def test_update_shallow_raises_if_input_is_empty():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update_shallow": update_shallow})
 
-    assert "Input to 'update_shallow' must be a non-empty list of dictionaries." in str(
-        exc.value
+    assert (
+        "Input to 'dict.update_shallow' must be a non-empty list of dictionaries."
+        in str(exc.value)
     )
 
 
@@ -194,12 +199,7 @@ def test_update_is_recursive():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "x": {
-                "type": "any",
-                "required_keys": {
-                    "a": {"type": "dict", "required_keys": {"foo": {"type": "integer"}}}
-                },
-            }
+            "x": {"type": "any"},
         },
     }
 
@@ -321,7 +321,7 @@ def test_update_raises_if_input_is_not_a_list():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update": update})
 
-    assert "Input to 'update' must be a list of dictionaries." in str(exc.value)
+    assert "Input to 'dict.update' must be a list of dictionaries." in str(exc.value)
 
 
 def test_update_raises_if_input_is_not_a_list_of_dicts():
@@ -345,7 +345,7 @@ def test_update_raises_if_input_is_not_a_list_of_dicts():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update": update})
 
-    assert "Input to 'update' must be a list of dictionaries." in str(exc.value)
+    assert "Input to 'dict.update' must be a list of dictionaries." in str(exc.value)
 
 
 def test_update_raises_if_input_is_empty():
@@ -369,7 +369,7 @@ def test_update_raises_if_input_is_empty():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"update": update})
 
-    assert "Input to 'update' must be a non-empty list of dictionaries." in str(
+    assert "Input to 'dict.update' must be a non-empty list of dictionaries." in str(
         exc.value
     )
 
@@ -484,6 +484,17 @@ def test_from_items_generated_within_loop_checks_schema_for_required_keys():
     assert "missing required key" in str(exc.value)
 
 
+def test_from_items_raises_if_a_key_is_not_a_string():
+    # dictionary keys must be strings, but this key is the integer 1
+    cfg: ConfigurationDict = {"x": {"__from_items__": [{"key": 1, "value": "a"}]}}
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"from_items": from_items})
+
+    assert exc.value.keypath == ("x",)
+    assert "key" in str(exc.value)
+
+
 def test_from_items_raises_if_input_is_not_a_list():
     # given
     schema: Schema = {
@@ -524,3 +535,56 @@ def test_from_items_raises_if_input_is_not_a_list_of_dicts_each_with_keys_key_an
     # when
     with raises(exceptions.ResolutionError):
         resolve(cfg, schema, functions={"from_items": from_items})
+
+
+# raw values in input ==================================================================
+#
+# A __raw__ value resolves to its literal contents. These functions return it as
+# part of their result, and it must not be interpolated or evaluated again.
+
+_raw = CORE_FUNCTIONS["raw"]
+_ANY: Schema = {"type": "any"}
+
+
+def test_update_keeps_raw_values_literal():
+    # given
+    cfg: ConfigurationDict = {
+        "__update__": [
+            {"a": {"__raw__": "${q}"}},
+            {"b": {"__raw__": {"__splice__": "c"}}},
+        ]
+    }
+
+    # when
+    resolved = resolve(cfg, _ANY, functions={"update": update, "raw": _raw})
+
+    # then
+    assert resolved == {"a": "${q}", "b": {"__splice__": "c"}}
+
+
+def test_update_shallow_keeps_raw_values_literal():
+    # given
+    cfg: ConfigurationDict = {
+        "__update_shallow__": [{"a": {"__raw__": "${q}"}}, {"b": 1}]
+    }
+
+    # when
+    resolved = resolve(
+        cfg, _ANY, functions={"update_shallow": update_shallow, "raw": _raw}
+    )
+
+    # then
+    assert resolved == {"a": "${q}", "b": 1}
+
+
+def test_from_items_keeps_raw_values_literal():
+    # given
+    cfg: ConfigurationDict = {
+        "__from_items__": [{"key": "a", "value": {"__raw__": "${q}"}}]
+    }
+
+    # when
+    resolved = resolve(cfg, _ANY, functions={"from_items": from_items, "raw": _raw})
+
+    # then
+    assert resolved == {"a": "${q}"}

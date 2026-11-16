@@ -226,3 +226,21 @@ def test_resolve_with_dynamic_schemas_nested():
         "name": "Diana",
         "address": {"city": "Los Angeles", "zip_code": 90001},
     }
+
+
+def test_raises_if_a_dynamic_schema_gives_a_required_key_a_default():
+    # given — a default makes no sense for a required key, which is never missing;
+    # a static schema like this is invalid, so a dynamic one should be too
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"a": lambda cfg, keypath: {"type": "integer", "default": 5}},
+    }
+
+    cfg: ConfigurationDict = {"a": 1}
+
+    # when
+    with raises(exceptions.InvalidSchemaError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert "default" in str(exc.value)

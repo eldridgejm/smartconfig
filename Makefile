@@ -13,6 +13,7 @@ test:
 	uv run pytest
 
 doctest:
+	uv run pytest --doctest-modules src -q
 	cd docs && uv run make doctest
 
 coverage:

@@ -6,6 +6,7 @@ from smartconfig import resolve, exceptions
 from smartconfig.stdlib.datetime import at, first, offset, parse
 from smartconfig.types import Schema, ConfigurationDict
 
+import pytest
 from pytest import raises
 
 
@@ -62,11 +63,27 @@ def test_at_datetime_object_overrides_time():
     assert resolved == {"result": datetime.datetime(2021, 10, 5, 23, 59)}
 
 
+def test_at_keeps_the_timezone_of_the_date():
+    # the date is in UTC+2; the time has no timezone of its own, so the result
+    # should be 10:00 in UTC+2, not a naive 10:00
+    cfg: ConfigurationDict = {
+        "result": {
+            "__datetime.at__": {"date": "2021-10-05T12:00:00+02:00", "time": "10:00:00"}
+        }
+    }
+    resolved = resolve(cfg, AT_SCHEMA, functions=AT_FUNCTIONS)
+
+    utc_plus_2 = datetime.timezone(datetime.timedelta(hours=2))
+    assert resolved == {
+        "result": datetime.datetime(2021, 10, 5, 10, 0, tzinfo=utc_plus_2)
+    }
+
+
 def test_at_raises_if_input_is_not_a_dict():
     cfg: ConfigurationDict = {"result": {"__datetime.at__": "not a dict"}}
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, AT_SCHEMA, functions=AT_FUNCTIONS)
-    assert "Input to 'at' must be a dictionary" in str(exc.value)
+    assert "Input to 'datetime.at' must be a dictionary" in str(exc.value)
 
 
 def test_at_raises_if_date_missing():
@@ -259,6 +276,29 @@ def test_offset_before_dict():
     assert resolved == {"deadline": datetime.datetime(2021, 10, 2)}
 
 
+def test_offset_dict_values_can_come_from_references():
+    # given — days is "${ n }", which interpolates to the string "3", not the
+    # integer 3
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"deadline": {"type": "datetime"}},
+    }
+    cfg: ConfigurationDict = {
+        "deadline": {
+            "__datetime.offset__": {"before": "2021-10-05", "by": {"days": "${ n }"}}
+        }
+    }
+
+    resolved = resolve(
+        cfg,
+        schema,
+        functions={"datetime": {"offset": offset}},
+        global_variables={"n": 3},
+    )
+
+    assert resolved == {"deadline": datetime.datetime(2021, 10, 2)}
+
+
 def test_offset_after_dict_multiple_units():
     schema: Schema = {
         "type": "dict",
@@ -338,7 +378,7 @@ def test_offset_raises_if_input_is_not_a_dict():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"datetime": {"offset": offset}})
 
-    assert "Input to 'offset' must be a dictionary" in str(exc.value)
+    assert "Input to 'datetime.offset' must be a dictionary" in str(exc.value)
 
 
 def test_offset_raises_if_no_reference_provided():
@@ -753,7 +793,7 @@ def test_first_raises_if_input_is_not_a_dict():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"datetime": {"first": first}})
 
-    assert "Input to 'first' must be a dictionary" in str(exc.value)
+    assert "Input to 'datetime.first' must be a dictionary" in str(exc.value)
 
 
 def test_first_raises_if_weekday_missing():
@@ -786,6 +826,30 @@ def test_first_raises_if_no_direction_provided():
         resolve(cfg, schema, functions={"datetime": {"first": first}})
 
     assert "must contain either 'before' or 'after'" in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    "function, input_, unknown",
+    [
+        # "zone" isn't one of at's keys
+        ("at", {"date": "2025-01-01", "time": "10:00:00", "zone": "UTC"}, "zone"),
+        # "skp" is a misspelling of "skip"
+        ("offset", {"after": "2025-01-01", "by": "1 day", "skp": []}, "skp"),
+        # "colour" isn't one of first's keys
+        (
+            "first",
+            {"weekday": "monday", "after": "2025-01-01", "colour": "red"},
+            "colour",
+        ),
+    ],
+)
+def test_datetime_functions_raise_on_an_unknown_key(function, input_, unknown):
+    cfg: ConfigurationDict = {"x": {f"__datetime.{function}__": input_}}
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    assert unknown in str(exc.value)
 
 
 def test_first_raises_if_both_directions_provided():
@@ -828,6 +892,32 @@ def test_first_raises_if_invalid_weekday():
         resolve(cfg, schema, functions={"datetime": {"first": first}})
 
     assert "Invalid day of week" in str(exc.value)
+
+
+def test_first_raises_if_no_weekdays_are_given():
+    # an empty list of weekdays can never be matched
+    cfg: ConfigurationDict = {
+        "due": {"__datetime.first__": {"weekday": [], "after": "2021-09-10"}}
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"datetime": {"first": first}})
+
+    assert exc.value.keypath == ("due",)
+    assert "weekday" in str(exc.value)
+
+
+def test_first_raises_if_the_result_would_be_out_of_range():
+    # the first monday after the last representable date doesn't exist
+    cfg: ConfigurationDict = {
+        "due": {"__datetime.first__": {"weekday": "monday", "after": "9999-12-31"}}
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"datetime": {"first": first}})
+
+    assert exc.value.keypath == ("due",)
+    assert "out of range" in str(exc.value)
 
 
 # first + skip ===================================================================
@@ -1217,3 +1307,44 @@ def test_parse_raises_if_invalid_weekday():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, PARSE_SCHEMA, functions=PARSE_FUNCTIONS)
     assert "Invalid day of week" in str(exc.value)
+
+
+def test_parse_at_keeps_the_timezone_of_the_date():
+    # the date is in UTC+2; "at 10:00:00" changes the time but not the timezone
+    cfg: ConfigurationDict = {
+        "result": {"__datetime.parse__": "2021-10-05T12:00:00+02:00 at 10:00:00"}
+    }
+    resolved = resolve(cfg, AT_SCHEMA, functions={"datetime": {"parse": parse}})
+
+    utc_plus_2 = datetime.timezone(datetime.timedelta(hours=2))
+    assert resolved == {
+        "result": datetime.datetime(2021, 10, 5, 10, 0, tzinfo=utc_plus_2)
+    }
+
+
+@pytest.mark.parametrize(
+    "time, expected",
+    [
+        # without seconds
+        ("23:59", datetime.datetime(2021, 10, 5, 23, 59)),
+        # a one-digit hour, without seconds
+        ("9:00", datetime.datetime(2021, 10, 5, 9, 0)),
+    ],
+)
+def test_parse_at_accepts_a_time_without_seconds(time, expected):
+    cfg: ConfigurationDict = {"result": {"__datetime.parse__": f"2021-10-05 at {time}"}}
+
+    resolved = resolve(cfg, AT_SCHEMA, functions={"datetime": {"parse": parse}})
+
+    assert resolved == {"result": expected}
+
+
+def test_parse_offset_units_are_not_case_sensitive():
+    # "After" is matched whatever its case, so "Days" should be too
+    cfg: ConfigurationDict = {
+        "result": {"__datetime.parse__": "3 Days After 2021-10-05"}
+    }
+
+    resolved = resolve(cfg, AT_SCHEMA, functions={"datetime": {"parse": parse}})
+
+    assert resolved == {"result": datetime.datetime(2021, 10, 8)}

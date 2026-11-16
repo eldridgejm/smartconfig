@@ -257,6 +257,75 @@ def test_can_use_jinja_methods():
     assert result["bar"] == "testing THIS"
 
 
+def test_keys_named_like_container_methods_are_looked_up_as_keys():
+    # Jinja tries attributes before items, so without care ${ a.keys } would be
+    # the method of the container that stands for "a"
+    names = ["keys", "values", "resolve", "get_keypath"]
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {
+                "type": "dict",
+                "required_keys": {name: {"type": "integer"} for name in names},
+            },
+            "dot": {"type": "string"},
+            "subscript": {"type": "string"},
+        },
+    }
+    cfg: ConfigurationDict = {
+        "a": {name: i for i, name in enumerate(names)},
+        "dot": " ".join(f"${{ a.{name} }}" for name in names),
+        "subscript": " ".join(f'${{ a["{name}"] }}' for name in names),
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["dot"] == "0 1 2 3"
+    assert result["subscript"] == "0 1 2 3"
+
+
+def test_keys_named_like_container_methods_are_looked_up_in_function_results():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {
+                "type": "dict",
+                "required_keys": {"get_keypath": {"type": "integer"}},
+            },
+            "b": {"type": "string"},
+        },
+    }
+    cfg: ConfigurationDict = {
+        "a": {"__dict.update__": [{"get_keypath": 1}, {}]},
+        "b": "${ a.get_keypath }",
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["b"] == "1"
+
+
+def test_container_methods_can_be_called_when_no_key_shadows_them():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
+            "b": {"type": "string"},
+        },
+    }
+    cfg: ConfigurationDict = {
+        "a": {"x": 1, "y": 2},
+        "b": "${ a.keys() | join(',') } ${ a.values() | sum }",
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["b"] == "x,y 3"
+
+
 def test_can_use_builtin_jinja_function_range():
     # given
     schema: Schema = {
@@ -463,9 +532,10 @@ def test_interpolate_entire_dict_raises_exception():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema)
 
-    assert (
-        str(exc.value)
-        == 'Cannot resolve keypath "bar": Expected a dict, but got the string "${foo}".'
+    assert str(exc.value) == (
+        'Cannot resolve keypath "bar": Expected a dict, but got the string "${foo}". '
+        "A ${ ... } always gives a string: to copy a dict or list, use __splice__ "
+        "(or __use__ for a template)."
     )
 
 
@@ -566,3 +636,28 @@ def test_interpolate_entire_list_raises_exception():
 
     # then
     assert "Expected a list, but got the string" in str(exc.value)
+
+
+# strings are kept as written ==========================================================
+
+
+def test_interpolation_keeps_a_trailing_newline():
+    # given — the string is interpolated, and ends with a newline
+    cfg: ConfigurationDict = {"n": 2, "line": "${ n }\n"}
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result["line"] == "2\n"
+
+
+def test_a_string_without_template_syntax_is_unchanged():
+    # given — a plain string, with Windows line endings and a trailing newline
+    cfg: ConfigurationDict = {"text": "a\r\nb\r\n"}
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result["text"] == "a\r\nb\r\n"

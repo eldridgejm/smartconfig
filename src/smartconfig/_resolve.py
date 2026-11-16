@@ -13,12 +13,13 @@ from typing import (
     Mapping,
 )
 import copy
+import functools
 import typing
 
 from . import converters as _converters, types as _types
 from ._core_functions import CORE_FUNCTIONS
-from ._internals import make_node
-from ._prototypes import Prototype, is_prototype_class
+from ._internals import make_node, resolve_catching_recursion_errors
+from ._schemas import validate_schema
 from .stdlib import STDLIB_FUNCTIONS
 
 
@@ -32,7 +33,6 @@ DEFAULT_CONVERTERS: dict[str, Callable] = {
     "boolean": _converters.boolean,
     "date": _converters.date,
     "datetime": _converters.datetime,
-    "any": lambda x: x,
 }
 
 # the default functions used by resolve()
@@ -80,7 +80,13 @@ def _check_for_dunder_function_call(
 
     if is_potential_function_call:
         if len(dct) != 1:
-            raise ValueError("Invalid function call.")
+            # name the other keys: a function call is a dict with exactly one key
+            function_key = next(key for key in dct if _is_dunder(key))
+            others = ", ".join(repr(key) for key in dct if key != function_key)
+            raise ValueError(
+                f"A function call must be a dict with exactly one key, but "
+                f"{function_key!r} has the other key(s) {others}."
+            )
         else:
             key = next(iter(dct.keys()))
             function_name = key[2:-2]
@@ -100,26 +106,54 @@ def _is_leaf(x: _types.Configuration) -> bool:
     return not isinstance(x, dict) and not isinstance(x, list)
 
 
-def _copy_into(dst, src):
-    """Recursively copy the leaf values from src to dst.
+def _preserve_types(
+    original: Any,
+    resolved: _types.Configuration,
+    is_function_call: Callable[[_types.ConfigurationDict], bool],
+) -> Any:
+    """``resolved``, with each container replaced by ``original``'s where it has one.
 
-    Used when preserve_type = True in resolve()
+    Used when preserve_type = True in resolve(). ``original`` is a copy of the
+    input and is filled in place. The resolved output is walked, not the input,
+    because their structures can differ: a function call in the input can produce
+    a container, and defaults add keys the input doesn't have. Where the input has
+    no container of the same kind (it has a function call, or nothing), the
+    resolved value is used as is.
 
     """
-    assert isinstance(dst, (dict, list))
+    if isinstance(resolved, dict):
+        # a function call is a dict in the input, but its result has nothing to do
+        # with that dict, so there is no container to preserve
+        if not isinstance(original, dict) or is_function_call(original):
+            return resolved
+        for key, value in resolved.items():
+            # keys only in resolved (filled in by defaults) get original.get(key)
+            # of None, so their resolved values are used
+            original[key] = _preserve_types(original.get(key), value, is_function_call)
+        return original
 
-    if isinstance(dst, dict):
-        keys = dst.keys()
-    else:
-        # dst must be a list
-        keys = range(len(dst))
+    if isinstance(resolved, list):
+        # a list in the input resolves to one of the same length, so a different
+        # length means the input has no matching list
+        if not isinstance(original, list) or len(original) != len(resolved):
+            return resolved
+        for i, value in enumerate(resolved):
+            original[i] = _preserve_types(original[i], value, is_function_call)
+        return original
 
-    for key in keys:
-        x = src[key]
-        if _is_leaf(x):
-            dst[key] = src[key]
-        else:
-            _copy_into(dst[key], src[key])
+    # a leaf (a number, string, date, Template, ...) has no type to preserve
+    return resolved
+
+
+def _is_function_call(
+    cfg: _types.ConfigurationDict, context: _types.ResolutionContext
+) -> bool:
+    """Whether ``cfg`` is a function call, by the same check that resolve() uses."""
+    try:
+        return context.check_for_function_call(cfg, context.functions) is not None
+    except ValueError:
+        # an invalid function call would already have failed to resolve
+        return False
 
 
 def _ensure_function(
@@ -164,26 +198,58 @@ def _flatten_functions(
     return result
 
 
+def _make_resolution_context(
+    converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
+    functions: _types.FunctionMapping | None = DEFAULT_FUNCTIONS,
+    global_variables: Mapping[str, Any] | None = None,
+    filters: Mapping[str, Callable] | None = None,
+    inject_root_as: str | None = None,
+    check_for_function_call: _types.FunctionCallChecker
+    | None = _check_for_dunder_function_call,
+) -> _types.ResolutionContext:
+    """The resolution context for the options of :func:`resolve`.
+
+    The defaults are those of :func:`resolve`. Also used by
+    :meth:`Template.evaluate`.
+
+    """
+    if functions is None:
+        converted_functions: Mapping[str, _types.Function] = {}
+    else:
+        # convert standard Python functions to _types.Function instances,
+        # flattening any nested mappings into dot-separated keys
+        converted_functions = _flatten_functions(functions)
+
+    if global_variables is None:
+        global_variables = {}
+    else:
+        global_variables = dict(global_variables)
+
+    if filters is None:
+        filters = {}
+
+    if check_for_function_call is None:
+        # do not check for function calls
+        def _no_check(*_):
+            return None
+
+        check_for_function_call = _no_check
+
+    return _types.ResolutionContext(
+        converters,
+        converted_functions,
+        global_variables,
+        filters,
+        inject_root_as,
+        check_for_function_call,
+    )
+
+
 # overloads ----------------------------------------------------------------------------
 
 # these overloads are provided so that type checkers can predict that the return
 # type of resolve() is the same as the input type. This is useful for IDEs and
 # static type checkers.
-
-
-@typing.overload
-def resolve[_P: Prototype](
-    cfg: _types.Configuration,
-    spec: type[_P],
-    converters: Mapping[str, Callable] = ...,
-    functions: _types.FunctionMapping | None = ...,
-    global_variables: Mapping[str, Any] | None = ...,
-    inject_root_as: str | None = ...,
-    filters: Mapping[str, Callable] | None = ...,
-    preserve_type: bool = ...,
-    check_for_function_call: _types.FunctionCallChecker | None = ...,
-) -> _P:
-    """Overloaded resolve() for ConfigurationValue."""
 
 
 @typing.overload
@@ -236,7 +302,7 @@ def resolve(
 
 def resolve(
     cfg: _types.Configuration,
-    spec: _types.Schema | _types.DynamicSchema | type[Prototype],
+    spec: _types.Schema | _types.DynamicSchema,
     converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
     functions: _types.FunctionMapping | None = DEFAULT_FUNCTIONS,
     global_variables: Mapping[str, Any] | None = None,
@@ -245,18 +311,16 @@ def resolve(
     preserve_type: bool = False,
     check_for_function_call: _types.FunctionCallChecker
     | None = _check_for_dunder_function_call,
-) -> _types.Configuration | Prototype:
+) -> _types.Configuration:
     """Resolve a configuration by interpolating and parsing its entries.
 
     Parameters
     ----------
     cfg : :class:`types.Configuration`
         The "raw" configuration to resolve.
-    spec : Union[:class:`types.Schema`, :class:`types.DynamicSchema`, :class:`Prototype`]
-        The schema describing the structure of the resolved configuration, or a
-        :class:`Prototype` subclass. If a :class:`Prototype` subclass is provided, the
-        resolved configuration will be an instance of that :class:`Prototype` class. If
-        a :class:`types.DynamicSchema` is provided (which is a callable), it is called
+    spec : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
+        The schema describing the structure of the resolved configuration. If a
+        :class:`types.DynamicSchema` is provided (which is a callable), it is called
         with the configuration and the keypath and should return a
         :class:`types.Schema`.
     converters : Mapping[str, Callable]
@@ -285,8 +349,11 @@ def resolve(
         provided. Defaults to ``None``.
     preserve_type : bool (default: False)
         If False, the return value of this function is a plain Python dictionary or
-        list. If this is True, however, the return type will be the same as the type of
-        cfg. See below for details.
+        list. If this is True, `smartconfig` will attempt to return an object of the
+        same type as the input ``cfg``, and the same for the containers inside it. This
+        is most useful when the input is a custom mapping type (such as a ruamel
+        round-trip dict) that should be preserved in the output. See
+        :ref:`type-preservation`.
     check_for_function_call : :class:`types.FunctionCallChecker`
         A function that checks if a :class:`types.ConfigurationDict` represents a
         function call. It is given the configuration and the available functions. If it
@@ -306,53 +373,33 @@ def resolve(
         reference, or there is some other issue with the configuration itself.
 
     """
-    if functions is None:
-        converted_functions: Mapping[str, _types.Function] = {}
-    else:
-        # convert standard Python functions to _types.Function instances,
-        # flattening any nested mappings into dot-separated keys
-        converted_functions = _flatten_functions(functions)
-
-    if global_variables is None:
-        global_variables = {}
-    else:
-        global_variables = dict(global_variables)
-
-    if filters is None:
-        filters = {}
-
-    if check_for_function_call is None:
-        # do not check for function calls
-        def _no_check(*_):
-            return None
-
-        check_for_function_call = _no_check
-
-    resolution_context = _types.ResolutionContext(
+    resolution_context = _make_resolution_context(
         converters,
-        converted_functions,
+        functions,
         global_variables,
         filters,
         inject_root_as,
         check_for_function_call,
     )
 
-    if is_prototype_class(spec):
-        schema = spec._schema()
-    else:
-        schema = typing.cast(_types.Schema, spec)
+    schema = typing.cast(_types.Schema, spec)
+
+    # validate the schema first: an invalid one would otherwise fail later with an
+    # unhelpful error (e.g. a KeyError), or be silently accepted. Dynamic schemas
+    # are validated when they are called
+    validate_schema(schema, converters=resolution_context.converters)
 
     root = make_node(cfg, schema, resolution_context)
 
-    resolved = root.resolve()
+    # so that a tree too deep to resolve is a ResolutionError, not a RecursionError
+    resolved = resolve_catching_recursion_errors(root)
 
-    if is_prototype_class(spec):
-        # convert the resolved dict into a Prototype instance
-        assert isinstance(resolved, dict)
-        return spec._from_dict(resolved)
-    elif not preserve_type:
+    if not preserve_type or _is_leaf(resolved):
+        # a leaf at the root (e.g. a Template) has no structure to preserve
         return resolved
     else:
-        output = copy.deepcopy(cfg)
-        _copy_into(output, resolved)
-        return output
+        # pass _preserve_types only the check it needs, not the whole context
+        is_function_call = functools.partial(
+            _is_function_call, context=resolution_context
+        )
+        return _preserve_types(copy.deepcopy(cfg), resolved, is_function_call)

@@ -32,9 +32,10 @@ Type aliases used to describe the structure of a configuration.
 
 .. class:: ConfigurationValue
 
-   A "simple value"; a leaf in the configuration tree.
+   A "simple value"; a leaf in the configuration tree. A resolved template field
+   is also a leaf, of type :class:`smartconfig.types.Template`.
 
-   Type alias for ``str | int | float | bool | datetime.datetime | datetime.date | None``
+   Type alias for ``str | int | float | bool | datetime.datetime | datetime.date | Template | None``
 
 .. class:: Configuration
 
@@ -69,6 +70,16 @@ They are passed to functions and Jinja2 templates to allow for lazy resolution.
    :undoc-members:
 
    .. automethod:: __getitem__
+
+Templates
+---------
+
+A template field resolves to a :class:`Template`, which holds the field's value
+unevaluated until :meth:`Template.evaluate` is called. See
+:ref:`template_fields_example`.
+
+.. autoclass:: Template
+   :members: evaluate
 
 Functions
 ---------

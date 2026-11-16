@@ -70,7 +70,7 @@ advance can lead to namespace pollution and collisions because the global
 variables are merged into the same namespace as the configuration keys.
 
 A more robust approach is to combine the configuration with the external variables into
-one dictionary that becomes the new root configuration. A common convention is to use a
+one dictionary that becomes the new root configuration. A suggested convention is to use a
 "this" key to refer to the configuration currently being processed, and a "vars" key to
 refer to the external variables.
 

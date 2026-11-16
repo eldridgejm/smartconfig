@@ -144,6 +144,14 @@ def test_datetime_from_date_only_string_raises():
     assert "time component" in str(exc.value)
 
 
+def test_datetime_from_a_string_that_is_not_a_date_does_not_ask_for_a_time():
+    # "tomorrow" isn't a date at all, so adding a time component wouldn't help
+    with raises(ConversionError) as exc:
+        converters.datetime("tomorrow")
+
+    assert "time component" not in str(exc.value)
+
+
 def test_datetime_from_date_object_raises():
     with raises(ConversionError) as exc:
         converters.datetime(datetime.date(2021, 10, 5))

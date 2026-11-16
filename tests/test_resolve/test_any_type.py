@@ -83,3 +83,17 @@ def test_config_contains_datetimes_objects_type_is_left_alone():
 
     # then
     assert result["foo"] == datetime.datetime(2020, 1, 1)
+
+
+def test_any_needs_no_converter():
+    # given: custom converters without an "any" entry; "any" is a built-in type,
+    # like "dict", so it shouldn't depend on one
+    schema: Schema = {"type": "dict", "required_keys": {"foo": {"type": "any"}}}
+
+    cfg: ConfigurationDict = {"foo": "42"}
+
+    # when
+    result = resolve(cfg, schema, converters={"integer": int})
+
+    # then
+    assert result == {"foo": "42"}

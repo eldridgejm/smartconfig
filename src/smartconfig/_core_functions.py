@@ -6,17 +6,18 @@ separated from _resolve.py for organizational clarity.
 """
 
 from . import types as _types
-from .exceptions import ResolutionError
-from ._utils import deep_update
+from .exceptions import ResolutionError, UnexpectedTemplateError
 from ._internals import (
     ResolutionMode,
     _DictNode,
     _FunctionCallNode,
     _ListNode,
     _ValueNode,
+    _TemplateNode,
     _ConcreteNode,
     make_node,
     _make_unresolved_container,
+    _expand_use,
 )
 
 
@@ -33,13 +34,25 @@ def _splice(args: _types.FunctionArgs) -> _ConcreteNode:
         raise ResolutionError("Input to 'splice' must be a string.", args.keypath)
     root = args._root_node
     assert isinstance(root, (_DictNode, _ListNode, _FunctionCallNode))
+    # if the splice is the whole configuration, there is nothing else to copy
+    # from; looking the keypath up would evaluate this call again, which would be
+    # reported as a circular reference
+    if root is args._function_call_node:
+        raise ResolutionError(
+            "A __splice__ can't be the whole configuration: there is nothing else "
+            "to copy from.",
+            args.keypath,
+        )
     try:
         source_node = root.get_keypath(args.input)
     except KeyError:
         raise ResolutionError(f"Keypath '{args.input}' does not exist.", args.keypath)
 
     # Resolve the source, then rebuild with the target schema so that type
-    # conversion is applied according to the splice destination.
+    # conversion is applied according to the splice destination. The rebuild is
+    # in RAW mode because the data is already resolved: resolving it again would
+    # interpolate a __raw__ value like "${b}" or evaluate a dict like
+    # {"__splice__": "c"} that __raw__ produced.
     spliced_data = source_node.resolve()
     return make_node(
         spliced_data,
@@ -47,7 +60,7 @@ def _splice(args: _types.FunctionArgs) -> _ConcreteNode:
         args.resolution_context,
         parent=args._function_call_node,
         keypath=args.keypath,
-        mode=ResolutionMode.STANDARD,
+        mode=ResolutionMode.RAW,
     )
 
 
@@ -73,8 +86,9 @@ def _raw(args: _types.FunctionArgs) -> _ConcreteNode:
 def _resolve(args: _types.FunctionArgs) -> _ConcreteNode:
     """Explicitly resolve the input with a single pass of interpolation.
 
-    This is the default behavior, but is useful when nested inside a ``raw`` or
-    ``fully_resolve`` block to override the inherited mode.
+    This is the default behavior, but is useful inside a ``fully_resolve`` block
+    to switch back to a single pass. It has no effect inside ``raw``, where nothing
+    is evaluated.
 
     """
     node = make_node(
@@ -109,21 +123,41 @@ def _fully_resolve(args: _types.FunctionArgs) -> _ConcreteNode:
 
 @_types.Function.new(resolve_input=False)
 def _template(args: _types.FunctionArgs) -> _ConcreteNode:
-    """Return a dict wrapping the input as a template that survives resolution.
+    """Defer the input: it resolves to a :class:`Template` of it, as written.
 
-    Builds ``{"__template__": <input>}`` in RAW mode so that ``${...}``
-    references are preserved and the wrapper dict is not detected as a
-    function call.
+    What the Template is depends on the field's schema:
+
+    - on a template field, the Template has that field's inner schema and
+      parameters;
+    - on a field of type ``any``, it has schema ``any`` and no parameters;
+    - any other field is evaluated now, so the wrapper is an error.
 
     """
-    node = make_node(
-        {"__template__": args.input},
-        args.schema,
+    schema_type = args.schema.get("type")
+
+    if schema_type == "template":
+        template_schema = args.schema
+    elif schema_type == "any":
+        template_schema = {
+            "type": "template",
+            "schema": {"type": "any"},
+            "parameters": [],
+        }
+    else:
+        raise UnexpectedTemplateError(
+            "This field is not a template: it is evaluated now. "
+            "Remove the __template__ wrapper.",
+            args.keypath,
+            None,
+        )
+
+    return _TemplateNode(
+        args.input,
+        template_schema,
+        args.keypath,
         args.resolution_context,
-        keypath=args.keypath,
-        mode=ResolutionMode.RAW,
+        parent=args._function_call_node,
     )
-    return node
 
 
 @_types.Function.new(resolve_input=False)
@@ -135,72 +169,31 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
     - a string keypath (e.g., ``"foo.bar"``), or
     - a dictionary with a ``"template"`` key (a keypath string) and an optional
       ``"overrides"`` key (a dictionary that is deep-merged on top of the
-      resolved template).
+      template as written).
 
-    The referenced subtree is resolved, optionally merged with overrides, then
-    rebuilt under the destination's schema.
+    The template's value is copied as written, the overrides are merged into it,
+    and the result is treated as if it had been written here:
+
+    - on a template field, it is kept as written: the result is a Template with
+      that field's inner schema and parameters;
+    - on any other field, it is resolved under the field's schema.
 
     """
-    # Parse input: string (simple) or dict (advanced with overrides).
-    if isinstance(args.input, str):
-        keypath_str = args.input
-        overrides = None
-    elif isinstance(args.input, dict):
-        if "template" not in args.input:
-            raise ResolutionError(
-                "Dict input to 'use' must contain a 'template' key.", args.keypath
-            )
-        raw_template = args.input["template"]
-        if not isinstance(raw_template, str):
-            raise ResolutionError(
-                "The 'template' value in 'use' must be a string.", args.keypath
-            )
-        keypath_str = raw_template
-        overrides = args.input.get("overrides")
-        if overrides is not None and not isinstance(overrides, dict):
-            raise ResolutionError(
-                "The 'overrides' value in 'use' must be a dictionary.", args.keypath
-            )
-        extra = set(args.input.keys()) - {"template", "overrides"}
-        if extra:
-            raise ResolutionError(f"Unexpected keys in 'use': {extra}.", args.keypath)
-    else:
-        raise ResolutionError(
-            "Input to 'use' must be a string or a dictionary.", args.keypath
-        )
+    spliced_data = _expand_use(args.input, args._function_call_node, args.keypath)
 
-    # Look up the node at the keypath and resolve it.
-    root = args._root_node
-    assert isinstance(root, (_DictNode, _ListNode, _FunctionCallNode))
-    try:
-        source_node = root.get_keypath(keypath_str)
-    except KeyError:
-        raise ResolutionError(f"Keypath '{keypath_str}' does not exist.", args.keypath)
-    resolved = source_node.resolve()
-
-    # The target must be a __template__ function call.
-    if not isinstance(resolved, dict) or "__template__" not in resolved:
-        raise ResolutionError(
-            "The target of 'use' must be a '__template__' function call.",
+    if args.schema.get("type") == "template":
+        # a template field: keep the copy as written
+        return _TemplateNode(
+            spliced_data,
+            args.schema,
             args.keypath,
+            args.resolution_context,
+            parent=args._function_call_node,
         )
 
-    # Unwrap the template contents.
-    spliced_data = resolved["__template__"]
-
-    # Apply overrides (deep merge).
-    if overrides is not None:
-        if not isinstance(spliced_data, dict):
-            raise ResolutionError(
-                "Overrides can only be applied when the template resolves to a dictionary.",
-                args.keypath,
-            )
-        assert isinstance(overrides, dict)
-        spliced_data = deep_update([spliced_data, overrides])
-
-    # Resolve: build a STANDARD tree from the (possibly overridden) raw data.
-    # The caller resolves this node, performing one pass of interpolation and
-    # type conversion.
+    # any other field: build a STANDARD tree from the (possibly overridden) value
+    # as written. The caller resolves this node, performing one pass of
+    # interpolation and type conversion.
     node = make_node(
         spliced_data,
         args.schema,
@@ -212,7 +205,11 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
     return node
 
 
-def _if(args: _types.FunctionArgs) -> _types.Configuration:
+# resolve_input=False: otherwise the whole input, both branches included, would be
+# resolved before this function runs, so the branch not taken would be evaluated
+# (and could fail), and the chosen branch would be resolved a second time.
+@_types.Function.new(resolve_input=False)
+def _if(args: _types.FunctionArgs) -> _ConcreteNode:
     """Evaluates configurations, conditionally.
 
     ``args.input`` should be a dictionary with three keys:
@@ -220,6 +217,10 @@ def _if(args: _types.FunctionArgs) -> _types.Configuration:
         - ``condition``: a boolean expression that is evaluated
         - ``then``: the configuration to use if the condition is true
         - ``else``: the configuration to use if the condition is false
+
+    Only the condition and the chosen branch are evaluated. The branch is built
+    as a node at the function's own keypath, so errors and templates inside it
+    report the keypath of the ``__if__`` call.
 
     """
     # check that the input is valid
@@ -235,10 +236,24 @@ def _if(args: _types.FunctionArgs) -> _types.Configuration:
 
     condition = args.resolve(args.input["condition"], schema={"type": "boolean"})
 
-    if condition:
-        return args.resolve(args.input["then"])
-    else:
-        return args.resolve(args.input["else"])
+    branch = args.input["then"] if condition else args.input["else"]
+
+    # Return the branch as a node instead of resolving it here. When a function
+    # returns a plain value, smartconfig resolves that value. That breaks a branch
+    # like {"__raw__": "${b}"}: resolving it here would return the string "${b}",
+    # and smartconfig would resolve that again, yielding the value of b when what
+    # we wanted was the raw string "${b}". On the other hand, if we return a node
+    # it is also resolved by smartconfig, but since we didn't resolve it here, it
+    # is only resolved once in total.
+    fcn = args._function_call_node
+    return make_node(
+        branch,
+        args.schema,
+        args.resolution_context,
+        parent=fcn,
+        keypath=args.keypath,
+        mode=fcn.mode,
+    )
 
 
 @_types.Function.new(resolve_input=False)
@@ -261,6 +276,15 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
     if "in" not in args.input:
         raise ResolutionError(
             "Input to 'let' must contain an 'in' key.",
+            args.keypath,
+        )
+
+    # an unknown key (a misspelling of "variables", say) would otherwise be ignored
+    unknown = set(args.input) - {"variables", "references", "in"}
+    if unknown:
+        raise ResolutionError(
+            f"Unknown key(s) in the input to 'let': {', '.join(sorted(unknown))}. "
+            "Its keys are 'variables', 'references' and 'in'.",
             args.keypath,
         )
 
@@ -310,9 +334,9 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
             )
         for name, target in args.input["references"].items():
             if target == "__this__":
-                if isinstance(node, _ValueNode):
+                if isinstance(node, (_ValueNode, _TemplateNode)):
                     raise ResolutionError(
-                        "'__this__' cannot be used when 'in' is a scalar value.",
+                        "'__this__' cannot be used when 'in' is a value or a template.",
                         args.keypath,
                     )
                 node.local_variables[name] = _make_unresolved_container(node)
@@ -330,10 +354,22 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
                         args.keypath,
                     )
                 prev_node = parent.children[index - 1]
-                if isinstance(prev_node, _ValueNode):
+                # a function call is evaluated first, so that prev is its result,
+                # not the call itself (which would leak into strings as an object)
+                if isinstance(prev_node, _FunctionCallNode):
+                    prev_node = prev_node.evaluate()
+                if isinstance(prev_node, (_ValueNode, _TemplateNode)):
                     node.local_variables[name] = prev_node.resolve()
                 else:
                     node.local_variables[name] = _make_unresolved_container(prev_node)
+            else:
+                # an unknown target (a misspelling of "__previous__", say) would
+                # otherwise leave the name undefined, with no error saying why
+                raise ResolutionError(
+                    f"Unknown reference target {target!r} for '{name}' in 'let'. "
+                    "The targets are '__this__' and '__previous__'.",
+                    args.keypath,
+                )
 
     return node
 
