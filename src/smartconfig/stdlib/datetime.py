@@ -203,8 +203,8 @@ def _parse_weekdays(raw: str, keypath: KeyPath) -> set[_DaysOfTheWeek]:
 
     Examples
     --------
-    >>> _parse_weekdays("monday, friday", keypath=())
-    {_DaysOfTheWeek.MONDAY, _DaysOfTheWeek.FRIDAY}
+    >>> sorted(_parse_weekdays("monday, friday", keypath=()))
+    [<_DaysOfTheWeek.MONDAY: 0>, <_DaysOfTheWeek.FRIDAY: 4>]
 
     """
     normalized = raw.replace(",", " ").replace(" or ", " ")
@@ -286,8 +286,8 @@ def _read_skip_dates(value: Configuration, keypath: KeyPath) -> set[datetimelib.
 
     Examples
     --------
-    >>> _read_skip_dates(["2021-10-05", "2021-10-06"], keypath=())
-    {datetime.date(2021, 10, 5), datetime.date(2021, 10, 6)}
+    >>> sorted(_read_skip_dates(["2021-10-05", "2021-10-06"], keypath=()))
+    [datetime.date(2021, 10, 5), datetime.date(2021, 10, 6)]
 
     """
     if not isinstance(value, list):
@@ -319,8 +319,12 @@ def _find_first_weekday(
 
     Examples
     --------
-    >>> _find_first_weekday(datetime(2021, 9, 14), {MONDAY}, before=False)
-    datetime(2021, 9, 20)  # first Monday after Sep 14 (a Tuesday)
+    The first Monday after Sep 14, 2021 (a Tuesday):
+
+    >>> _find_first_weekday(
+    ...     datetimelib.datetime(2021, 9, 14), {_DaysOfTheWeek.MONDAY}, before=False
+    ... )
+    datetime.datetime(2021, 9, 20, 0, 0)
 
     """
     sign = -1 if before else 1
