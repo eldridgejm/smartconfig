@@ -245,10 +245,11 @@ class Resolver(Protocol):
     ----------
     configuration : Configuration
         The configuration to resolve.
-    schema : Optional[Schema]
-        The schema that the configuration is expected to conform to. If provided, the
-        resolved configuration will be validated against the schema. Defaults to
-        `None`.
+    schema : Schema | None
+        The schema that the resolved configuration must match. Defaults to `None`,
+        which uses the same schema as the function call. For example, if the call
+        appears where the schema expects an integer, the configuration is resolved as
+        an integer. To resolve with no schema, pass ``{"type": "any"}``.
     local_variables : Mapping[str, Configuration] | None
         Local variables that are made available during string interpolation. Defaults to
         `None`, in which case no local variables are available.
