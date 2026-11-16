@@ -440,8 +440,10 @@ chooses between two ``__template__`` values, say): otherwise
 :class:`exceptions.TemplateRequiredError <smartconfig.exceptions.TemplateRequiredError>`
 is raised. Whichever way the template is made, it gets this field's inner schema
 and parameters. Its structure is checked against the inner schema: required and
-unexpected keys, dicts versus lists, nulls. Nothing in it is evaluated, and
-function calls inside it are not checked. Recall the schema from above:
+unexpected keys, dicts versus lists, nulls. Nothing in it is evaluated. A
+function call inside it must name a known function, or resolution fails with an
+error; the call's input, and what it returns, are not checked until the template
+is evaluated. Recall the schema from above:
 
 .. code:: python
 
@@ -482,6 +484,29 @@ Output:
 
     ('page', 'points')
     'Dictionary is missing required key "points".'
+
+So is a call to a function that doesn't exist, even though the call is never
+made:
+
+.. testcode::
+
+    bad = {
+        "course": "DSC 40B",
+        "page": {"__template__": {"title": "Homework", "points": {"__nope__": 1}}},
+    }
+
+    try:
+        smartconfig.resolve(bad, schema)
+    except smartconfig.exceptions.ResolutionError as exc:
+        print(exc.keypath)
+        print(exc.reason)
+
+Output:
+
+.. testoutput::
+
+    ('page', 'points')
+    'Invalid function call: Unknown function: nope'
 
 **What is checked when the template is evaluated.** First, the names given
 must be exactly the template's parameters, no more and no fewer:
