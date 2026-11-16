@@ -103,9 +103,11 @@ Constants
 
 .. data:: DEFAULT_CONVERTERS
 
-    A dictionary mapping schema type strings (``"integer"``, ``"float"``,
-    ``"boolean"``, ``"date"``, ``"datetime"``) to the default converter
-    functions in the :mod:`smartconfig.converters` module.
+    A dictionary mapping schema type strings to the default converters:
+    ``"string"`` to :class:`str`, and ``"integer"``, ``"float"``, ``"boolean"``,
+    ``"date"`` and ``"datetime"`` to the functions in the
+    :mod:`smartconfig.converters` module. The ``any`` type needs no converter: its
+    values are never converted. See :doc:`default_converters`.
 
 .. data:: DEFAULT_FUNCTIONS
 

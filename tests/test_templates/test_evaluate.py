@@ -224,7 +224,6 @@ def test_a_template_remembers_the_options_of_the_resolve_that_made_it():
         converters={
             "integer": lambda x: int(x) * 10,
             "string": str,
-            "any": lambda x: x,
         },
         functions={**DEFAULT_FUNCTIONS, "double": double},
         filters={"shout": str.upper},

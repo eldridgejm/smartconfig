@@ -1672,6 +1672,11 @@ class _ValueNode(_Node):
             The converted value.
 
         """
+        # "any" is a built-in type, like "dict": validate_schema accepts it whatever
+        # the converters are, so it must not depend on one here either
+        if type_ == "any":
+            return value
+
         converters = self.resolution_context.converters
 
         try:

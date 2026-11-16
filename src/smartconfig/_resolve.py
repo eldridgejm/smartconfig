@@ -33,7 +33,6 @@ DEFAULT_CONVERTERS: dict[str, Callable] = {
     "boolean": _converters.boolean,
     "date": _converters.date,
     "datetime": _converters.datetime,
-    "any": lambda x: x,
 }
 
 # the default functions used by resolve()
