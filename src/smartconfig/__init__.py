@@ -6,7 +6,6 @@ from ._resolve import resolve, DEFAULT_CONVERTERS, DEFAULT_FUNCTIONS
 from ._schemas import validate_schema
 from .stdlib import STDLIB_FUNCTIONS
 from ._core_functions import CORE_FUNCTIONS
-from ._internals import StrictUndefined
 
 __all__ = [
     "exceptions",
@@ -19,5 +18,4 @@ __all__ = [
     "DEFAULT_FUNCTIONS",
     "DEFAULT_CONVERTERS",
     "STDLIB_FUNCTIONS",
-    "StrictUndefined",
 ]

@@ -354,8 +354,8 @@ class StrictUndefined(jinja2.StrictUndefined):
     'topc'``. With it, the message names the configuration key when there is
     one, and suggests a close key or attribute (or lists the keys).
 
-    It is used when resolving configurations, and can be used as the
-    ``undefined`` class of other Jinja environments.
+    It is the ``undefined`` class of the environment used to resolve
+    configurations. It is not part of the public API.
 
     """
 

@@ -381,13 +381,13 @@ def test_an_undefined_name_in_a_template_suggests_a_variable_or_a_key():
     )
 
 
-# StrictUndefined in other templates ===================================================
+# StrictUndefined on its own ===========================================================
 
 
-def test_strict_undefined_can_be_used_in_other_jinja_environments():
+def test_strict_undefined_suggests_a_close_key_of_a_plain_dict():
     import jinja2
 
-    from smartconfig import StrictUndefined
+    from smartconfig._internals import StrictUndefined
 
     environment = jinja2.Environment(undefined=StrictUndefined)
     template = environment.from_string("{{ meta.topc }}")
@@ -398,10 +398,10 @@ def test_strict_undefined_can_be_used_in_other_jinja_environments():
     assert str(excinfo.value) == 'The dict has no key "topc". Did you mean "topic"?'
 
 
-def test_strict_undefined_in_other_environments_reports_an_undefined_name():
+def test_strict_undefined_reports_an_undefined_name_without_a_suggestion():
     import jinja2
 
-    from smartconfig import StrictUndefined
+    from smartconfig._internals import StrictUndefined
 
     environment = jinja2.Environment(undefined=StrictUndefined)
     template = environment.from_string("{{ nope }}")
