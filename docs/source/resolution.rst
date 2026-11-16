@@ -136,8 +136,8 @@ Function Evaluation
 ~~~~~~~~~~~~~~~~~~~
 
 A configuration can also contain **function calls**. `smartconfig` provides a
-number of default functions implementing control flow, string manipulation,
-list operations, and more; see :doc:`default_functions` for details. At the same time, custom functions can also be defined; see :doc:`custom_functions` for more information.
+number of default functions for control flow, templates, dates and times, and
+working with lists and dictionaries; see :doc:`default_functions` for details. At the same time, custom functions can also be defined; see :doc:`custom_functions` for more information.
 
 A function call is represented by a dictionary with a special format: by
 default, it is a dictionary with a single key of the form
