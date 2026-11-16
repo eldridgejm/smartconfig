@@ -349,8 +349,11 @@ def resolve(
         provided. Defaults to ``None``.
     preserve_type : bool (default: False)
         If False, the return value of this function is a plain Python dictionary or
-        list. If this is True, however, the return type will be the same as the type of
-        cfg. See below for details.
+        list. If this is True, `smartconfig` will attempt to return an object of the
+        same type as the input ``cfg``, and the same for the containers inside it. This
+        is most useful when the input is a custom mapping type (such as a ruamel
+        round-trip dict) that should be preserved in the output. See
+        :ref:`type-preservation`.
     check_for_function_call : :class:`types.FunctionCallChecker`
         A function that checks if a :class:`types.ConfigurationDict` represents a
         function call. It is given the configuration and the available functions. If it
