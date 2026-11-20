@@ -360,3 +360,46 @@ def test_a_template_field_in_the_source_is_a_nesting_error_when_evaluated():
 
     assert exc.value.keypath == ("x", "body")
     assert exc.value.enclosing == ("x",)
+
+
+# global variables =====================================================================
+
+
+GREETING = {
+    "type": "dict",
+    "required_keys": {
+        "greeting": {
+            "type": "template",
+            "schema": {"type": "string"},
+            "parameters": ["name"],
+        }
+    },
+}
+
+
+def test_a_template_field_sees_the_global_variables_of_the_resolve_that_made_it():
+    cfg: ConfigurationDict = {
+        "greeting": {"__template__": "Hello ${ name } from ${ course }"}
+    }
+    template = resolve(cfg, GREETING, global_variables={"course": "DSC 10"})["greeting"]
+
+    assert template.evaluate({"name": "Ana"}) == "Hello Ana from DSC 10"
+
+
+def test_a_parameter_wins_over_a_global_variable_of_the_same_name():
+    # the parameter wins, and the collision is not an error: whoever calls resolve()
+    # may pass globals that the template's author never saw
+    cfg: ConfigurationDict = {"greeting": {"__template__": "Hello ${ name }"}}
+    template = resolve(cfg, GREETING, global_variables={"name": "global"})["greeting"]
+
+    assert template.evaluate({"name": "Ana"}) == "Hello Ana"
+
+
+def test_a_template_made_directly_takes_global_variables():
+    template = Template(
+        "${ greeting }, ${ name }",
+        parameters=["name"],
+        global_variables={"greeting": "Hi"},
+    )
+
+    assert template.evaluate({"name": "Ana"}) == "Hi, Ana"

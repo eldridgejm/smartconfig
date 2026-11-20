@@ -507,6 +507,9 @@ class Template:
         :func:`smartconfig.resolve`.
     filters : Mapping[str, Callable] | None
         Jinja2 filters available when evaluating. Defaults to ``None``.
+    global_variables : Mapping[str, Any] | None
+        Variables available when evaluating, as in :func:`smartconfig.resolve`. A
+        parameter of the same name shadows one. Defaults to ``None``.
     inject_root_as : str | None
         As in :func:`smartconfig.resolve`. Defaults to ``None``.
     check_for_function_call : :class:`types.FunctionCallChecker` | None
@@ -538,6 +541,7 @@ class Template:
         converters: Mapping[str, Callable] = _DEFAULT,
         functions: FunctionMapping | None = _DEFAULT,
         filters: Mapping[str, Callable] | None = None,
+        global_variables: Mapping[str, Any] | None = None,
         inject_root_as: str | None = None,
         check_for_function_call: FunctionCallChecker | None = _DEFAULT,
     ):
@@ -557,6 +561,7 @@ class Template:
             "converters": converters,
             "functions": functions,
             "filters": filters,
+            "global_variables": global_variables,
             "inject_root_as": inject_root_as,
             "check_for_function_call": check_for_function_call,
         }
@@ -620,7 +625,12 @@ class Template:
 
         # options left at _DEFAULT take resolve()'s defaults
         options = {k: v for k, v in self._options.items() if v is not _DEFAULT}
-        context = _make_resolution_context(global_variables=variables, **options)
+
+        # the parameters are added to the globals, and win over them: whoever
+        # calls resolve() may pass globals that the template's author never saw,
+        # and the template should not break because one shares a parameter's name
+        global_variables = {**(options.pop("global_variables") or {}), **variables}
+        context = _make_resolution_context(global_variables=global_variables, **options)
 
         # a template field in the tree would be a template inside this one
         root = make_template_tree(self.source, self.schema, context, self.keypath)

@@ -2322,6 +2322,7 @@ class _TemplateNode(_Node):
             converters=context.converters,
             functions=context.functions,
             filters=context.filters,
+            global_variables=context.global_variables,
             inject_root_as=context.inject_root_as,
             check_for_function_call=context.check_for_function_call,
         )

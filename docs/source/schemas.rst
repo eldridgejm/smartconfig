@@ -433,6 +433,11 @@ Output:
 
     {'points': 10, 'title': 'DSC 40B: Homework 1'}
 
+A template keeps everything that was passed to :func:`smartconfig.resolve`:
+the functions, filters, converters and global variables it uses are the same
+ones the rest of the configuration uses. If a parameter has the same name as a
+global variable, the parameter wins.
+
 **What is checked when the configuration is resolved.** The value must be
 written with ``__template__``, copied with :ref:`__use__ <func-use>`, or
 produced by another function call that makes a template (an ``__if__`` that
