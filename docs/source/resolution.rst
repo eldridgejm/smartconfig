@@ -122,6 +122,32 @@ insert it as a string:
 
     {'note': 'Issue {#123}, 50{% off'}
 
+A literal ``${`` is written the same way, as ``${ '${' }``. For a longer
+stretch of text, wrap it in ``{% raw %}`` and ``{% endraw %}``, which Jinja2
+leaves untouched; to keep a whole value as written, use :ref:`__raw__
+<func-raw>`. Note that ``$${ ... }`` is not an escape: it is a ``$`` followed
+by the value, as in a price.
+
+.. testcode:: python
+
+    config = {
+        "price": 5,
+        "cost": "$${ price }",
+        "one": "Write ${ '${' }price} to insert the price.",
+        "block": "{% raw %}${ price } and ${ tax }{% endraw %}",
+        "whole": {"__raw__": "${ price }"},
+    }
+
+    pprint(smartconfig.resolve(config, {"type": "any"}))
+
+.. testoutput:: python
+
+    {'block': '${ price } and ${ tax }',
+     'cost': '$5',
+     'one': 'Write ${price} to insert the price.',
+     'price': 5,
+     'whole': '${ price }'}
+
 A string without any of ``${``, ``{%`` or ``{#`` is not passed to Jinja2 at all,
 so it is kept exactly as written.
 
