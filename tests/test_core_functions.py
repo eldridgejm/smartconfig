@@ -844,6 +844,42 @@ def test_let_references_previous_raises_on_first_element():
     assert "__previous__" in str(exc.value)
 
 
+def test_let_variable_named_like_a_jinja_literal_raises():
+    # given — ${ none } is Jinja's literal None, never the variable
+    cfg: ConfigurationDict = {
+        "a": {"__let__": {"variables": {"none": 1}, "in": {"b": "${ none }"}}}
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"let": _let})
+
+    # then
+    assert str(exc.value) == (
+        "Cannot resolve keypath \"a\": Invalid name in 'variables' of 'let': "
+        '"none" is reserved by Jinja, which reads it as a literal, so ${ none } '
+        "can't refer to it. Use another name."
+    )
+
+
+def test_let_reference_named_like_a_jinja_literal_raises():
+    # given — ${ none } is Jinja's literal None, never the reference
+    cfg: ConfigurationDict = {
+        "a": {"__let__": {"references": {"none": "__this__"}, "in": {"b": "${ none }"}}}
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"let": _let})
+
+    # then
+    assert str(exc.value) == (
+        "Cannot resolve keypath \"a\": Invalid name in 'references' of 'let': "
+        '"none" is reserved by Jinja, which reads it as a literal, so ${ none } '
+        "can't refer to it. Use another name."
+    )
+
+
 def test_let_references_previous_uses_innermost_list():
     # given
     schema: Schema = {

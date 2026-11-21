@@ -7,6 +7,7 @@ done by resolve().
 
 from collections.abc import Callable, Mapping, Set
 from . import exceptions as _exceptions, types as _types
+from ._utils import jinja_reserved_name_problem
 
 # the types of value schemas when no converters are given: the default converters
 _DEFAULT_VALUE_TYPES = frozenset(
@@ -225,12 +226,14 @@ def _validate_value_schema(
 
 
 def _validate_names(names: object, keypath: _types.KeyPath):
-    """Checks that ``names`` is a list of strings, each a valid identifier.
+    """Checks that ``names`` is a list of strings, each a valid identifier that
+    Jinja doesn't reserve (such as ``true`` or ``self``).
 
     Raises
     ------
     InvalidSchemaError
-        If ``names`` is not a list, or if an element is not an identifier string.
+        If ``names`` is not a list, or if an element is not an identifier string or
+        is reserved by Jinja.
 
     """
     if not isinstance(names, list):
@@ -244,6 +247,10 @@ def _validate_names(names: object, keypath: _types.KeyPath):
                 f"Invalid name: {name!r}. Names must be valid identifiers.",
                 keypath + (str(i),),
             )
+        # an identifier like true or self could still never be referred to
+        problem = jinja_reserved_name_problem(name)
+        if problem is not None:
+            raise _exceptions.InvalidSchemaError(problem, keypath + (str(i),))
 
 
 def _validate_template_schema(

@@ -20,6 +20,7 @@ from . import converters as _converters, types as _types
 from ._core_functions import CORE_FUNCTIONS
 from ._internals import make_node, resolve_catching_recursion_errors
 from ._schemas import validate_schema
+from ._utils import jinja_reserved_name_problem
 from .stdlib import STDLIB_FUNCTIONS
 
 
@@ -225,6 +226,16 @@ def _make_resolution_context(
     else:
         global_variables = dict(global_variables)
 
+    # a global or root named like a Jinja literal (true, none) or self could never
+    # be referred to: ${ true } would be the literal, silently, not the variable
+    for name in global_variables:
+        problem = jinja_reserved_name_problem(name)
+        if problem is not None:
+            raise ValueError(f"Invalid global variable: {problem}")
+    problem = jinja_reserved_name_problem(inject_root_as)
+    if problem is not None:
+        raise ValueError(f"Invalid inject_root_as: {problem}")
+
     if filters is None:
         filters = {}
 
@@ -371,6 +382,10 @@ def resolve(
     ResolutionError
         If the configuration does not match the schema, if there is a circular
         reference, or there is some other issue with the configuration itself.
+    ValueError
+        If a global variable or ``inject_root_as`` has a name that Jinja reserves
+        (``true``, ``false``, ``none``, ``True``, ``False``, ``None``, ``not`` or
+        ``self``), since ``${...}`` could never refer to it.
 
     """
     resolution_context = _make_resolution_context(

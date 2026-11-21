@@ -41,6 +41,17 @@ def test_parameters_given_as_a_string_is_an_error():
         Template("x", parameters="abc")
 
 
+def test_a_parameter_reserved_by_jinja_is_an_error():
+    # ${ true } is Jinja's literal True, so the parameter could never be used
+    with raises(ValueError) as exc:
+        Template("${ true }", parameters=["true"])
+
+    assert str(exc.value) == (
+        'Invalid parameter: "true" is reserved by Jinja, which reads it as a '
+        "literal, so ${ true } can't refer to it. Use another name."
+    )
+
+
 def test_source_is_a_deep_copy_of_what_was_passed():
     tags = ["a", "b"]
     source: dict[str, Any] = {"title": "${ name }", "tags": tags}

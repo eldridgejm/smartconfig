@@ -358,6 +358,21 @@ def test_template_type_raises_if_a_key_of_its_schema_is_named_like_a_parameter(
     assert exc.value.keypath == ("parameters", "0")
 
 
+def test_template_type_raises_if_a_parameter_is_reserved_by_jinja():
+    # in ${ self }, Jinja reads self as the template itself, never the parameter
+    schema = {
+        "type": "template",
+        "schema": {"type": "string"},
+        "parameters": ["name", "self"],
+    }
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)
+
+    assert exc.value.keypath == ("parameters", "1")
+    assert "reserved by Jinja" in str(exc.value)
+
+
 def test_template_type_raises_if_globals_is_given():
     # names other than the variables are not declared
     schema = {

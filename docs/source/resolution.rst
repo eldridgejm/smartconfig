@@ -35,6 +35,17 @@ string ``"None"``. To copy a value that may be None into another field, use
 ``__splice__``; to insert something in its place, give a default, as in
 ``${ middle_name or '' }``.
 
+Inside ``${...}``, Jinja reads a few names itself: ``true``, ``false`` and
+``none`` (in either case) are literals, ``not`` is an operator, and ``self`` is
+the template. So ``${ true }`` is always ``True``, even when the configuration
+has a key named ``true``. Such a key is still reachable through its container,
+as in ``${ flags.true }``, or through the root with ``inject_root_as``, as in
+``${ root["true"] }``. A name that ``${...}`` could never refer to is an error
+wherever a name is introduced: a global variable, ``inject_root_as``, a
+``__let__`` variable or reference, or a template parameter. Likewise, inside a
+``{% for %}`` loop, ``loop`` is Jinja's loop variable rather than a key named
+``loop``.
+
 When a string references another value via ``${...}``, that referenced value is automatically resolved first (if it hasn't been already). This means references can chain through multiple levels. For example:
 
 .. testcode:: python

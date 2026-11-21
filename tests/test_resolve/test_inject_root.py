@@ -1,5 +1,7 @@
 """Tests for the inject_root_as option."""
 
+from pytest import raises
+
 from smartconfig import resolve
 from smartconfig.types import (
     ConfigurationDict,
@@ -98,3 +100,18 @@ def test_inject_root_with_function_at_root_level_returning_a_list():
 
     # then
     assert result == [1, 2, 3, 2]
+
+
+def test_inject_root_as_a_name_reserved_by_jinja_raises():
+    # given — in ${ self.x }, Jinja reads self as the template itself
+    cfg: ConfigurationDict = {"x": 1, "y": "${ self.x }"}
+
+    # when
+    with raises(ValueError) as exc:
+        resolve(cfg, {"type": "any"}, inject_root_as="self")
+
+    # then
+    assert str(exc.value) == (
+        'Invalid inject_root_as: "self" is reserved by Jinja, which reads it as the '
+        "template itself, so ${ self } can't refer to it. Use another name."
+    )

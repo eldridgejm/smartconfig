@@ -433,8 +433,9 @@ class _UndefinedName(StrictUndefined):
         return f"'{name}' is undefined.{hint or ''}"
 
 
-class _InsertedContainer(Exception):
-    """A dict or list was inserted into a string with ``${...}``."""
+class _Uninsertable(Exception):
+    """A ``${...}`` gave a value that can't go into a string: a dict, a list or
+    Jinja's ``self``."""
 
     def __init__(self, message: str):
         super().__init__(message)
@@ -476,34 +477,42 @@ def _refuse_uninsertable(value: typing.Any) -> typing.Any:
     # then keep (or fail to convert) instead of being null. __splice__ copies it
     if value is None:
         raise _InsertedNone()
+    # Jinja reads self as the template itself, whatever the configuration holds,
+    # and would insert "<TemplateReference None>"
+    if isinstance(value, jinja2.runtime.TemplateReference):
+        raise _Uninsertable(
+            'In ${ ... }, Jinja reads "self" as the template itself, not a key or '
+            "variable of that name. To use a key named self, give its container, as "
+            "in ${ parent.self }, or use inject_root_as."
+        )
     cant = "can't be inserted into a string"
     if isinstance(value, Template):
         where = ".".join(value.keypath)
-        raise _InsertedContainer(
+        raise _Uninsertable(
             f'"{where}" is a template, which {cant}. Use it with __use__ instead.'
         )
     if isinstance(value, _UnresolvedDict):
         where = ".".join(str(k) for k in getattr(value.dict_node, "keypath", ()))
         keys = [str(k) for k in getattr(value.dict_node, "children", {})]
         example = f", as in {_key_reference(where, keys[0])}," if keys else ""
-        raise _InsertedContainer(
+        raise _Uninsertable(
             f'"{where}" is a dict, which {cant}. Use one of its keys{example} or copy '
             f"the whole value with __splice__."
         )
     if isinstance(value, _UnresolvedList):
         where = ".".join(str(k) for k in getattr(value.list_node, "keypath", ()))
-        raise _InsertedContainer(
+        raise _Uninsertable(
             f'"{where}" is a list, which {cant}. Use one of its elements, as in '
             f"${{ {where}[0] }}, or copy the whole value with __splice__."
         )
     if isinstance(value, typing.Mapping):
         described = _describe_value(dict(value))
-        raise _InsertedContainer(
+        raise _Uninsertable(
             f"{described[0].upper()}{described[1:]} {cant}. Use one of its keys "
             f"instead."
         )
     if isinstance(value, (list, tuple)):
-        raise _InsertedContainer(
+        raise _Uninsertable(
             f"A {type(value).__name__} {cant}. Use one of its elements instead."
         )
     return value
@@ -1650,7 +1659,7 @@ class _ValueNode(_Node):
             ) from None
         except jinja2.exceptions.UndefinedError as exc:
             raise ResolutionError(str(exc), self.keypath)
-        except _InsertedContainer as exc:
+        except _Uninsertable as exc:
             raise ResolutionError(exc.message, self.keypath) from None
         except _InsertedNone:
             raise ResolutionError(

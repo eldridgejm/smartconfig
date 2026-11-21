@@ -704,3 +704,19 @@ def test_none_can_be_tested_or_given_a_default_inside_a_string():
     # then
     assert result["default"] == "xy"
     assert result["test"] == "missing"
+
+
+def test_interpolating_self_raises():
+    # given — Jinja reads self as the template itself, never a key named self
+    cfg: ConfigurationDict = {"self": "mine", "b": "${ self }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert str(exc.value) == (
+        'Cannot resolve keypath "b": In ${ ... }, Jinja reads "self" as the template '
+        "itself, not a key or variable of that name. To use a key named self, give "
+        "its container, as in ${ parent.self }, or use inject_root_as."
+    )

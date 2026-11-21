@@ -18,6 +18,8 @@ import copy
 import dataclasses
 import datetime
 
+from ._utils import jinja_reserved_name_problem
+
 # configurations =======================================================================
 
 # these type aliases define a "configuration", which is the type of both the input
@@ -527,6 +529,14 @@ class Template:
     keypath : :class:`types.KeyPath`
         Where the template was written.
 
+    Raises
+    ------
+    TypeError
+        If ``parameters`` is a string rather than a list of names.
+    ValueError
+        If a parameter has a name that Jinja reserves, such as ``true`` or
+        ``self``, since ``${...}`` could never refer to it.
+
     """
 
     __hash__ = None  # type: ignore[assignment]
@@ -554,6 +564,13 @@ class Template:
                 f"parameters must be a list of names, not the string {parameters!r}."
             )
         self.parameters: tuple[str, ...] = tuple(parameters)
+
+        # a parameter named like true or self could never be referred to: ${ true }
+        # would be Jinja's literal, silently, not the parameter
+        for name in self.parameters:
+            problem = jinja_reserved_name_problem(name)
+            if problem is not None:
+                raise ValueError(f"Invalid parameter: {problem}")
         self.keypath: KeyPath = tuple(keypath)
 
         # the options used by .evaluate(); shared (not copied) by __deepcopy__

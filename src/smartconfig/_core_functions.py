@@ -7,6 +7,7 @@ separated from _resolve.py for organizational clarity.
 
 from . import types as _types
 from .exceptions import ResolutionError, UnexpectedTemplateError
+from ._utils import jinja_reserved_name_problem
 from ._internals import (
     ResolutionMode,
     _DictNode,
@@ -290,6 +291,17 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
 
     has_variables = "variables" in args.input
     has_references = "references" in args.input
+
+    # a name like true or self could never be referred to: ${ true } would be
+    # Jinja's literal, silently, not the variable
+    for section in ("variables", "references"):
+        names = args.input.get(section)
+        for name in names if isinstance(names, dict) else ():
+            problem = jinja_reserved_name_problem(name)
+            if problem is not None:
+                raise ResolutionError(
+                    f"Invalid name in '{section}' of 'let': {problem}", args.keypath
+                )
 
     if not has_variables and not has_references:
         raise ResolutionError(
