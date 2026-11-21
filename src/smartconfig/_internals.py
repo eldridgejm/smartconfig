@@ -441,6 +441,14 @@ class _InsertedContainer(Exception):
         self.message = message
 
 
+class _InsertedNone(Exception):
+    """A ``${...}`` in a string gave None.
+
+    _interpolate writes the message, since it knows the string.
+
+    """
+
+
 def _key_reference(where: str, key: str) -> str:
     """A reference to *key* of the dict at *where*, as in ``${ where.key }``."""
     if key.isidentifier():
@@ -455,14 +463,19 @@ def _resolve_for_json(value: typing.Any) -> typing.Any:
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
-def _refuse_containers(value: typing.Any) -> typing.Any:
-    """Raise if *value*, the value of a ``${...}``, is a dict or a list.
+def _refuse_uninsertable(value: typing.Any) -> typing.Any:
+    """Raise if *value*, the value of a ``${...}``, is None, a dict or a list.
 
-    Inserted into a string, a dict or list would become its Python repr (or, for
-    an unresolved one, the repr of an internal object), which is almost never
-    what's meant. Used as the ``finalize`` of the Jinja environment.
+    Inserted into a string, None would become "None", and a dict or list its
+    Python repr (or, for an unresolved one, the repr of an internal object),
+    which is almost never what's meant. Used as the ``finalize`` of the Jinja
+    environment.
 
     """
+    # None would silently become the string "None", which a nullable field would
+    # then keep (or fail to convert) instead of being null. __splice__ copies it
+    if value is None:
+        raise _InsertedNone()
     cant = "can't be inserted into a string"
     if isinstance(value, Template):
         where = ".".join(value.keypath)
@@ -1596,8 +1609,8 @@ class _ValueNode(_Node):
             variable_end_string="}",
             # without this, Jinja drops a single trailing newline from the result
             keep_trailing_newline=True,
-            # inserting a dict or list into a string is an error
-            finalize=_refuse_containers,
+            # inserting None, a dict or a list into a string is an error
+            finalize=_refuse_uninsertable,
         )
 
         # create a custom jinja context for resolving references. This will first look
@@ -1639,6 +1652,13 @@ class _ValueNode(_Node):
             raise ResolutionError(str(exc), self.keypath)
         except _InsertedContainer as exc:
             raise ResolutionError(exc.message, self.keypath) from None
+        except _InsertedNone:
+            raise ResolutionError(
+                f'A ${{ ... }} in "{s}" is None, which can\'t be inserted into a '
+                "string. To copy the None itself, use __splice__; to insert something "
+                "else, give a default, as in ${ value or '' }.",
+                self.keypath,
+            ) from None
         # an exception raised by the expression or a filter in it gets this string's
         # keypath. One from a value it refers to was already wrapped where it was
         # raised, so it is a ResolutionError by now and passes through unchanged

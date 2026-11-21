@@ -661,3 +661,46 @@ def test_a_string_without_template_syntax_is_unchanged():
 
     # then
     assert result["text"] == "a\r\nb\r\n"
+
+
+# None can't be inserted into a string =================================================
+
+
+def test_interpolating_none_raises_and_suggests_splice():
+    # given — the value of ${ a } is None, even though b may be null
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {"type": "integer", "nullable": True},
+            "b": {"type": "integer", "nullable": True},
+        },
+    }
+
+    cfg: ConfigurationDict = {"a": None, "b": "${ a }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert str(exc.value) == (
+        'Cannot resolve keypath "b": A ${ ... } in "${ a }" is None, which can\'t be '
+        "inserted into a string. To copy the None itself, use __splice__; to insert "
+        "something else, give a default, as in ${ value or '' }."
+    )
+
+
+def test_none_can_be_tested_or_given_a_default_inside_a_string():
+    # given — only the final value of each ${ ... } is checked
+    cfg: ConfigurationDict = {
+        "a": None,
+        "default": "x${ a or '' }y",
+        "test": "{% if a is none %}missing{% endif %}",
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result["default"] == "xy"
+    assert result["test"] == "missing"

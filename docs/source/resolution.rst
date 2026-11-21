@@ -30,6 +30,11 @@ resolved values. During the interpolation step, all of the referenced entries
 in the configuration are first resolved if they haven't been already. The
 result of interpolation is always a string.
 
+A ``${...}`` whose value is None is an error, rather than inserting the
+string ``"None"``. To copy a value that may be None into another field, use
+``__splice__``; to insert something in its place, give a default, as in
+``${ middle_name or '' }``.
+
 When a string references another value via ``${...}``, that referenced value is automatically resolved first (if it hasn't been already). This means references can chain through multiple levels. For example:
 
 .. testcode:: python
