@@ -996,6 +996,81 @@ def test_let_references_previous_combined_with_this():
     ]
 
 
+def test_let_references_previous_when_wrapped_in_an_if():
+    # given — the __if__'s result is the list element, so prev is the element before
+    cfg: ConfigurationList = [
+        {"n": 1},
+        {
+            "__if__": {
+                "condition": True,
+                "then": {
+                    "__let__": {
+                        "references": {"prev": "__previous__"},
+                        "in": {"n": "${ prev.n + 1 }"},
+                    }
+                },
+                "else": {"n": 0},
+            }
+        },
+    ]
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert result == [{"n": 1}, {"n": "2"}]
+
+
+def test_let_references_previous_when_wrapped_in_another_let():
+    # given
+    cfg: ConfigurationList = [
+        {"n": 1},
+        {
+            "__let__": {
+                "variables": {"k": 10},
+                "in": {
+                    "__let__": {
+                        "references": {"prev": "__previous__"},
+                        "in": {"n": "${ prev.n + k }"},
+                    }
+                },
+            }
+        },
+    ]
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert result == [{"n": 1}, {"n": "11"}]
+
+
+def test_let_references_previous_raises_in_the_body_of_a_loop():
+    # given — the body is resolved once per item, with no list around it, so
+    # there is no previous element to refer to
+    cfg: ConfigurationDict = {
+        "__list.loop__": {
+            "over": [1, 2, 3],
+            "variable": "i",
+            "in": {
+                "__let__": {
+                    "references": {"prev": "__previous__"},
+                    "in": {"n": "${ prev.n + i }"},
+                }
+            },
+        }
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then — the error says that loops are not supported, not just "not in a list"
+    assert "__previous__" in str(exc.value)
+    assert "list.loop" in str(exc.value)
+    assert exc.value.keypath == ("0",)
+
+
 def test_let_provides_local_variables_to_in_block():
     # given
     schema: Schema = {"type": "integer"}

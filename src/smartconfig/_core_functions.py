@@ -341,13 +341,33 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
                     )
                 node.local_variables[name] = _make_unresolved_container(node)
             elif target == "__previous__":
+                # the result of a call wrapping this one at the same keypath (an
+                # __if__ or another __let__, say) becomes the list element, so the
+                # element is the outermost of these calls
+                element = fcn
                 parent = fcn.parent
+                while (
+                    isinstance(parent, _FunctionCallNode)
+                    and parent.keypath == fcn.keypath
+                ):
+                    element = parent
+                    parent = parent.parent
+
+                # if a call is still above us, this __let__ is in that call's input,
+                # like the body of list.loop. That input is not a list, so there is
+                # no previous element
+                if isinstance(parent, _FunctionCallNode):
+                    raise ResolutionError(
+                        "'__previous__' cannot be used in the input of a function "
+                        "call, such as the body of list.loop.",
+                        args.keypath,
+                    )
                 if not isinstance(parent, _ListNode):
                     raise ResolutionError(
                         "'__previous__' can only be used inside a list.",
                         args.keypath,
                     )
-                index = parent.children.index(fcn)
+                index = parent.children.index(element)
                 if index == 0:
                     raise ResolutionError(
                         "'__previous__' cannot be used on the first element of a list.",
