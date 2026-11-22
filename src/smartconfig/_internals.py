@@ -2509,6 +2509,20 @@ def _make_template_node(
 # make_node() ==========================================================================
 
 
+# defined here rather than in make_node: a class statement in a function builds a
+# new class on every call, and for a TypedDict that is slow (it was most of the
+# time spent building the tree)
+class _CommonKwargs(TypedDict):
+    """Common keyword arguments passed to node constructors in make_node."""
+
+    resolution_context: _types.ResolutionContext
+    parent: _ConcreteNode | None
+    keypath: _types.KeyPath
+    local_variables: Mapping[str, _types.Configuration] | None
+    schema: _types.Schema
+    mode: ResolutionMode
+
+
 def make_node(
     cfg: _types.Configuration,
     schema: _types.Schema | _types.DynamicSchema,
@@ -2577,16 +2591,6 @@ def make_node(
             allow_dynamic=True,
             converters=resolution_context.converters,
         )
-
-    class _CommonKwargs(TypedDict):
-        """Common keyword arguments passed to node constructors in make_node."""
-
-        resolution_context: _types.ResolutionContext
-        parent: _ConcreteNode | None
-        keypath: _types.KeyPath
-        local_variables: Mapping[str, _types.Configuration] | None
-        schema: _types.Schema
-        mode: ResolutionMode
 
     common_kwargs: _CommonKwargs = {
         "resolution_context": resolution_context,
