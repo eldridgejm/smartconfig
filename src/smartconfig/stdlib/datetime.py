@@ -425,6 +425,112 @@ def _skip_excluded(
     return result
 
 
+# the two computations =================================================================
+
+# offset and first compute these from a dict, and parse from a string; doing it in
+# one place means the two forms handle skips, missing weekdays and dates out of
+# range the same way
+
+
+def _describe_offset(delta: datetimelib.timedelta) -> str:
+    """``delta`` in words, as written in an offset.
+
+    Examples
+    --------
+    >>> _describe_offset(datetimelib.timedelta(days=5))
+    '5 days'
+    >>> _describe_offset(datetimelib.timedelta(days=1, hours=2, seconds=1))
+    '1 day, 2 hours, 1 second'
+
+    """
+    hours, rest = divmod(delta.seconds, 3600)
+    minutes, seconds = divmod(rest, 60)
+    amounts = [
+        (delta.days, "day"),
+        (hours, "hour"),
+        (minutes, "minute"),
+        (seconds, "second"),
+    ]
+    parts = [f"{n} {unit}{'' if n == 1 else 's'}" for n, unit in amounts if n]
+    return ", ".join(parts) or "0 seconds"
+
+
+def _offset_date(
+    reference: _DateOrDatetime,
+    delta: datetimelib.timedelta,
+    before: bool,
+    skip_dates: set[datetimelib.date],
+    keypath: KeyPath,
+) -> _DateOrDatetime:
+    """``reference`` moved by ``delta``, then on past any of ``skip_dates``.
+
+    Raises
+    ------
+    ResolutionError
+        If the result is past the first or last representable date, or every
+        candidate is skipped.
+
+    """
+    # going past the first or last representable date raises a bare
+    # OverflowError, which would say nothing about which offset it was
+    try:
+        result = _shift(reference, delta, before=before)
+        if skip_dates:
+            day_step = datetimelib.timedelta(days=-1 if before else 1)
+            result = _skip_excluded(
+                result, skip_dates, lambda dt: dt + day_step, keypath
+            )
+    except OverflowError:
+        direction = "before" if before else "after"
+        raise ResolutionError(
+            f"The date {_describe_offset(delta)} {direction} {reference} is out of "
+            "range.",
+            keypath,
+        ) from None
+    return result
+
+
+def _first_weekday(
+    reference: _DateOrDatetime,
+    weekdays: set[_DaysOfTheWeek],
+    before: bool,
+    skip_dates: set[datetimelib.date],
+    keypath: KeyPath,
+) -> _DateOrDatetime:
+    """The first of ``weekdays`` before or after ``reference``, not in ``skip_dates``.
+
+    Raises
+    ------
+    ResolutionError
+        If ``weekdays`` is empty, the result is past the first or last
+        representable date, or every candidate is skipped.
+
+    """
+    # with no weekdays to match, the search would never stop (until the date
+    # overflowed)
+    if not weekdays:
+        raise ResolutionError("At least one weekday must be given.", keypath)
+
+    # going past the first or last representable date raises a bare
+    # OverflowError, which would say nothing about which search it was
+    try:
+        result = _find_first_weekday(reference, weekdays, before=before)
+        if skip_dates:
+            result = _skip_excluded(
+                result,
+                skip_dates,
+                lambda dt: _find_first_weekday(dt, weekdays, before=before),
+                keypath,
+            )
+    except OverflowError:
+        names = ", ".join(day.name.lower() for day in sorted(weekdays))
+        direction = "before" if before else "after"
+        raise ResolutionError(
+            f"The first {names} {direction} {reference} is out of range.", keypath
+        ) from None
+    return result
+
+
 # functions ============================================================================
 
 # at -----------------------------------------------------------------------------------
@@ -567,19 +673,7 @@ def offset(args: FunctionArgs) -> _DateOrDatetime:
         }
     delta = _read_offset(by, args.keypath)
 
-    result = _shift(reference, delta, before=has_before)
-
-    if skip_dates:
-        sign = -1 if has_before else 1
-        day_step = datetimelib.timedelta(days=sign)
-        result = _skip_excluded(
-            result,
-            skip_dates,
-            lambda dt: dt + day_step,
-            args.keypath,
-        )
-
-    return result
+    return _offset_date(reference, delta, has_before, skip_dates, args.keypath)
 
 
 # first --------------------------------------------------------------------------------
@@ -639,13 +733,6 @@ def first(args: FunctionArgs) -> _DateOrDatetime:
             "The 'weekday' key must be a string or list of strings.", args.keypath
         )
 
-    # with no weekdays to match, the search below would never stop (until the date
-    # overflowed)
-    if not weekdays:
-        raise ResolutionError(
-            "The 'weekday' key must name at least one day.", args.keypath
-        )
-
     skip_dates: set[datetimelib.date] = set()
     if "skip" in args.input:
         skip_dates = _read_skip_dates(args.input["skip"], args.keypath)
@@ -653,25 +740,7 @@ def first(args: FunctionArgs) -> _DateOrDatetime:
     direction_key = "before" if has_before else "after"
     reference = _read_date_or_datetime(args.input[direction_key], args.keypath)
 
-    # searching past the first or last representable date raises a bare
-    # OverflowError, with no keypath
-    try:
-        result = _find_first_weekday(reference, weekdays, before=has_before)
-
-        if skip_dates:
-            result = _skip_excluded(
-                result,
-                skip_dates,
-                lambda dt: _find_first_weekday(dt, weekdays, before=has_before),
-                args.keypath,
-            )
-    except OverflowError:
-        raise ResolutionError(
-            f"The first {raw_weekday} {direction_key} {reference} is out of range.",
-            args.keypath,
-        ) from None
-
-    return result
+    return _first_weekday(reference, weekdays, has_before, skip_dates, args.keypath)
 
 
 # parse --------------------------------------------------------------------------------
@@ -695,9 +764,8 @@ def _try_parse_first_weekday(s: str, keypath: KeyPath) -> _DateOrDatetime:
     weekday_raw, direction, reference_raw = match.groups()
     weekdays = _parse_weekdays(weekday_raw, keypath)
     reference = _read_date_or_datetime(reference_raw.strip(), keypath)
-    return _find_first_weekday(
-        reference, weekdays, before=direction.lower() == "before"
-    )
+    before = direction.lower() == "before"
+    return _first_weekday(reference, weekdays, before, set(), keypath)
 
 
 def _try_read_offset(s: str, keypath: KeyPath) -> _DateOrDatetime:
@@ -709,7 +777,8 @@ def _try_read_offset(s: str, keypath: KeyPath) -> _DateOrDatetime:
     offset_raw, direction, reference_raw = match.groups()
     delta = _read_offset(offset_raw.strip(), keypath)
     reference = _read_date_or_datetime(reference_raw.strip(), keypath)
-    return _shift(reference, delta, before=direction.lower() == "before")
+    before = direction.lower() == "before"
+    return _offset_date(reference, delta, before, set(), keypath)
 
 
 def _try_parse_iso(s: str, keypath: KeyPath) -> _DateOrDatetime:

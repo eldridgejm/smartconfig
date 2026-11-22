@@ -1499,3 +1499,68 @@ def test_parse_of_a_date_at_a_time_is_a_datetime():
 
     # then
     assert result == datetime.datetime(2026, 1, 6, 10, 0)
+
+
+# parse agrees with offset and first ===============================================
+
+# parse's "<offset> after <date>" and "first <weekday> after <date>" are computed by
+# the same code as offset and first, so edge cases behave the same in both forms
+
+
+def test_parse_first_weekday_out_of_range_raises_as_first_does():
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        _resolve_result(
+            {"result": {"__datetime.parse__": "first monday before 0001-01-01"}}
+        )
+
+    # then
+    assert str(exc.value) == (
+        'Cannot resolve keypath "result": The first monday before 0001-01-01 is out '
+        "of range."
+    )
+
+
+def test_parse_first_with_no_weekdays_raises_as_first_does():
+    # given — the commas name no day, so the search could never stop
+    cfg: ConfigurationDict = {
+        "result": {"__datetime.parse__": "first , after 2026-01-05"}
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        _resolve_result(cfg)
+
+    # then
+    assert str(exc.value) == (
+        'Cannot resolve keypath "result": At least one weekday must be given.'
+    )
+
+
+def test_offset_out_of_range_raises():
+    # given
+    cfg: ConfigurationDict = {
+        "result": {"__datetime.offset__": {"after": "9999-12-30", "by": "5 days"}}
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        _resolve_result(cfg)
+
+    # then
+    assert str(exc.value) == (
+        'Cannot resolve keypath "result": The date 5 days after 9999-12-30 is out '
+        "of range."
+    )
+
+
+def test_parse_offset_out_of_range_raises_as_offset_does():
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        _resolve_result({"result": {"__datetime.parse__": "5 days after 9999-12-30"}})
+
+    # then
+    assert str(exc.value) == (
+        'Cannot resolve keypath "result": The date 5 days after 9999-12-30 is out '
+        "of range."
+    )
