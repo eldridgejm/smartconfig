@@ -282,12 +282,12 @@ def resolve(
 def resolve(
     cfg: _types.ConfigurationList,
     spec: _types.Schema | _types.DynamicSchema,
-    converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
-    functions: _types.FunctionMapping | None = DEFAULT_FUNCTIONS,
-    global_variables: Mapping[str, Any] | None = None,
-    inject_root_as: str | None = None,
-    filters: Mapping[str, Callable] | None = None,
-    preserve_type: bool = False,
+    converters: Mapping[str, Callable] = ...,
+    functions: _types.FunctionMapping | None = ...,
+    global_variables: Mapping[str, Any] | None = ...,
+    inject_root_as: str | None = ...,
+    filters: Mapping[str, Callable] | None = ...,
+    preserve_type: bool = ...,
     check_for_function_call: _types.FunctionCallChecker | None = ...,
 ) -> list:
     """Overloaded resolve() for ConfigurationList."""
