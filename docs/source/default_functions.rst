@@ -1037,6 +1037,16 @@ This produces:
 Datetime Operations
 -------------------
 
+A reference date may be a string in ISO format (``"2021-10-05"`` or
+``"2021-10-05 23:59"``), a ``datetime.date`` or a ``datetime.datetime``. The
+result is a date when nothing gives it a time: a date offset by whole days or
+weeks, or the first weekday after a date, is a date, so ``"Due ${ due }"``
+reads ``"Due 2021-10-08"``. A datetime reference, an offset in hours, minutes or
+seconds, ``" at HH:MM"`` and ``datetime.at`` give a datetime. Like the
+``datetime`` converter, the functions never assume a time of midnight: to put a
+date-only result in a ``datetime`` field, give it a time, as in ``"3 days after
+2021-10-05 at 23:59"`` or with ``datetime.at``.
+
 .. _func-datetime-parse:
 
 datetime.parse

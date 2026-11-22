@@ -252,15 +252,18 @@ def datetime(
     >>> datetime(dt.date(2021, 10, 1))
     Traceback (most recent call last):
     ...
-    smartconfig.exceptions.ConversionError: Cannot implicitly convert date '2021-10-01' into datetime.
+    smartconfig.exceptions.ConversionError: Cannot implicitly convert date '2021-10-01' into datetime. Please include a time component.
 
     """
     if isinstance(value, datetimelib.datetime):
         return value
 
     if isinstance(value, datetimelib.date):
+        # the same advice as for a date string: a date computed by a stdlib
+        # function from a date with no time ends up here
         raise exceptions.ConversionError(
-            f"Cannot implicitly convert date '{value}' into datetime.",
+            f"Cannot implicitly convert date '{value}' into datetime. Please include "
+            "a time component.",
         )
 
     if isinstance(value, str):

@@ -157,6 +157,7 @@ def test_datetime_from_date_object_raises():
         converters.datetime(datetime.date(2021, 10, 5))
 
     assert "Cannot implicitly convert" in str(exc.value)
+    assert "time component" in str(exc.value)
 
 
 def test_datetime_raises_on_invalid_string():

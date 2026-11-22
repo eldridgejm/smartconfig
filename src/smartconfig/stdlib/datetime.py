@@ -16,21 +16,25 @@ from ._integers import to_integer
 _VALID_TIMEDELTA_UNITS = {"weeks", "days", "hours", "minutes", "seconds"}
 
 
-def _read_datetime(value: Configuration, keypath: KeyPath) -> datetimelib.datetime:
-    """Read a date/datetime from a string, date, or datetime object.
+# a datetime is a date too; the alias says that either is meant
+type _DateOrDatetime = datetimelib.date | datetimelib.datetime
+
+
+def _read_date_or_datetime(value: Configuration, keypath: KeyPath) -> _DateOrDatetime:
+    """Read a date or datetime from a string, date, or datetime object.
 
     Parameters
     ----------
     value : str or datetime.date or datetime.datetime
         If a string, it must be in ISO format (e.g., ``"2021-10-05"`` or
-        ``"2021-10-05 23:59:15"``). A ``date`` is promoted to a ``datetime``
-        at midnight.
+        ``"2021-10-05 23:59:15"``). A date (or a string with no time) stays a
+        date, rather than becoming a datetime at midnight.
     keypath : tuple of str
         The keypath for error reporting.
 
     Returns
     -------
-    datetime.datetime
+    datetime.date or datetime.datetime
 
     Raises
     ------
@@ -39,19 +43,24 @@ def _read_datetime(value: Configuration, keypath: KeyPath) -> datetimelib.dateti
 
     Examples
     --------
-    >>> _read_datetime("2021-10-05", keypath=())
-    datetime.datetime(2021, 10, 5, 0, 0)
-    >>> _read_datetime(datetimelib.date(2021, 10, 5), keypath=())
-    datetime.datetime(2021, 10, 5, 0, 0)
-    >>> _read_datetime("2021-10-05 23:59:15", keypath=())
+    >>> _read_date_or_datetime("2021-10-05", keypath=())
+    datetime.date(2021, 10, 5)
+    >>> _read_date_or_datetime(datetimelib.date(2021, 10, 5), keypath=())
+    datetime.date(2021, 10, 5)
+    >>> _read_date_or_datetime("2021-10-05 23:59:15", keypath=())
     datetime.datetime(2021, 10, 5, 23, 59, 15)
 
     """
-    if isinstance(value, datetimelib.datetime):
-        return value
+    # a datetime is a subclass of date, so this passes both through unchanged
     if isinstance(value, datetimelib.date):
-        return datetimelib.datetime.combine(value, datetimelib.time())
+        return value
     if isinstance(value, str):
+        # a string with no time is a date: as a datetime it would be midnight,
+        # which then shows up as "00:00:00" wherever the result is inserted
+        try:
+            return datetimelib.date.fromisoformat(value)
+        except ValueError:
+            pass
         try:
             return datetimelib.datetime.fromisoformat(value)
         except ValueError:
@@ -61,6 +70,37 @@ def _read_datetime(value: Configuration, keypath: KeyPath) -> datetimelib.dateti
         f"got {type(value).__name__}.",
         keypath,
     )
+
+
+def _day(value: _DateOrDatetime) -> datetimelib.date:
+    """The date of ``value``, a date or a datetime."""
+    if isinstance(value, datetimelib.datetime):
+        return value.date()
+    return value
+
+
+def _shift(
+    reference: _DateOrDatetime, delta: datetimelib.timedelta, before: bool
+) -> _DateOrDatetime:
+    """``reference`` moved by ``delta``, earlier if ``before``, else later.
+
+    A date moved by whole days stays a date. Moved by part of a day (hours, say),
+    it becomes a datetime, starting from midnight.
+
+    Examples
+    --------
+    >>> _shift(datetimelib.date(2021, 10, 5), datetimelib.timedelta(days=3), False)
+    datetime.date(2021, 10, 8)
+    >>> _shift(datetimelib.date(2021, 10, 5), datetimelib.timedelta(hours=3), True)
+    datetime.datetime(2021, 10, 4, 21, 0)
+
+    """
+    # date arithmetic drops anything smaller than a day, so a date moved by part
+    # of a day is made a datetime first
+    whole_days = delta % datetimelib.timedelta(days=1) == datetimelib.timedelta(0)
+    if not isinstance(reference, datetimelib.datetime) and not whole_days:
+        reference = datetimelib.datetime.combine(reference, datetimelib.time())
+    return reference - delta if before else reference + delta
 
 
 def _read_offset(value: Configuration, keypath: KeyPath) -> datetimelib.timedelta:
@@ -271,7 +311,7 @@ def _read_skip_dates(value: Configuration, keypath: KeyPath) -> set[datetimelib.
     value : list
         A list of date strings (ISO format), ``datetime.date``, or
         ``datetime.datetime`` objects — anything accepted by
-        ``_read_datetime``.
+        ``_read_date_or_datetime``.
     keypath : tuple of str
         The keypath for error reporting.
 
@@ -292,19 +332,19 @@ def _read_skip_dates(value: Configuration, keypath: KeyPath) -> set[datetimelib.
     """
     if not isinstance(value, list):
         raise ResolutionError("'skip' must be a list of dates.", keypath)
-    return {_read_datetime(item, keypath).date() for item in value}
+    return {_day(_read_date_or_datetime(item, keypath)) for item in value}
 
 
 def _find_first_weekday(
-    reference: datetimelib.datetime,
+    reference: _DateOrDatetime,
     weekdays: set[_DaysOfTheWeek],
     before: bool,
-) -> datetimelib.datetime:
+) -> _DateOrDatetime:
     """Find the first occurrence of a weekday before/after a reference date.
 
     Parameters
     ----------
-    reference : datetime.datetime
+    reference : datetime.date or datetime.datetime
         The starting point. This date is excluded from the search.
     weekdays : set of _DaysOfTheWeek
         The target weekday(s) to search for.
@@ -313,9 +353,9 @@ def _find_first_weekday(
 
     Returns
     -------
-    datetime.datetime
-        The first matching date. The time component is preserved from
-        ``reference``.
+    datetime.date or datetime.datetime
+        The first matching date, of the same type as ``reference``. The time
+        component of a datetime is preserved.
 
     Examples
     --------
@@ -336,28 +376,28 @@ def _find_first_weekday(
 
 
 def _skip_excluded(
-    result: datetimelib.datetime,
+    result: _DateOrDatetime,
     skip_dates: set[datetimelib.date],
-    next_candidate: Callable[[datetimelib.datetime], datetimelib.datetime],
+    next_candidate: Callable[[_DateOrDatetime], _DateOrDatetime],
     keypath: KeyPath,
-) -> datetimelib.datetime:
+) -> _DateOrDatetime:
     """Advance past excluded dates using a caller-supplied step function.
 
     Parameters
     ----------
-    result : datetime.datetime
+    result : datetime.date or datetime.datetime
         The initial candidate date.
     skip_dates : set of datetime.date
         Dates to skip.
     next_candidate : callable
-        A function ``(datetime) -> datetime`` that produces the next candidate
-        when the current one is excluded.
+        A function ``(date) -> date`` that produces the next candidate when the
+        current one is excluded.
     keypath : tuple of str
         The keypath for error reporting.
 
     Returns
     -------
-    datetime.datetime
+    datetime.date or datetime.datetime
 
     Raises
     ------
@@ -374,7 +414,7 @@ def _skip_excluded(
 
     """
     retries = 0
-    while result.date() in skip_dates:
+    while _day(result) in skip_dates:
         result = next_candidate(result)
         retries += 1
         if retries > _MAX_SKIP_RETRIES:
@@ -436,7 +476,7 @@ def at(args: FunctionArgs) -> datetimelib.datetime:
             "Input to 'datetime.at' must contain 'time'.", args.keypath
         )
 
-    reference = _read_datetime(args.input["date"], args.keypath)
+    reference = _read_date_or_datetime(args.input["date"], args.keypath)
 
     raw_time = args.input["time"]
     if not isinstance(raw_time, str):
@@ -453,7 +493,7 @@ def at(args: FunctionArgs) -> datetimelib.datetime:
 
 
 def _combine(
-    reference: datetimelib.datetime, time: datetimelib.time
+    reference: _DateOrDatetime, time: datetimelib.time
 ) -> datetimelib.datetime:
     """The date of ``reference`` at ``time``, keeping ``reference``'s time zone.
 
@@ -462,15 +502,20 @@ def _combine(
     its own time zone (like ``10:00:00+05:00``) keeps it, as the more specific.
 
     """
-    tzinfo = time.tzinfo if time.tzinfo is not None else reference.tzinfo
+    # a date has no time zone to keep
+    reference_tzinfo = getattr(reference, "tzinfo", None)
+    tzinfo = time.tzinfo if time.tzinfo is not None else reference_tzinfo
     return datetimelib.datetime.combine(reference, time, tzinfo=tzinfo)
 
 
 # offset -------------------------------------------------------------------------------
 
 
-def offset(args: FunctionArgs) -> datetimelib.datetime:
+def offset(args: FunctionArgs) -> _DateOrDatetime:
     """Offset a date or datetime by a given amount.
+
+    A date offset by whole days (or weeks) is a date; offset by hours, minutes or
+    seconds, it is a datetime.
 
     ``args.input`` should be a dictionary with keys:
 
@@ -511,7 +556,7 @@ def offset(args: FunctionArgs) -> datetimelib.datetime:
         skip_dates = _read_skip_dates(args.input["skip"], args.keypath)
 
     direction_key = "before" if has_before else "after"
-    reference = _read_datetime(args.input[direction_key], args.keypath)
+    reference = _read_date_or_datetime(args.input[direction_key], args.keypath)
     by = args.input["by"]
     # convert the values of a dict of units, so that a value written as "${ n }",
     # which interpolates to a string, is accepted
@@ -522,7 +567,7 @@ def offset(args: FunctionArgs) -> datetimelib.datetime:
         }
     delta = _read_offset(by, args.keypath)
 
-    result = reference - delta if has_before else reference + delta
+    result = _shift(reference, delta, before=has_before)
 
     if skip_dates:
         sign = -1 if has_before else 1
@@ -540,8 +585,11 @@ def offset(args: FunctionArgs) -> datetimelib.datetime:
 # first --------------------------------------------------------------------------------
 
 
-def first(args: FunctionArgs) -> datetimelib.datetime:
+def first(args: FunctionArgs) -> _DateOrDatetime:
     """Find the first occurrence of a given weekday before/after a reference date.
+
+    The result is a date if the reference is a date, and a datetime (at the same
+    time of day) if it is a datetime.
 
     ``args.input`` should be a dictionary with keys:
 
@@ -603,7 +651,7 @@ def first(args: FunctionArgs) -> datetimelib.datetime:
         skip_dates = _read_skip_dates(args.input["skip"], args.keypath)
 
     direction_key = "before" if has_before else "after"
-    reference = _read_datetime(args.input[direction_key], args.keypath)
+    reference = _read_date_or_datetime(args.input[direction_key], args.keypath)
 
     # searching past the first or last representable date raises a bare
     # OverflowError, with no keypath
@@ -638,7 +686,7 @@ class _ParseError(Exception):
     """
 
 
-def _try_parse_first_weekday(s: str, keypath: KeyPath) -> datetimelib.datetime:
+def _try_parse_first_weekday(s: str, keypath: KeyPath) -> _DateOrDatetime:
     """Try to parse ``s`` as ``"first <weekdays> after|before <reference>"``."""
     match = re.match(r"^first\s+(.+?)\s+(after|before)\s+(.+)$", s, flags=re.IGNORECASE)
     if not match:
@@ -646,13 +694,13 @@ def _try_parse_first_weekday(s: str, keypath: KeyPath) -> datetimelib.datetime:
 
     weekday_raw, direction, reference_raw = match.groups()
     weekdays = _parse_weekdays(weekday_raw, keypath)
-    reference = _read_datetime(reference_raw.strip(), keypath)
+    reference = _read_date_or_datetime(reference_raw.strip(), keypath)
     return _find_first_weekday(
         reference, weekdays, before=direction.lower() == "before"
     )
 
 
-def _try_read_offset(s: str, keypath: KeyPath) -> datetimelib.datetime:
+def _try_read_offset(s: str, keypath: KeyPath) -> _DateOrDatetime:
     """Try to parse ``s`` as ``"<offset> after|before <reference>"``."""
     match = re.match(r"^(.+?)\s+(after|before)\s+(.+)$", s, flags=re.IGNORECASE)
     if not match:
@@ -660,23 +708,19 @@ def _try_read_offset(s: str, keypath: KeyPath) -> datetimelib.datetime:
 
     offset_raw, direction, reference_raw = match.groups()
     delta = _read_offset(offset_raw.strip(), keypath)
-    reference = _read_datetime(reference_raw.strip(), keypath)
-
-    if direction.lower() == "before":
-        return reference - delta
-    else:
-        return reference + delta
+    reference = _read_date_or_datetime(reference_raw.strip(), keypath)
+    return _shift(reference, delta, before=direction.lower() == "before")
 
 
-def _try_parse_iso(s: str, keypath: KeyPath) -> datetimelib.datetime:
+def _try_parse_iso(s: str, keypath: KeyPath) -> _DateOrDatetime:
     """Try to parse ``s`` as a plain ISO date or datetime."""
     try:
-        return datetimelib.datetime.fromisoformat(s.strip())
-    except ValueError:
+        return _read_date_or_datetime(s.strip(), keypath)
+    except ResolutionError:
         raise _ParseError
 
 
-def parse(args: FunctionArgs) -> datetimelib.datetime:
+def parse(args: FunctionArgs) -> _DateOrDatetime:
     """Parse a natural language date/datetime string.
 
     ``args.input`` should be a string in one of the following forms:
@@ -687,6 +731,9 @@ def parse(args: FunctionArgs) -> datetimelib.datetime:
 
     Any form may end with an ``" at HH:MM"`` or ``" at HH:MM:SS"`` suffix to
     override the time component of the result.
+
+    The result is a date when nothing in the string gives a time (a date, offset
+    by whole days or found by weekday), and a datetime otherwise.
 
     """
     if not isinstance(args.input, str):

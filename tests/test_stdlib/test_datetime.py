@@ -116,7 +116,7 @@ def test_offset_before_string_days():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "deadline": {"type": "datetime"},
+            "deadline": {"type": "date"},
         },
     }
 
@@ -126,14 +126,14 @@ def test_offset_before_string_days():
 
     resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
 
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 2)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 2)}
 
 
 def test_offset_after_string_days():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "deadline": {"type": "datetime"},
+            "deadline": {"type": "date"},
         },
     }
 
@@ -143,7 +143,7 @@ def test_offset_after_string_days():
 
     resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
 
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 8)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 8)}
 
 
 def test_offset_before_with_datetime_reference():
@@ -226,7 +226,7 @@ def test_offset_string_multiple_units():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "deadline": {"type": "datetime"},
+            "deadline": {"type": "date"},
         },
     }
 
@@ -238,14 +238,14 @@ def test_offset_string_multiple_units():
 
     resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
 
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 14)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 14)}
 
 
 def test_offset_string_multiple_units_irregular_spacing():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "deadline": {"type": "datetime"},
+            "deadline": {"type": "date"},
         },
     }
 
@@ -256,14 +256,14 @@ def test_offset_string_multiple_units_irregular_spacing():
 
         resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
 
-        assert resolved == {"deadline": datetime.datetime(2021, 10, 14)}
+        assert resolved == {"deadline": datetime.date(2021, 10, 14)}
 
 
 def test_offset_before_dict():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "deadline": {"type": "datetime"},
+            "deadline": {"type": "date"},
         },
     }
 
@@ -273,7 +273,7 @@ def test_offset_before_dict():
 
     resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
 
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 2)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 2)}
 
 
 def test_offset_dict_values_can_come_from_references():
@@ -281,7 +281,7 @@ def test_offset_dict_values_can_come_from_references():
     # integer 3
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"deadline": {"type": "datetime"}},
+        "required_keys": {"deadline": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "deadline": {
@@ -296,14 +296,14 @@ def test_offset_dict_values_can_come_from_references():
         global_variables={"n": 3},
     )
 
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 2)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 2)}
 
 
 def test_offset_after_dict_multiple_units():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "deadline": {"type": "datetime"},
+            "deadline": {"type": "date"},
         },
     }
 
@@ -318,14 +318,14 @@ def test_offset_after_dict_multiple_units():
 
     resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
 
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 14)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 14)}
 
 
 def test_offset_with_date_object_reference():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "deadline": {"type": "datetime"},
+            "deadline": {"type": "date"},
         },
     }
 
@@ -340,7 +340,7 @@ def test_offset_with_date_object_reference():
 
     resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
 
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 2)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 2)}
 
 
 def test_offset_with_datetime_object_reference():
@@ -502,7 +502,7 @@ def test_offset_after_skip_skips_excluded_date():
     """3 days after Oct 5 = Oct 8, but Oct 8 excluded, so result is Oct 9."""
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"deadline": {"type": "datetime"}},
+        "required_keys": {"deadline": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "deadline": {
@@ -514,14 +514,14 @@ def test_offset_after_skip_skips_excluded_date():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 9)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 9)}
 
 
 def test_offset_before_skip_skips_excluded_date():
     """3 days before Oct 5 = Oct 2, but Oct 2 excluded, so result is Oct 1."""
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"deadline": {"type": "datetime"}},
+        "required_keys": {"deadline": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "deadline": {
@@ -533,14 +533,14 @@ def test_offset_before_skip_skips_excluded_date():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 1)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 1)}
 
 
 def test_offset_after_skip_skips_multiple_consecutive():
     """Oct 8, 9, 10 all excluded: result is Oct 11."""
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"deadline": {"type": "datetime"}},
+        "required_keys": {"deadline": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "deadline": {
@@ -552,7 +552,7 @@ def test_offset_after_skip_skips_multiple_consecutive():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 11)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 11)}
 
 
 def test_offset_after_skip_preserves_time():
@@ -595,7 +595,7 @@ def test_offset_after_skip_with_hours_offset():
 def test_offset_skip_empty_list_is_noop():
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"deadline": {"type": "datetime"}},
+        "required_keys": {"deadline": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "deadline": {
@@ -607,7 +607,7 @@ def test_offset_skip_empty_list_is_noop():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"offset": offset}})
-    assert resolved == {"deadline": datetime.datetime(2021, 10, 8)}
+    assert resolved == {"deadline": datetime.date(2021, 10, 8)}
 
 
 # first ============================================================================
@@ -617,7 +617,7 @@ def test_first_before():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "due": {"type": "datetime"},
+            "due": {"type": "date"},
         },
     }
 
@@ -627,14 +627,14 @@ def test_first_before():
 
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
 
-    assert resolved == {"due": datetime.datetime(2021, 9, 13)}
+    assert resolved == {"due": datetime.date(2021, 9, 13)}
 
 
 def test_first_after():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "due": {"type": "datetime"},
+            "due": {"type": "date"},
         },
     }
 
@@ -644,14 +644,14 @@ def test_first_after():
 
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
 
-    assert resolved == {"due": datetime.datetime(2021, 9, 13)}
+    assert resolved == {"due": datetime.date(2021, 9, 13)}
 
 
 def test_first_after_multiple_choices_list():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "due": {"type": "datetime"},
+            "due": {"type": "date"},
         },
     }
 
@@ -666,14 +666,14 @@ def test_first_after_multiple_choices_list():
 
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
 
-    assert resolved == {"due": datetime.datetime(2021, 9, 17)}
+    assert resolved == {"due": datetime.date(2021, 9, 17)}
 
 
 def test_first_after_multiple_choices_comma_separated():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "due": {"type": "datetime"},
+            "due": {"type": "date"},
         },
     }
 
@@ -688,14 +688,14 @@ def test_first_after_multiple_choices_comma_separated():
 
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
 
-    assert resolved == {"due": datetime.datetime(2021, 9, 17)}
+    assert resolved == {"due": datetime.date(2021, 9, 17)}
 
 
 def test_first_after_multiple_choices_comma_separated_irregular_spacing():
     schema: Schema = {
         "type": "dict",
         "required_keys": {
-            "due": {"type": "datetime"},
+            "due": {"type": "date"},
         },
     }
 
@@ -711,7 +711,7 @@ def test_first_after_multiple_choices_comma_separated_irregular_spacing():
 
         resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
 
-        assert resolved == {"due": datetime.datetime(2021, 9, 17)}
+        assert resolved == {"due": datetime.date(2021, 9, 17)}
 
 
 def test_first_before_with_datetime_reference():
@@ -927,7 +927,7 @@ def test_first_after_skip_skips_excluded_date():
     """First monday after Sep 10 is Sep 13, but Sep 13 excluded, so Sep 20."""
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"due": {"type": "datetime"}},
+        "required_keys": {"due": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "due": {
@@ -939,14 +939,14 @@ def test_first_after_skip_skips_excluded_date():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
-    assert resolved == {"due": datetime.datetime(2021, 9, 20)}
+    assert resolved == {"due": datetime.date(2021, 9, 20)}
 
 
 def test_first_after_skip_skips_multiple_excluded_dates():
     """Sep 13 and Sep 20 both excluded; result is Sep 27."""
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"due": {"type": "datetime"}},
+        "required_keys": {"due": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "due": {
@@ -958,14 +958,14 @@ def test_first_after_skip_skips_multiple_excluded_dates():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
-    assert resolved == {"due": datetime.datetime(2021, 9, 27)}
+    assert resolved == {"due": datetime.date(2021, 9, 27)}
 
 
 def test_first_before_skip_skips_excluded_date():
     """First monday before Sep 17 is Sep 13, but Sep 13 excluded, so Sep 6."""
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"due": {"type": "datetime"}},
+        "required_keys": {"due": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "due": {
@@ -977,13 +977,13 @@ def test_first_before_skip_skips_excluded_date():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
-    assert resolved == {"due": datetime.datetime(2021, 9, 6)}
+    assert resolved == {"due": datetime.date(2021, 9, 6)}
 
 
 def test_first_after_skip_with_date_objects():
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"due": {"type": "datetime"}},
+        "required_keys": {"due": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "due": {
@@ -995,14 +995,14 @@ def test_first_after_skip_with_date_objects():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
-    assert resolved == {"due": datetime.datetime(2021, 9, 20)}
+    assert resolved == {"due": datetime.date(2021, 9, 20)}
 
 
 def test_first_after_skip_with_datetime_objects():
     """Only the date part of datetime objects in skip is compared."""
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"due": {"type": "datetime"}},
+        "required_keys": {"due": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "due": {
@@ -1014,13 +1014,13 @@ def test_first_after_skip_with_datetime_objects():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
-    assert resolved == {"due": datetime.datetime(2021, 9, 20)}
+    assert resolved == {"due": datetime.date(2021, 9, 20)}
 
 
 def test_first_after_skip_empty_list_is_noop():
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"due": {"type": "datetime"}},
+        "required_keys": {"due": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "due": {
@@ -1032,7 +1032,7 @@ def test_first_after_skip_empty_list_is_noop():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
-    assert resolved == {"due": datetime.datetime(2021, 9, 13)}
+    assert resolved == {"due": datetime.date(2021, 9, 13)}
 
 
 def test_first_after_skip_preserves_time_from_reference():
@@ -1057,7 +1057,7 @@ def test_first_after_skip_with_multiple_weekdays():
     """Mon/Fri after Sep 14: first is Fri Sep 17; excluded, so next is Mon Sep 20."""
     schema: Schema = {
         "type": "dict",
-        "required_keys": {"due": {"type": "datetime"}},
+        "required_keys": {"due": {"type": "date"}},
     }
     cfg: ConfigurationDict = {
         "due": {
@@ -1069,7 +1069,7 @@ def test_first_after_skip_with_multiple_weekdays():
         }
     }
     resolved = resolve(cfg, schema, functions={"datetime": {"first": first}})
-    assert resolved == {"due": datetime.datetime(2021, 9, 20)}
+    assert resolved == {"due": datetime.date(2021, 9, 20)}
 
 
 # skip error cases ===============================================================
@@ -1143,11 +1143,19 @@ PARSE_SCHEMA: Schema = {
 
 PARSE_FUNCTIONS = {"datetime": {"parse": parse}}
 
+# for results computed from a date with no time, which are dates
+PARSE_DATE_SCHEMA: Schema = {
+    "type": "dict",
+    "required_keys": {
+        "result": {"type": "date"},
+    },
+}
+
 
 def test_parse_iso_date():
     cfg: ConfigurationDict = {"result": {"__datetime.parse__": "2021-10-05"}}
-    resolved = resolve(cfg, PARSE_SCHEMA, functions=PARSE_FUNCTIONS)
-    assert resolved == {"result": datetime.datetime(2021, 10, 5)}
+    resolved = resolve(cfg, PARSE_DATE_SCHEMA, functions=PARSE_FUNCTIONS)
+    assert resolved == {"result": datetime.date(2021, 10, 5)}
 
 
 def test_parse_iso_datetime():
@@ -1160,16 +1168,16 @@ def test_parse_offset_days_before():
     cfg: ConfigurationDict = {
         "result": {"__datetime.parse__": "3 days before 2021-10-05"}
     }
-    resolved = resolve(cfg, PARSE_SCHEMA, functions=PARSE_FUNCTIONS)
-    assert resolved == {"result": datetime.datetime(2021, 10, 2)}
+    resolved = resolve(cfg, PARSE_DATE_SCHEMA, functions=PARSE_FUNCTIONS)
+    assert resolved == {"result": datetime.date(2021, 10, 2)}
 
 
 def test_parse_offset_days_after():
     cfg: ConfigurationDict = {
         "result": {"__datetime.parse__": "3 days after 2021-10-05"}
     }
-    resolved = resolve(cfg, PARSE_SCHEMA, functions=PARSE_FUNCTIONS)
-    assert resolved == {"result": datetime.datetime(2021, 10, 8)}
+    resolved = resolve(cfg, PARSE_DATE_SCHEMA, functions=PARSE_FUNCTIONS)
+    assert resolved == {"result": datetime.date(2021, 10, 8)}
 
 
 def test_parse_offset_with_datetime_reference():
@@ -1228,24 +1236,24 @@ def test_parse_first_weekday_after():
     cfg: ConfigurationDict = {
         "result": {"__datetime.parse__": "first monday after 2021-09-10"}
     }
-    resolved = resolve(cfg, PARSE_SCHEMA, functions=PARSE_FUNCTIONS)
-    assert resolved == {"result": datetime.datetime(2021, 9, 13)}
+    resolved = resolve(cfg, PARSE_DATE_SCHEMA, functions=PARSE_FUNCTIONS)
+    assert resolved == {"result": datetime.date(2021, 9, 13)}
 
 
 def test_parse_first_weekday_before():
     cfg: ConfigurationDict = {
         "result": {"__datetime.parse__": "first monday before 2021-09-17"}
     }
-    resolved = resolve(cfg, PARSE_SCHEMA, functions=PARSE_FUNCTIONS)
-    assert resolved == {"result": datetime.datetime(2021, 9, 13)}
+    resolved = resolve(cfg, PARSE_DATE_SCHEMA, functions=PARSE_FUNCTIONS)
+    assert resolved == {"result": datetime.date(2021, 9, 13)}
 
 
 def test_parse_first_weekday_multiple_comma():
     cfg: ConfigurationDict = {
         "result": {"__datetime.parse__": "first monday, friday after 2021-09-14"}
     }
-    resolved = resolve(cfg, PARSE_SCHEMA, functions=PARSE_FUNCTIONS)
-    assert resolved == {"result": datetime.datetime(2021, 9, 17)}
+    resolved = resolve(cfg, PARSE_DATE_SCHEMA, functions=PARSE_FUNCTIONS)
+    assert resolved == {"result": datetime.date(2021, 9, 17)}
 
 
 def test_parse_first_weekday_with_datetime_reference():
@@ -1263,8 +1271,8 @@ def test_parse_first_weekday_multiple_comma_irregular_spacing():
         "first monday ,friday after 2021-09-14",
     ]:
         cfg: ConfigurationDict = {"result": {"__datetime.parse__": weekday_str}}
-        resolved = resolve(cfg, PARSE_SCHEMA, functions=PARSE_FUNCTIONS)
-        assert resolved == {"result": datetime.datetime(2021, 9, 17)}
+        resolved = resolve(cfg, PARSE_DATE_SCHEMA, functions=PARSE_FUNCTIONS)
+        assert resolved == {"result": datetime.date(2021, 9, 17)}
 
 
 def test_parse_first_weekday_with_at_time_override():
@@ -1345,6 +1353,149 @@ def test_parse_offset_units_are_not_case_sensitive():
         "result": {"__datetime.parse__": "3 Days After 2021-10-05"}
     }
 
-    resolved = resolve(cfg, AT_SCHEMA, functions={"datetime": {"parse": parse}})
+    resolved = resolve(cfg, PARSE_DATE_SCHEMA, functions={"datetime": {"parse": parse}})
 
-    assert resolved == {"result": datetime.datetime(2021, 10, 8)}
+    assert resolved == {"result": datetime.date(2021, 10, 8)}
+
+
+# a date stays a date ==============================================================
+
+# under "any", nothing converts the result, so these see the type each function gives
+
+DATETIME_FUNCTIONS = {
+    "datetime": {"at": at, "first": first, "offset": offset, "parse": parse}
+}
+
+
+def _resolve_result(cfg: ConfigurationDict):
+    return resolve(cfg, {"type": "any"}, functions=DATETIME_FUNCTIONS)["result"]
+
+
+def test_offset_of_a_date_by_days_is_a_date():
+    # given — the reference is a date string, interpolated from another key
+    cfg: ConfigurationDict = {
+        "start": "2026-01-05",
+        "result": {"__datetime.offset__": {"after": "${ start }", "by": "7 days"}},
+    }
+
+    # when
+    result = _resolve_result(cfg)
+
+    # then
+    assert type(result) is datetime.date
+    assert result == datetime.date(2026, 1, 12)
+
+
+def test_offset_of_a_date_by_hours_is_a_datetime():
+    # given — hours add a time to the date
+    cfg: ConfigurationDict = {
+        "result": {
+            "__datetime.offset__": {"after": datetime.date(2026, 1, 5), "by": "3 hours"}
+        }
+    }
+
+    # when
+    result = _resolve_result(cfg)
+
+    # then
+    assert result == datetime.datetime(2026, 1, 5, 3, 0)
+
+
+def test_offset_of_a_datetime_by_days_is_a_datetime():
+    # given
+    cfg: ConfigurationDict = {
+        "result": {
+            "__datetime.offset__": {
+                "after": datetime.datetime(2026, 1, 5, 0, 0),
+                "by": "1 day",
+            }
+        }
+    }
+
+    # when
+    result = _resolve_result(cfg)
+
+    # then
+    assert type(result) is datetime.datetime
+    assert result == datetime.datetime(2026, 1, 6, 0, 0)
+
+
+def test_offset_of_a_date_with_skip_is_a_date():
+    # given — the 6th is skipped
+    cfg: ConfigurationDict = {
+        "result": {
+            "__datetime.offset__": {
+                "after": "2026-01-05",
+                "by": "1 day",
+                "skip": ["2026-01-06"],
+            }
+        }
+    }
+
+    # when
+    result = _resolve_result(cfg)
+
+    # then
+    assert type(result) is datetime.date
+    assert result == datetime.date(2026, 1, 7)
+
+
+def test_first_after_a_date_with_skip_is_a_date():
+    # given — 2026-01-05 is a Monday; Friday the 9th is skipped
+    cfg: ConfigurationDict = {
+        "result": {
+            "__datetime.first__": {
+                "weekday": "Friday",
+                "after": "2026-01-05",
+                "skip": ["2026-01-09"],
+            }
+        }
+    }
+
+    # when
+    result = _resolve_result(cfg)
+
+    # then
+    assert type(result) is datetime.date
+    assert result == datetime.date(2026, 1, 16)
+
+
+def test_parse_of_a_date_is_a_date():
+    # when
+    result = _resolve_result({"result": {"__datetime.parse__": "2026-01-05"}})
+
+    # then
+    assert type(result) is datetime.date
+    assert result == datetime.date(2026, 1, 5)
+
+
+def test_parse_of_an_offset_from_a_date_is_a_date():
+    # when
+    result = _resolve_result(
+        {"result": {"__datetime.parse__": "1 week after 2026-01-05"}}
+    )
+
+    # then
+    assert type(result) is datetime.date
+    assert result == datetime.date(2026, 1, 12)
+
+
+def test_parse_of_a_first_weekday_after_a_date_is_a_date():
+    # when
+    result = _resolve_result(
+        {"result": {"__datetime.parse__": "first friday after 2026-01-05"}}
+    )
+
+    # then
+    assert type(result) is datetime.date
+    assert result == datetime.date(2026, 1, 9)
+
+
+def test_parse_of_a_date_at_a_time_is_a_datetime():
+    # when
+    result = _resolve_result(
+        {"result": {"__datetime.parse__": "1 day after 2026-01-05 at 10:00"}}
+    )
+
+    # then
+    assert result == datetime.datetime(2026, 1, 6, 10, 0)
