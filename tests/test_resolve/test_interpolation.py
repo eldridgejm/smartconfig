@@ -168,6 +168,21 @@ def test_raises_if_cyclical_reference_detected():
     assert str(exc.value) == 'Cannot resolve keypath "foo": Circular reference.'
 
 
+def test_raises_if_function_calls_refer_to_each_other():
+    # given — each splice needs the other's result
+    cfg: ConfigurationDict = {
+        "a": {"__splice__": "b"},
+        "b": {"__splice__": "a"},
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then — the same message as for a cycle of strings
+    assert str(exc.value) == 'Cannot resolve keypath "a": Circular reference.'
+
+
 def test_interpolation_can_use_jinja_to_loop_over_list():
     # given
     schema: Schema = {

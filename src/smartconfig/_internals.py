@@ -269,6 +269,7 @@ import abc
 import copy
 import difflib
 import enum
+import functools
 import typing
 
 import jinja2
@@ -822,6 +823,67 @@ type _ConcreteNode = (
 )
 
 
+# computing a node's result once ----------------------------------------------------
+
+# a node's result, while it is being computed
+_IN_PROGRESS = object()
+
+
+def _cache_and_detect_cycles[N: _Node, R](method: Callable[[N], R]) -> Callable[[N], R]:
+    """Make a node's method compute its result once, and detect circular references.
+
+    The first call runs the method and keeps its result, which later calls return.
+    A call made while the method is still running (because computing the result
+    needs the result itself) raises a ResolutionError, "Circular reference.", at
+    the node's keypath. If the method raises, nothing is kept, so a later call
+    runs it again and reports the same error rather than a circular reference.
+
+    The result is kept in the node's ``_cache``, under the method's name. Use
+    :func:`_is_in_progress` to ask whether it is running, and :func:`_set_result`
+    to give a result without running it.
+
+    """
+    name = method.__name__
+
+    @functools.wraps(method)
+    def wrapper(node: N) -> R:
+        if name in node._cache:
+            if node._cache[name] is _IN_PROGRESS:
+                raise ResolutionError("Circular reference.", node.keypath)
+            return node._cache[name]
+
+        node._cache[name] = _IN_PROGRESS
+        try:
+            result = method(node)
+        except BaseException:
+            del node._cache[name]
+            raise
+        node._cache[name] = result
+        return result
+
+    return wrapper
+
+
+def _is_in_progress(method: Callable[[], object]) -> bool:
+    """Whether a node's method, given bound, is running.
+
+    The method must be decorated with :func:`_cache_and_detect_cycles`.
+
+    """
+    node = typing.cast(_Node, getattr(method, "__self__"))
+    return node._cache.get(method.__name__) is _IN_PROGRESS
+
+
+def _set_result(method: Callable[[], object], result: object) -> None:
+    """Give a node's method, given bound, its result without running it.
+
+    The method must be decorated with :func:`_cache_and_detect_cycles`.
+
+    """
+    node = typing.cast(_Node, getattr(method, "__self__"))
+    node._cache[method.__name__] = result
+
+
 class _Node(abc.ABC):
     """Abstract base class for all nodes in a configuration tree.
 
@@ -846,12 +908,18 @@ class _Node(abc.ABC):
 
     template_keypath: _types.KeyPath | None = None
 
+    # set by each kind of node; used in error messages
+    keypath: _types.KeyPath
+
     def __init__(
         self,
         parent: _ConcreteNode | None = None,
         local_variables: Mapping[str, _types.Configuration] | None = None,
     ):
         self.parent = parent
+
+        # the results of the node's _cache_and_detect_cycles methods, by method name
+        self._cache: dict[str, Any] = {}
 
         if local_variables is None:
             self.local_variables: dict[
@@ -932,10 +1000,7 @@ class _Node(abc.ABC):
         # the root is skipped if it is a function call still being evaluated (we
         # are in its input): it has no keys yet, and looking one up would be circular
         root = self.root
-        if not (
-            isinstance(root, _FunctionCallNode)
-            and root._evaluated is _FunctionCallNode.PENDING
-        ):
+        if not (isinstance(root, _FunctionCallNode) and _is_in_progress(root.evaluate)):
             # check before looking up, rather than catching KeyError or IndexError,
             # so that an error raised while resolving the value isn't mistaken for
             # a missing name (see _has_item)
@@ -1386,12 +1451,6 @@ class _ValueNode(_Node):
 
     """
 
-    # sentinel object denoting that a node is currently being resolved
-    _PENDING = object()
-
-    # sentinel object denoting that the resolution of this node has not yet started
-    _UNDISCOVERED = object()
-
     def __init__(
         self,
         value: _types.ConfigurationValue,
@@ -1410,13 +1469,6 @@ class _ValueNode(_Node):
         self.resolution_context = resolution_context
         self.nullable = nullable
         self.mode = mode
-
-        # The resolved value of the leaf node. There are two special values. If this is
-        # _UNDISCOVERED, the resolution process has not yet discovered the leaf node
-        # (this is the default value). If this is _PENDING, a step in the resolution
-        # process has started to resolve the leaf. Otherwise, this contains the resolved
-        # value. Necessary in order to detect circular references.
-        self._resolved = _ValueNode._UNDISCOVERED
 
     @classmethod
     def from_configuration(
@@ -1464,6 +1516,7 @@ class _ValueNode(_Node):
             mode=mode,
         )
 
+    @_cache_and_detect_cycles
     def resolve(self) -> _types.ConfigurationValue:
         """Resolve the leaf's value by 1) interpolating and 2) converting.
 
@@ -1481,28 +1534,6 @@ class _ValueNode(_Node):
         The resolved value.
 
         """
-        # check for circular references
-        if self._resolved is _ValueNode._PENDING:
-            raise ResolutionError("Circular reference.", self.keypath)
-
-        # if the value is already resolved, return it
-        if self._resolved is not _ValueNode._UNDISCOVERED:
-            self._resolved = typing.cast(_types.ConfigurationValue, self._resolved)
-            return self._resolved
-
-        # if we've reached this point, we're resolving this node for the first time.
-        # If resolving fails, clear the marker, so that a later attempt reports the
-        # same error rather than a circular reference.
-        self._resolved = _ValueNode._PENDING
-        try:
-            self._resolved = self._resolve_uncached()
-        except BaseException:
-            self._resolved = _ValueNode._UNDISCOVERED
-            raise
-        return typing.cast(_types.ConfigurationValue, self._resolved)
-
-    def _resolve_uncached(self) -> _types.ConfigurationValue:
-        """Interpolate and convert the value, without caching."""
         # Step 1: interpolate the string (if its a string and mode is not RAW)
         value: _types.ConfigurationValue
         if isinstance(self.value, str) and self.mode != ResolutionMode.RAW:
@@ -1758,12 +1789,6 @@ class _FunctionCallNode(_Node):
 
     """
 
-    # sentinel object denoting that a node is currently being evaluated
-    PENDING = object()
-
-    # sentinel object denoting that the evaluation of this node has not yet started
-    UNDISCOVERED = object()
-
     def __init__(
         self,
         keypath: _types.KeyPath,
@@ -1782,14 +1807,6 @@ class _FunctionCallNode(_Node):
         self.function = function
         self.input = input
         self.mode = mode
-
-        # The evaluated value of the function node. There are two special
-        # values. If this is _UNDISCOVERED, the evaluation process has not yet
-        # discovered the function node (this is the default value). If this is
-        # _PENDING, a step in the resolution process has started to evaluate
-        # the function. Otherwise, this contains the evaluated value. Necessary
-        # in order to detect circular references.
-        self._evaluated = _FunctionCallNode.UNDISCOVERED
 
     def _make_resolver(self) -> _types.Resolver:
         """Make a "resolver" function that can be used by functions to resolve configs.
@@ -1821,6 +1838,7 @@ class _FunctionCallNode(_Node):
 
         return resolver
 
+    @_cache_and_detect_cycles
     def evaluate(self) -> _DictNode | _ListNode | _ValueNode | _TemplateNode:
         """Evaluate the function, returning a _DictNode, _ListNode, or _ValueNode.
 
@@ -1835,29 +1853,6 @@ class _FunctionCallNode(_Node):
         # make_node and gives core functions precise control over how the result is
         # built (e.g., choosing the resolution mode).
 
-        if self._evaluated is _FunctionCallNode.PENDING:
-            raise ResolutionError("Circular reference", self.keypath)
-
-        # if the function has already been evaluated, return the cached result
-        if self._evaluated is not _FunctionCallNode.UNDISCOVERED:
-            assert isinstance(
-                self._evaluated, (_DictNode, _ListNode, _ValueNode, _TemplateNode)
-            )
-            return self._evaluated
-
-        # at this point, we're evaluating the function for the first time.
-        # If resolving fails, clear the marker, so that a later attempt reports the
-        # same error rather than a circular reference.
-        self._evaluated = _FunctionCallNode.PENDING
-        try:
-            self._evaluated = self._evaluate_uncached()
-        except BaseException:
-            self._evaluated = _FunctionCallNode.UNDISCOVERED
-            raise
-        return self._evaluated
-
-    def _evaluate_uncached(self) -> _DictNode | _ListNode | _ValueNode | _TemplateNode:
-        """Call the function and build its result, without caching."""
         # if the function wants its input to be resolved, we resolve it by creating
         # a node out of its input configuration and resolving it
         if self.function.resolve_input:
@@ -2249,12 +2244,6 @@ class _TemplateNode(_Node):
 
     """
 
-    # sentinel object denoting that a node is currently being resolved
-    _PENDING = object()
-
-    # sentinel object denoting that the resolution of this node has not yet started
-    _UNDISCOVERED = object()
-
     def __init__(
         self,
         value: _types.Configuration,
@@ -2272,7 +2261,6 @@ class _TemplateNode(_Node):
         )
         self.keypath = keypath
         self.resolution_context = resolution_context
-        self._resolved: Any = _TemplateNode._UNDISCOVERED
 
     @classmethod
     def from_template(
@@ -2287,7 +2275,7 @@ class _TemplateNode(_Node):
         node = cls(
             template.source, template_schema, keypath, resolution_context, parent
         )
-        node._resolved = template
+        _set_result(node._build_template, template)
         return node
 
     def resolve(self) -> Template:
@@ -2307,24 +2295,16 @@ class _TemplateNode(_Node):
         if enclosing is not None:
             raise _nested_template_field_error(self.keypath, enclosing)
 
-        if self._resolved is _TemplateNode._PENDING:
-            raise ResolutionError("Circular reference.", self.keypath)
+        return self._build_template()
 
-        if self._resolved is not _TemplateNode._UNDISCOVERED:
-            return self._resolved
+    @_cache_and_detect_cycles
+    def _build_template(self) -> Template:
+        """Expand, check and build the Template.
 
-        # If resolving fails, clear the marker, so that a later attempt reports the
-        # same error rather than a circular reference.
-        self._resolved = _TemplateNode._PENDING
-        try:
-            self._resolved = self._resolve_uncached()
-        except BaseException:
-            self._resolved = _TemplateNode._UNDISCOVERED
-            raise
-        return self._resolved
+        Separate from resolve(), which checks for nesting each time, even when the
+        Template was built already or given by from_template.
 
-    def _resolve_uncached(self) -> Template:
-        """Expand, check and build the Template, without caching."""
+        """
         # replace every __use__ in the value with the value it stands for, so
         # that the template's source does not depend on the rest of the document
         self.value = self._expand_uses(self.value, self.keypath)
