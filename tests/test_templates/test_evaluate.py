@@ -403,3 +403,23 @@ def test_a_template_made_directly_takes_global_variables():
     )
 
     assert template.evaluate({"name": "Ana"}) == "Hi, Ana"
+
+
+def test_a_template_evaluating_to_a_tree_nested_too_deeply_is_a_resolution_error():
+    # given — the deep tree comes from a function, since a source this deep can't
+    # even be copied into a Template; it is deeper than Python's default recursion
+    # limit allows
+    def deep(args: FunctionArgs) -> ConfigurationDict:
+        result: ConfigurationDict = {"a": 1}
+        for _ in range(1000):
+            result = {"a": result}
+        return result
+
+    template = Template({"__deep__": {}}, functions={"deep": deep})
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        template.evaluate({})
+
+    # then
+    assert "nested too deeply" in str(exc.value)

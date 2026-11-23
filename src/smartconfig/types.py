@@ -617,7 +617,7 @@ class Template:
             _FunctionCallNode,
             check_keys_are_not_parameters,
             make_template_tree,
-            resolve_catching_recursion_errors,
+            reporting_recursion_errors,
         )
         from ._resolve import _make_resolution_context
         from .exceptions import ResolutionError
@@ -649,17 +649,18 @@ class Template:
         global_variables = {**(options.pop("global_variables") or {}), **variables}
         context = _make_resolution_context(global_variables=global_variables, **options)
 
-        # a template field in the tree would be a template inside this one
-        root = make_template_tree(self.source, self.schema, context, self.keypath)
+        # as in resolve(): a tree too deep to build or resolve is a ResolutionError
+        with reporting_recursion_errors():
+            # a template field in the tree would be a template inside this one
+            root = make_template_tree(self.source, self.schema, context, self.keypath)
 
-        # Keys named like parameters are also checked when a template field is
-        # resolved, but a function call's keys are only known once it is evaluated,
-        # and a Template can be made directly, without resolve().
-        keyed = root.evaluate() if isinstance(root, _FunctionCallNode) else root
-        check_keys_are_not_parameters(keyed, self.parameters)
+            # Keys named like parameters are also checked when a template field is
+            # resolved, but a function call's keys are only known once it is
+            # evaluated, and a Template can be made directly, without resolve().
+            keyed = root.evaluate() if isinstance(root, _FunctionCallNode) else root
+            check_keys_are_not_parameters(keyed, self.parameters)
 
-        # as in resolve(): a tree too deep to resolve is a ResolutionError
-        return resolve_catching_recursion_errors(root)
+            return root.resolve()
 
     # copying, comparison, display -----------------------------------------------------
 

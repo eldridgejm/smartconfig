@@ -268,3 +268,50 @@ def test_preserve_type_keeps_keys_filled_in_by_defaults():
     # then
     assert isinstance(result, UserDict)
     assert result == {"a": 1, "b": 2}
+
+
+# deeper than Python's default recursion limit allows, since each level of nesting
+# takes several stack frames
+TOO_DEEP = 1000
+
+
+def test_a_dict_nested_too_deeply_is_a_resolution_error():
+    # given
+    cfg: ConfigurationDict = {"a": 1}
+    for _ in range(TOO_DEEP):
+        cfg = {"a": cfg}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert "nested too deeply" in str(exc.value)
+
+
+def test_a_list_nested_too_deeply_is_a_resolution_error():
+    # given
+    cfg: ConfigurationList = [1]
+    for _ in range(TOO_DEEP):
+        cfg = [cfg]
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert "nested too deeply" in str(exc.value)
+
+
+def test_a_schema_nested_too_deeply_is_a_resolution_error():
+    # given — the schema is checked before the configuration is looked at
+    schema: Schema = {"type": "any"}
+    for _ in range(TOO_DEEP):
+        schema = {"type": "dict", "required_keys": {"a": schema}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve({"a": 1}, schema)
+
+    # then
+    assert "nested too deeply" in str(exc.value)

@@ -266,6 +266,7 @@ from typing import (
     TypedDict,
 )
 import abc
+import contextlib
 import copy
 import difflib
 import enum
@@ -291,7 +292,7 @@ from ._utils import deep_update
 # Exceptions that are not wrapped in a ResolutionError when raised by an expression,
 # a filter or a function: smartconfig's own errors already say where they happened;
 # an AssertionError is a bug in the code, not a mistake in the configuration; and a
-# RecursionError is reported by resolve_catching_recursion_errors, at the root.
+# RecursionError is reported by reporting_recursion_errors, at the root.
 _NOT_WRAPPED = (Error, AssertionError, RecursionError)
 
 
@@ -2057,24 +2058,28 @@ def _nested_template_field_error(
     )
 
 
-def resolve_catching_recursion_errors(root: _ConcreteNode) -> _types.Configuration:
-    """Resolve the root of a tree, reporting a too-deep tree as a ResolutionError.
+@contextlib.contextmanager
+def reporting_recursion_errors() -> typing.Iterator[None]:
+    """Report a RecursionError raised inside the block as a ResolutionError.
 
-    Resolution is recursive: a node's children, and the values its references
-    point to, are resolved inside it. A configuration nested deeply enough, or a
-    long enough chain of references (a few hundred, with Python's default limit)
-    or of function calls that return function calls, exhausts the stack and raises
-    a bare RecursionError, with no explanation.
+    Checking the schema, building the tree and resolving it are all recursive: a
+    node's children, and the values its references point to, are handled inside
+    it. A configuration or schema nested deeply enough (a few hundred levels, with
+    Python's default limit), or a long enough chain of references or of function
+    calls that return function calls, exhausts the stack and raises a bare
+    RecursionError, with no explanation.
 
     """
     try:
-        return root.resolve()
-    except RecursionError:
+        yield
+    except RecursionError as exc:
+        # chained, so that if smartconfig itself recursed forever, the traceback
+        # still shows where
         raise ResolutionError(
             "The configuration is nested too deeply to resolve, or has a chain of "
             "references or of function calls that is too long (or never ends).",
             (),
-        ) from None
+        ) from exc
 
 
 def make_template_tree(
