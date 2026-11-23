@@ -183,6 +183,106 @@ def test_raises_if_function_calls_refer_to_each_other():
     assert str(exc.value) == 'Cannot resolve keypath "a": Circular reference.'
 
 
+def test_a_name_in_an_untaken_branch_of_an_expression_is_not_a_cycle():
+    # given — x refers to y only when debug is true, so there is no cycle
+    cfg: ConfigurationDict = {
+        "debug": False,
+        "x": "${ y if debug else 'plain' }",
+        "y": "${ x } dbg",
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result == {"debug": False, "x": "plain", "y": "plain dbg"}
+
+
+def test_a_name_in_an_untaken_if_block_is_not_a_cycle():
+    # given
+    cfg: ConfigurationDict = {"r": "{% if false %}${ r }{% endif %}ok"}
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result == {"r": "ok"}
+
+
+def test_a_name_in_the_taken_branch_still_raises_its_cycle():
+    # given — debug is true, so x really does need y, which needs x
+    cfg: ConfigurationDict = {
+        "debug": True,
+        "x": "${ y if debug else 'plain' }",
+        "y": "${ x } dbg",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert str(exc.value) == 'Cannot resolve keypath "x": Circular reference.'
+
+
+def test_testing_whether_a_name_that_fails_to_resolve_is_defined_raises_its_error():
+    # given — y exists but can't be resolved, which "is defined" must not hide
+    cfg: ConfigurationDict = {
+        "x": "${ 'yes' if y is defined else 'no' }",
+        "y": "${ z }",
+    }
+
+    # when
+    with raises(exceptions.UndefinedNameError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert str(exc.value).startswith(
+        """Cannot resolve keypath "y": 'z' is undefined."""
+    )
+
+
+def test_a_custom_filter_given_a_name_that_fails_to_resolve_raises_its_error():
+    # given — the filter never uses its argument, but y is still an error
+    cfg: ConfigurationDict = {"x": "${ y | ignore }", "y": "${ x }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, filters={"ignore": lambda value: "ignored"})
+
+    # then
+    assert str(exc.value) == 'Cannot resolve keypath "x": Circular reference.'
+
+
+def test_tojson_of_a_dict_holding_a_name_that_fails_to_resolve_raises_its_error():
+    # given — y reaches tojson inside a dict, not as the filter's own argument
+    cfg: ConfigurationDict = {"x": "${ {'a': y} | tojson }", "y": "${ x }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert str(exc.value) == 'Cannot resolve keypath "x": Circular reference.'
+
+
+def test_a_default_for_a_name_that_fails_to_resolve_raises_its_error():
+    # given — the default is for a missing name, not for a broken one
+    cfg: ConfigurationDict = {
+        "x": "${ y | default('fallback') }",
+        "y": "${ z }",
+    }
+
+    # when
+    with raises(exceptions.UndefinedNameError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert str(exc.value).startswith(
+        """Cannot resolve keypath "y": 'z' is undefined."""
+    )
+
+
 def test_interpolation_can_use_jinja_to_loop_over_list():
     # given
     schema: Schema = {

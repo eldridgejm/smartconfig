@@ -441,6 +441,63 @@ class _UndefinedName(StrictUndefined):
         return f"'{name}' is undefined.{hint or ''}"
 
 
+class _DeferredError(StrictUndefined):
+    """A name whose value failed to resolve, standing in until the name is used.
+
+    Jinja looks up every name in a string before evaluating any of it, so in
+    ``${ y if debug else 'plain' }`` it asks for ``y`` even when ``debug`` is
+    false. If resolving ``y`` fails (say, with a circular reference, because ``y``
+    refers back to this string), the lookup gives this instead of raising. Using it
+    in any way raises the original error; a branch that never uses it is unharmed.
+
+    """
+
+    def __init__(self, name: str, error: ResolutionError):
+        def exception(message: str) -> ResolutionError:
+            return error
+
+        # Jinja raises self._undefined_exception(message) whenever the value is used
+        # (overriding _fail_with_undefined_error wouldn't do: StrictUndefined binds
+        # its dunder methods to the base class's)
+        super().__init__(name=name, exc=typing.cast(type, exception))
+        self.error = error
+
+
+def _raise_if_deferred_error(value: typing.Any) -> None:
+    """Raise the error a _DeferredError stands for; do nothing for other values."""
+    if isinstance(value, _DeferredError):
+        raise value.error
+
+
+def _raising_deferred_errors(function: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a Jinja test or filter so that a _DeferredError argument raises its error.
+
+    Jinja's tests and filters treat any undefined value as missing: ``y is
+    defined`` is false, ``y | default(1)`` is 1 and ``y is none`` is false. For a
+    name that exists but failed to resolve, that would hide the error.
+
+    """
+
+    # wraps copies jinja_pass_arg, which tells Jinja what to pass the filter first
+    @functools.wraps(function)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        for arg in (*args, *kwargs.values()):
+            _raise_if_deferred_error(arg)
+        return function(*args, **kwargs)
+
+    return wrapper
+
+
+_JINJA_FILTERS = {
+    name: _raising_deferred_errors(f) for name, f in jinja2.filters.FILTERS.items()
+}
+# some of Jinja's tests are typed as plain functions, which mypy won't take as Callable
+_JINJA_TESTS = {
+    name: _raising_deferred_errors(typing.cast(Callable[..., Any], t))
+    for name, t in jinja2.tests.TESTS.items()
+}
+
+
 class _Uninsertable(Exception):
     """A ``${...}`` gave a value that can't go into a string: a dict, a list or
     Jinja's ``self``."""
@@ -467,6 +524,8 @@ def _key_reference(where: str, key: str) -> str:
 
 def _resolve_for_json(value: typing.Any) -> typing.Any:
     """Plain data for an unresolved container, for Jinja's ``tojson`` filter."""
+    # a name that failed to resolve, inside a list or dict given to tojson
+    _raise_if_deferred_error(value)
     if isinstance(value, (_UnresolvedDict, _UnresolvedList)):
         return value.resolve()
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
@@ -1614,6 +1673,11 @@ class _ValueNode(_Node):
                     )
                 except KeyError:
                     pass
+                # Jinja looks up every name up front, even in untaken branches, so
+                # the error (of any kind) is raised only if the name is used. An
+                # unused name loses nothing: its value is resolved on its own anyway
+                except ResolutionError as exc:
+                    return _DeferredError(key, exc)
 
                 # finally, try jinja's default behavior, including jinja builtins
                 result = super().resolve_or_missing(key)
@@ -1678,8 +1742,18 @@ class _ValueNode(_Node):
             inject_root_as=self.resolution_context.inject_root_as,
         )
 
+        # a name whose value failed to resolve is a _DeferredError, which tests and
+        # filters would take for a missing name; these raise its error instead
+        environment.tests.update(_JINJA_TESTS)
+        environment.filters.update(_JINJA_FILTERS)
+
         # register the custom filters
-        environment.filters.update(self.resolution_context.filters)
+        environment.filters.update(
+            {
+                name: _raising_deferred_errors(f)
+                for name, f in self.resolution_context.filters.items()
+            }
+        )
 
         # json can't serialize the unresolved containers, so tojson resolves them to
         # plain data first (sort_keys is Jinja's default for tojson)
