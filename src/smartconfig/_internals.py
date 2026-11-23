@@ -379,6 +379,13 @@ class StrictUndefined(jinja2.StrictUndefined):
         if obj is jinja2.utils.missing or not isinstance(name, str):
             return super()._undefined_message
 
+        # the root is a function call that evaluated to a plain value, such as the
+        # string an __if__ returns; without this, the message names the internal class
+        if isinstance(obj, _UnresolvedFunctionCall) and isinstance(
+            obj.function_node.evaluate(), (_ValueNode, _TemplateNode)
+        ):
+            return f'The configuration is a single value, so it has no key "{name}".'
+
         if isinstance(obj, _UnresolvedDict):
             keypath = getattr(obj.dict_node, "keypath", ())
             where = ".".join(str(k) for k in keypath)
@@ -560,6 +567,10 @@ def _has_item(container: typing.Any, key: typing.Any) -> bool:
 
     """
     if isinstance(container, _UnresolvedFunctionCall):
+        # a function call (at the root) may evaluate to a plain value, such as the
+        # string an __if__ returns; a value has no keys, so nothing is found in it
+        if isinstance(container.function_node.evaluate(), (_ValueNode, _TemplateNode)):
+            return False
         container = container._evaluate_to_unresolved_container()
     if isinstance(container, _UnresolvedDict):
         children = container.dict_node.children
@@ -734,6 +745,11 @@ class _UnresolvedFunctionCall(_types.UnresolvedFunctionCall):
         collection. If the result is not a dictionary or list, a TypeError is raised.
 
         """
+        # raise the TypeError rather than reaching the assert in
+        # _evaluate_to_unresolved_container; Jinja reads it as an undefined name
+        node = self.function_node.evaluate()
+        if isinstance(node, (_ValueNode, _TemplateNode)):
+            raise TypeError("The function call evaluated to a value with no keys.")
         return self._evaluate_to_unresolved_container()[key]
 
     def get_keypath(self, keypath: _types.KeyPath | str) -> _types.Configuration:

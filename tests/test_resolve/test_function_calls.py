@@ -51,6 +51,30 @@ def test_function_call_at_root_can_use_a_global_variable_in_its_input():
     assert result == "yes"
 
 
+def test_root_if_returning_a_string_can_use_a_global_variable_in_its_result():
+    # once __if__ has returned "${ x }", the root is a plain string, which has no
+    # keys, so x comes from the global variables
+    schema: Schema = {"type": "string"}
+    cfg: ConfigurationDict = {
+        "__if__": {"condition": True, "then": "${ x }", "else": "no"}
+    }
+
+    result = resolve(cfg, schema, global_variables={"x": "hi"})
+
+    assert result == "hi"
+
+
+def test_root_let_returning_a_string_can_use_a_global_variable_in_its_result():
+    schema: Schema = {"type": "string"}
+    cfg: ConfigurationDict = {
+        "__let__": {"variables": {"a": "hi"}, "in": "${ a } ${ x }"}
+    }
+
+    result = resolve(cfg, schema, global_variables={"x": "there"})
+
+    assert result == "hi there"
+
+
 def test_function_call_at_root_without_circular_reference():
     # given
     schema: Schema = {

@@ -3,6 +3,7 @@
 from pytest import raises
 
 from smartconfig import resolve
+from smartconfig.exceptions import ResolutionError
 from smartconfig.types import (
     ConfigurationDict,
     ConfigurationList,
@@ -100,6 +101,23 @@ def test_inject_root_with_function_at_root_level_returning_a_list():
 
     # then
     assert result == [1, 2, 3, 2]
+
+
+def test_inject_root_with_function_at_root_level_returning_a_string_has_no_keys():
+    # given — the root call returns a plain string, so myroot.x is undefined
+    schema: Schema = {"type": "string"}
+    cfg: ConfigurationDict = {
+        "__if__": {"condition": True, "then": "${ myroot.x }", "else": "no"}
+    }
+
+    # when
+    with raises(ResolutionError) as exc:
+        resolve(cfg, schema, inject_root_as="myroot")
+
+    # then
+    assert 'The configuration is a single value, so it has no key "x".' in str(
+        exc.value
+    )
 
 
 def test_inject_root_as_a_name_reserved_by_jinja_raises():
