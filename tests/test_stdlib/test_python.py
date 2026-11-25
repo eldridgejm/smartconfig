@@ -137,3 +137,96 @@ def test_python_is_not_available_by_default():
 
     # then
     assert "Unknown function: python" in str(exc.value)
+
+
+def test_input_that_is_not_a_string_is_an_error():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "foo": {"__python__": {"return": 42}},
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions=FUNCTIONS)
+
+    # then
+    assert exc.value.keypath == ("foo",)
+    assert "must be a string, got dict" in str(exc.value)
+
+
+def test_empty_body_is_an_error():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "foo": {"__python__": "  \n"},
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions=FUNCTIONS)
+
+    # then
+    assert exc.value.keypath == ("foo",)
+    assert "must not be empty" in str(exc.value)
+
+
+def test_syntax_error_is_reported_at_the_call_with_its_line_in_the_body():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "foo": {"__python__": "x = 1\nreturn (x\n"},
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions=FUNCTIONS)
+
+    # then
+    assert exc.value.keypath == ("foo",)
+    assert "Invalid Python in line 2" in str(exc.value)
+    assert isinstance(exc.value.__cause__, SyntaxError)
+
+
+def test_resolution_error_in_body_keeps_its_own_keypath():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "string"},
+            "bar": {"type": "string"},
+        },
+    }
+
+    # bar can't be resolved, so reading it in the body raises an error about bar.
+    # foo comes first in the schema, so that it is resolved first: the error is
+    # raised while its body runs, not when bar is resolved on its own
+    cfg: ConfigurationDict = {
+        "foo": {"__python__": "return args.root['bar']"},
+        "bar": "${ undefined }",
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions=FUNCTIONS)
+
+    # then
+    assert exc.value.keypath == ("bar",)
