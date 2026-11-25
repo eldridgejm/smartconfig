@@ -120,7 +120,9 @@ Constants
     A dictionary containing only the core functions (``if``, ``let``,
     ``raw``, ``resolve``, ``fully_resolve``, ``splice``, ``template``, ``use``).
 
-.. data:: STDLIB_FUNCTIONS
+.. currentmodule:: smartconfig.stdlib
 
-    A dictionary containing the standard library functions, organized
-    by namespace (``datetime``, ``dict``, ``list``).
+.. data:: DEFAULT_FUNCTIONS
+
+    A dictionary containing the standard library functions that are on by
+    default, organized by namespace (``datetime``, ``dict``, ``list``).

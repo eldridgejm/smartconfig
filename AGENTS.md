@@ -41,7 +41,7 @@ src/smartconfig/
 ├── types.py               # Type definitions, protocols and the Template class
 ├── exceptions.py          # Error, InvalidSchemaError, ResolutionError (and subclasses), ConversionError
 └── stdlib/                # Namespaced built-in functions
-    ├── __init__.py         # STDLIB_FUNCTIONS aggregation
+    ├── __init__.py         # DEFAULT_FUNCTIONS: the stdlib functions on by default
     ├── datetime.py         # datetime.at, datetime.offset, datetime.first, datetime.parse
     ├── dict.py             # dict.update, dict.update_shallow, dict.from_items
     └── list.py             # list.loop, list.concatenate, list.filter, list.range, list.zip

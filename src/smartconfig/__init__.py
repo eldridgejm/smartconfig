@@ -4,7 +4,6 @@ from . import converters
 from . import types
 from ._resolve import resolve, DEFAULT_CONVERTERS, DEFAULT_FUNCTIONS
 from ._schemas import validate_schema
-from .stdlib import STDLIB_FUNCTIONS
 from ._core_functions import CORE_FUNCTIONS
 
 __all__ = [
@@ -17,5 +16,4 @@ __all__ = [
     "CORE_FUNCTIONS",
     "DEFAULT_FUNCTIONS",
     "DEFAULT_CONVERTERS",
-    "STDLIB_FUNCTIONS",
 ]

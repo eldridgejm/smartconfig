@@ -21,7 +21,7 @@ from ._core_functions import CORE_FUNCTIONS
 from ._internals import make_node, reporting_recursion_errors
 from ._schemas import validate_schema
 from ._utils import jinja_reserved_name_problem
-from .stdlib import STDLIB_FUNCTIONS
+from . import stdlib as _stdlib
 
 
 # defaults =============================================================================
@@ -38,7 +38,7 @@ DEFAULT_CONVERTERS: dict[str, Callable] = {
 
 # the default functions used by resolve()
 DEFAULT_FUNCTIONS: _types.FunctionMapping = {
-    **STDLIB_FUNCTIONS,
+    **_stdlib.DEFAULT_FUNCTIONS,
     **CORE_FUNCTIONS,
 }
 
