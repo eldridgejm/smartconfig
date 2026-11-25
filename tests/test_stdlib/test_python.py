@@ -230,3 +230,78 @@ def test_resolution_error_in_body_keeps_its_own_keypath():
 
     # then
     assert exc.value.keypath == ("bar",)
+
+
+def test_body_without_a_return_statement_is_an_error():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+        },
+    }
+
+    # the helper returns, but the body itself doesn't, so its result would be None
+    cfg: ConfigurationDict = {
+        "foo": {
+            "__python__": textwrap.dedent(
+                """\
+                def double(x):
+                    return x * 2
+
+                double(21)
+                """
+            )
+        },
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions=FUNCTIONS)
+
+    # then
+    assert exc.value.keypath == ("foo",)
+    assert "has no return statement" in str(exc.value)
+
+
+def test_body_can_return_none_explicitly():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer", "nullable": True},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "foo": {"__python__": "return None"},
+    }
+
+    # when
+    result = resolve(cfg, schema, functions=FUNCTIONS)
+
+    # then
+    assert result == {"foo": None}
+
+
+def test_body_that_yields_is_an_error():
+    # given
+    # foo has no type, so without the check, the generator itself would be the result
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "any"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "foo": {"__python__": "for i in range(3):\n    yield i\n"},
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions=FUNCTIONS)
+
+    # then
+    assert exc.value.keypath == ("foo",)
+    assert "must not use 'yield'" in str(exc.value)
