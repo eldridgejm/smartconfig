@@ -126,3 +126,11 @@ Constants
 
     A dictionary containing the standard library functions that are on by
     default, organized by namespace (``datetime``, ``dict``, ``list``).
+
+.. module:: smartconfig.stdlib.python
+
+.. data:: python
+
+    The function that runs Python code written in the configuration. It is not
+    on by default; add it to the ``functions`` passed to :func:`resolve` to use
+    it. See :doc:`inline_python`.

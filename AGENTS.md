@@ -44,7 +44,8 @@ src/smartconfig/
     ├── __init__.py         # DEFAULT_FUNCTIONS: the stdlib functions on by default
     ├── datetime.py         # datetime.at, datetime.offset, datetime.first, datetime.parse
     ├── dict.py             # dict.update, dict.update_shallow, dict.from_items
-    └── list.py             # list.loop, list.concatenate, list.filter, list.range, list.zip
+    ├── list.py             # list.loop, list.concatenate, list.filter, list.range, list.zip
+    └── python.py           # python (opt-in, not in DEFAULT_FUNCTIONS): runs code from the config
 
 tests/
 ├── test_converters.py          # Converter tests

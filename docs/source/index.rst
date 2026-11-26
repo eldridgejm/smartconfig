@@ -91,6 +91,7 @@ Table of Contents
    resolution_in_detail
    custom_converters
    custom_functions
+   inline_python
    custom_filters
    external_variables
    type_preservation

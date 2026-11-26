@@ -18,6 +18,9 @@ Default functions are organized into two groups:
   dictionary, and datetime operations. Stdlib functions use dotted names, e.g.,
   ``__list.loop__``, ``__dict.update__``, ``__datetime.parse__``.
 
+One stdlib function, ``python``, is not on by default, since it runs code written
+in the configuration. See :doc:`inline_python`.
+
 The default functions are available by default — :func:`smartconfig.resolve`
 uses :data:`smartconfig.DEFAULT_FUNCTIONS` as the default value for its
 ``functions`` parameter. Pass ``functions=None`` to make no functions available;
