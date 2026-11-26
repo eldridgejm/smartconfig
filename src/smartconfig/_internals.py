@@ -306,6 +306,75 @@ def _wrapped(exc: Exception, keypath: _types.KeyPath) -> ResolutionError:
     return ResolutionError(f"{type(exc).__name__}: {exc}", keypath)
 
 
+def _call_dynamic_schema(
+    schema: _types.DynamicSchema,
+    cfg: _types.Configuration,
+    keypath: _types.KeyPath,
+    resolution_context: _types.ResolutionContext,
+    allow_default: bool,
+) -> _types.Schema:
+    """Call a dynamic schema and validate the schema it returns.
+
+    Every place that calls a dynamic schema goes through here, so that each reports
+    its errors in the same way, at ``keypath``.
+
+    Parameters
+    ----------
+    schema
+        The dynamic schema.
+    cfg
+        The configuration it is called with (``None`` for a missing optional key).
+    keypath
+        The keypath of that configuration.
+    resolution_context
+        The resolution context; its converters are the valid value types.
+    allow_default
+        Whether the returned schema may have a "default".
+
+    Returns
+    -------
+    Schema
+        The validated schema.
+
+    Raises
+    ------
+    ResolutionError
+        If the dynamic schema raises an exception that isn't smartconfig's (other
+        than an AssertionError or RecursionError), with the exception as its cause.
+    InvalidSchemaError
+        If the returned schema is another dynamic schema, or is invalid.
+
+    """
+    # an exception raised by the dynamic schema gets the keypath it was called for,
+    # as one raised by a function gets the call's
+    try:
+        result = schema(cfg, keypath)
+    except _NOT_WRAPPED:
+        raise
+    except Exception as exc:
+        raise _wrapped(exc, keypath) from exc
+
+    # _validate_schema accepts a callable without calling it (dynamic schemas nested
+    # in the result are fine), so a callable result is rejected here, before it is
+    # used as a schema dict
+    if callable(result):
+        raise InvalidSchemaError(
+            "A dynamic schema must return a schema, not another dynamic schema.",
+            keypath,
+        )
+
+    # the keypath makes an error read "a.0.type", not "type"; the converters make a
+    # type defined by a custom converter valid here as it is in a static schema
+    _validate_schema(
+        result,
+        keypath,
+        allow_default=allow_default,
+        allow_dynamic=True,
+        converters=resolution_context.converters,
+    )
+    return result
+
+
 class ResolutionMode(enum.Enum):
     """Controls the level of interpolation / function evaluation."""
 
@@ -1171,12 +1240,12 @@ def _populate_required_children(
         # for an optional key. A required key is never missing, so a default for
         # it is a mistake, and is rejected here as it would be in a static schema
         if callable(key_schema):
-            key_schema = key_schema(dct[key], keypath + (key,))
-            _validate_schema(
+            key_schema = _call_dynamic_schema(
                 key_schema,
+                dct[key],
                 keypath + (key,),
+                resolution_context,
                 allow_default=False,
-                converters=resolution_context.converters,
             )
 
         existing_children[key] = make_node(
@@ -1217,15 +1286,12 @@ def _populate_optional_children(
         else:
             # key is missing; resolve dynamic schema before checking for default
             if callable(key_schema):
-                key_schema = key_schema(None, keypath + (key,))
-                # pass the converters, so that a type defined by a custom converter
-                # is valid here as it is in the static schema
-                _validate_schema(
+                key_schema = _call_dynamic_schema(
                     key_schema,
+                    None,
                     keypath + (key,),
+                    resolution_context,
                     allow_default=True,
-                    allow_dynamic=True,
-                    converters=resolution_context.converters,
                 )
             if "default" in key_schema:
                 # default was provided
@@ -2694,14 +2760,8 @@ def make_node(
 
     if callable(schema):
         # dynamic schema: call the function to get the actual schema
-        schema = schema(cfg, keypath)
-        # pass the converters, so that a type defined by a custom converter is
-        # valid here as it is in the static schema
-        _validate_schema(
-            schema,
-            allow_default=True,
-            allow_dynamic=True,
-            converters=resolution_context.converters,
+        schema = _call_dynamic_schema(
+            schema, cfg, keypath, resolution_context, allow_default=True
         )
 
     common_kwargs: _CommonKwargs = {

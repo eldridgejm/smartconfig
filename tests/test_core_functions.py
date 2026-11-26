@@ -512,6 +512,53 @@ def test_splice_at_the_root_is_not_reported_as_a_circular_reference():
         resolve(cfg, {"type": "any"}, functions={"splice": _splice})
 
     assert "Circular reference" not in str(exc.value)
+    assert "nothing to copy from" in str(exc.value)
+
+
+def test_splice_in_the_output_of_a_call_at_the_root_is_not_a_circular_reference():
+    # the configuration is the output of the __if__, which is still being
+    # evaluated when the splice is, so it has no keys to copy from yet
+    cfg: ConfigurationDict = {
+        "__if__": {"condition": True, "then": {"__splice__": "x"}, "else": 1}
+    }
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"splice": _splice, "if": _if})
+
+    assert "Circular reference" not in str(exc.value)
+    assert "nothing to copy from" in str(exc.value)
+
+
+def test_splice_in_the_input_of_a_call_at_the_root_is_not_a_circular_reference():
+    # dict.update resolves its input before it is called, so the splice runs while
+    # the root call is being evaluated
+    cfg: ConfigurationDict = {"__dict.update__": [{"a": 1}, {"b": {"__splice__": "a"}}]}
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    assert "Circular reference" not in str(exc.value)
+    assert "nothing to copy from" in str(exc.value)
+
+
+def test_splice_under_nested_calls_at_the_root_is_not_a_circular_reference():
+    # the splice's parent is an __if__ whose parent is the __if__ at the root, so
+    # checking only the splice's parent would not be enough
+    cfg: ConfigurationDict = {
+        "__if__": {
+            "condition": True,
+            "then": {
+                "__if__": {"condition": True, "then": {"__splice__": "x"}, "else": 2}
+            },
+            "else": 1,
+        }
+    }
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"splice": _splice, "if": _if})
+
+    assert "Circular reference" not in str(exc.value)
+    assert "nothing to copy from" in str(exc.value)
 
 
 def test_splice_raises_when_root_is_a_splice():

@@ -19,6 +19,7 @@ from ._internals import (
     make_node,
     _make_unresolved_container,
     _expand_use,
+    _is_in_progress,
 )
 
 
@@ -35,13 +36,16 @@ def _splice(args: _types.FunctionArgs) -> _ConcreteNode:
         raise ResolutionError("Input to 'splice' must be a string.", args.keypath)
     root = args._root_node
     assert isinstance(root, (_DictNode, _ListNode, _FunctionCallNode))
-    # if the splice is the whole configuration, there is nothing else to copy
-    # from; looking the keypath up would evaluate this call again, which would be
-    # reported as a circular reference
-    if root is args._function_call_node:
+    # if the root is a function call still being evaluated (this splice is in its
+    # input or its output, however deeply), the configuration is that call's output
+    # and has no keys yet. Looking the keypath up would evaluate the root again,
+    # which would be reported as a circular reference. ${...} and __use__ skip the
+    # root in this case too (see _Node._look_up_name)
+    if isinstance(root, _FunctionCallNode) and _is_in_progress(root.evaluate):
         raise ResolutionError(
-            "A __splice__ can't be the whole configuration: there is nothing else "
-            "to copy from.",
+            f"Keypath '{args.input}' does not exist: the configuration is the output "
+            "of the function call at its root, which is still being evaluated, so "
+            "there is nothing to copy from yet.",
             args.keypath,
         )
     try:

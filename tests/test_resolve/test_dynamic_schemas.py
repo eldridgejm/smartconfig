@@ -244,3 +244,145 @@ def test_raises_if_a_dynamic_schema_gives_a_required_key_a_default():
 
     # then
     assert "default" in str(exc.value)
+
+
+# errors in a dynamic schema ===========================================================
+
+
+def test_invalid_schema_from_a_dynamic_schema_on_a_list_element_has_its_keypath():
+    # given — a list element's schema is called in make_node, not by its parent
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {
+                "type": "list",
+                "element_schema": lambda cfg, keypath: {"type": "nonsense"},
+            }
+        },
+    }
+
+    cfg: ConfigurationDict = {"a": [1]}
+
+    # when
+    with raises(exceptions.InvalidSchemaError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert exc.value.keypath == ("a", "0", "type")
+
+
+def test_raises_if_a_dynamic_schema_at_the_root_returns_a_dynamic_schema():
+    # given
+    def schema(cfg, keypath):
+        return lambda cfg, keypath: {"type": "any"}
+
+    # when
+    with raises(exceptions.InvalidSchemaError) as exc:
+        resolve(1, schema)
+
+    # then
+    assert "another dynamic schema" in str(exc.value)
+    assert exc.value.keypath == ()
+
+
+def test_raises_if_a_dynamic_schema_for_a_required_key_returns_a_dynamic_schema():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": lambda cfg, keypath: lambda cfg, keypath: {"type": "any"}
+        },
+    }
+
+    cfg: ConfigurationDict = {"a": 1}
+
+    # when
+    with raises(exceptions.InvalidSchemaError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert "another dynamic schema" in str(exc.value)
+    assert exc.value.keypath == ("a",)
+
+
+def test_raises_if_a_dynamic_schema_for_a_missing_optional_key_returns_a_dynamic_schema():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "optional_keys": {
+            "a": lambda cfg, keypath: (
+                lambda cfg, keypath: {
+                    "type": "any",
+                    "default": 3,
+                }
+            )
+        },
+    }
+
+    cfg: ConfigurationDict = {}
+
+    # when
+    with raises(exceptions.InvalidSchemaError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert "another dynamic schema" in str(exc.value)
+    assert exc.value.keypath == ("a",)
+
+
+def _raises_value_error(cfg, keypath):
+    raise ValueError("boom")
+
+
+def test_exception_from_a_dynamic_schema_at_the_root_is_wrapped():
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(1, _raises_value_error)
+
+    # then
+    assert "ValueError: boom" in str(exc.value)
+    assert exc.value.keypath == ()
+    assert isinstance(exc.value.__cause__, ValueError)
+
+
+def test_exception_from_a_dynamic_schema_for_a_required_key_is_wrapped():
+    # given
+    schema: Schema = {"type": "dict", "required_keys": {"a": _raises_value_error}}
+
+    cfg: ConfigurationDict = {"a": 1}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert "ValueError: boom" in str(exc.value)
+    assert exc.value.keypath == ("a",)
+    assert isinstance(exc.value.__cause__, ValueError)
+
+
+def test_exception_from_a_dynamic_schema_for_a_missing_optional_key_is_wrapped():
+    # given
+    schema: Schema = {"type": "dict", "optional_keys": {"a": _raises_value_error}}
+
+    cfg: ConfigurationDict = {}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert "ValueError: boom" in str(exc.value)
+    assert exc.value.keypath == ("a",)
+    assert isinstance(exc.value.__cause__, ValueError)
+
+
+def test_assertion_error_from_a_dynamic_schema_is_not_wrapped():
+    # given — an AssertionError is a bug in the code, so it is not wrapped, as for
+    # one raised by a function
+    def schema(cfg, keypath):
+        raise AssertionError("bug")
+
+    # when / then
+    with raises(AssertionError):
+        resolve(1, schema)
