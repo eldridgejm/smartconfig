@@ -34,7 +34,7 @@ JSON file:
     {
         "course_name": "Introduction to Computer Science",
         "instructor": "Dr. Obama",
-        "welcome_msg": "Welcome to ${course_name}! My name is ${instructor}.",
+        "welcome_msg": "Welcome to ${course_name}! My name is ${instructor}."
     }
 
 
@@ -67,8 +67,29 @@ replaced with their actual values:
 
 .. testsetup::
 
-    import datetime
+    import json
+    import os
+    import tempfile
     from pprint import pprint as print
+
+    # write the config.json shown above, in a temporary directory
+    _previous_directory = os.getcwd()
+    _directory = tempfile.TemporaryDirectory()
+    os.chdir(_directory.name)
+    with open("config.json", "w") as f:
+        json.dump(
+            {
+                "course_name": "Introduction to Computer Science",
+                "instructor": "Dr. Obama",
+                "welcome_msg": "Welcome to ${course_name}! My name is ${instructor}.",
+            },
+            f,
+        )
+
+.. testcleanup::
+
+    os.chdir(_previous_directory)
+    _directory.cleanup()
 
 .. testcode::
 
@@ -84,8 +105,7 @@ replaced with their actual values:
         "type": "dict",
         "required_keys": {
             "course_name": {"type": "string"},
-            "start_date": {"type": "date"},
-            "first_homework_due": {"type": "date"},
+            "instructor": {"type": "string"},
             "welcome_msg": {"type": "string"},
         },
     }
@@ -101,23 +121,9 @@ The resolved configuration is a dictionary with all values computed:
 .. testoutput::
 
     {'course_name': 'Introduction to Computer Science',
-     'first_homework_due': datetime.date(2025, 9, 2),
-     'start_date': datetime.date(2025, 9, 1),
-     'welcome_msg': 'Welcome to Introduction to Computer Science!'}
-
-.. testsetup::
-
-    import json
-    import datetime
-
-    config = {
-        "course_name": "Introduction to Computer Science",
-        "start_date": "2025-09-01",
-        "first_homework_due": {"__datetime.parse__": "first tuesday after ${start_date}"},
-        "welcome_msg": "Welcome to ${course_name}!"
-    }
-    with open("config.json", "w") as f:
-        json.dump(config, f)
+     'instructor': 'Dr. Obama',
+     'welcome_msg': 'Welcome to Introduction to Computer Science! My name is Dr. '
+                    'Obama.'}
 
 A placeholder can also refer to a value from outside the configuration. Pass
 such values to ``smartconfig.resolve()`` as *global variables*:

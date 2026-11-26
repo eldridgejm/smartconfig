@@ -356,6 +356,11 @@ def validate_schema(
         must be the name of one of them. Defaults to ``None``, meaning the default
         converters: ``string``, ``integer``, ``float``, ``boolean``, ``date`` and
         ``datetime``.
+    value_types : Set[str] | None
+        Keyword-only. The names a value schema's type may have. It is computed
+        from ``converters`` at the top of the schema and passed down by the
+        recursive calls, so it is normally left as ``None``. If given, it is used
+        instead of ``converters``.
 
     Raises
     ------

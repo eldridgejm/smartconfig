@@ -24,7 +24,7 @@ For example, consider the following configuration:
    {
         "course_name": "Introduction to Python",
         "date_of_first_lecture": "2025-01-10",
-        "date_of_first_discussion": "7 days after ${date_of_first_lecture}",
+        "date_of_first_discussion": "${date_of_first_lecture}",
         "message": [
             "Welcome to ${course_name}!",
             "The first lecture is on ${date_of_first_lecture}.",

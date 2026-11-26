@@ -371,7 +371,7 @@ could not be converted to an integer:
 
     Traceback (most recent call last):
         ...
-    smartconfig.exceptions.ResolutionError: Cannot resolve keypath "repetitions": Cannot parse into int: 'three'.
+    smartconfig.exceptions.ResolutionError: Cannot resolve keypath "repetitions": Cannot convert to integer: 'three'.
 
 On the other hand, if the input is valid, it will proceed to
 perform the string repetition as before:

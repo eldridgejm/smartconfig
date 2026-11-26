@@ -178,8 +178,7 @@ For example, instead of writing:
 .. code:: yaml
 
     doubled:
-        __double__:
-            number: 5
+        __double__: 5
 
 You could write:
 

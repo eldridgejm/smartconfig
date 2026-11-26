@@ -94,6 +94,10 @@ checking the validity of schemas.
     :class:`exceptions.ResolutionError`
         If the configuration does not match the schema, if there is a circular
         reference, or there is some other issue with the configuration itself.
+    ValueError
+        If the name of a global variable, or ``inject_root_as``, is one that
+        ``${ ... }`` could never refer to (``true``, ``false``, ``none`` in
+        either case, ``not`` or ``self``).
 
 
 .. autofunction:: validate_schema

@@ -35,14 +35,19 @@ More precisely, a schema dictionary follows the formal grammar below:
         ["nullable": (True | False)]
     }
 
-    VALUE_SCHEMA = {
-        "type": ("string" | "integer" | "float" | "boolean" | "date" | "datetime"),
+    <VALUE_SCHEMA> = {
+        "type": <VALUE_TYPE>,
         ["nullable": (True | False)]
     }
 
+    <VALUE_TYPE> = (
+        "string" | "integer" | "float" | "boolean" | "date" | "datetime"
+        | <NAME OF A CUSTOM CONVERTER>
+    )
+
     <ANY_SCHEMA> = {
         "type": "any",
-        "nullable": (True | False)
+        ["nullable": (True | False)]
     }
 
     <TEMPLATE_SCHEMA> = {

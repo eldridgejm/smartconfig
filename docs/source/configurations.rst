@@ -23,6 +23,8 @@ Formally, a configuration is defined recursively as one of the following:
 - A **dictionary** whose keys are strings and whose values are again configurations.
 - A **list** of configurations.
 - A **value** (a string, integer, float, boolean, date or datetime, or None).
+- A :class:`~smartconfig.types.Template`: the value of a template field, which the
+  program evaluates later (see :ref:`template_fields_example`).
 
 The input to `smartconfig` is a "raw" configuration. It typically comes directly from a configuration file (JSON, YAML, TOML) and contains values that are not yet fully processed. In the example below, the ``config`` dictionary is a raw configuration: it contains interpolation placeholders (``${...}``) and natural language expressions that have not yet been evaluated.
 
