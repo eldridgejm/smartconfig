@@ -537,6 +537,29 @@ def test_filter_raises_if_value_of_iterable_does_not_resolve_to_a_list():
         resolve(cfg, schema, functions={"filter": filter_})
 
 
+def test_filter_raises_if_variable_is_not_a_string():
+    # the filter variable must be a name, but it's the integer 3
+    cfg: ConfigurationDict = {
+        "x": {
+            "__filter__": {
+                "iterable": [1, 2],
+                "variable": 3,
+                "condition": "${ True }",
+            }
+        }
+    }
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"x": {"type": "list", "element_schema": {"type": "any"}}},
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"filter": filter_})
+
+    assert exc.value.keypath == ("x",)
+    assert "'variable'" in str(exc.value)
+
+
 # range ================================================================================
 
 

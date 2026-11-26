@@ -205,7 +205,13 @@ def filter_(args: FunctionArgs) -> ConfigurationList:
     )
 
     assert isinstance(iterable, list)
-    assert isinstance(args.input["variable"], str)
+
+    # the variable is a name, bound in the condition; a bare assert would give no
+    # keypath, as in list.loop
+    if not isinstance(args.input["variable"], str):
+        raise ResolutionError(
+            "The value of 'variable' in 'list.filter' must be a string.", args.keypath
+        )
 
     result = []
     for element in iterable:
