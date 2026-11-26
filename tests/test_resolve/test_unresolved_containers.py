@@ -216,3 +216,52 @@ def test_a_missing_list_element_is_reported_by_the_list_name():
 
     assert '"l" has no element 5' in str(exc.value)
     assert "_Unresolved" not in str(exc.value)
+
+
+def test_a_list_equals_the_list_it_resolves_to():
+    # l resolves to [1, 2, 3], so it should equal that list, and not a different one
+    assert _evaluate("${ l == [1, 2, 3] }") == "True"
+    assert _evaluate("${ l != [1, 2, 3] }") == "False"
+    assert _evaluate("${ l == [3, 2, 1] }") == "False"
+
+
+def test_a_list_equals_the_list_it_resolves_to_when_compared_from_the_right():
+    # the plain list is on the left, so its __eq__ is tried first
+    assert _evaluate("${ [1, 2, 3] == l }") == "True"
+
+
+def test_a_list_of_lists_equals_the_list_it_resolves_to():
+    # the inner list is itself an unresolved container
+    cfg: ConfigurationDict = {"l": [[1, 2], 3], "e": "${ l == [[1, 2], 3] }"}
+
+    assert resolve(cfg, _ANY)["e"] == "True"
+
+
+def test_a_dict_holding_a_list_equals_the_dict_it_resolves_to():
+    # comparing the dicts compares their values, and the value of b is a list
+    cfg: ConfigurationDict = {
+        "d": {"a": 1, "b": [1, 2]},
+        "e": "${ d == {'a': 1, 'b': [1, 2]} }",
+        "f": "${ {'a': 1, 'b': [1, 2]} == d }",
+    }
+
+    resolved = resolve(cfg, _ANY)
+
+    assert resolved["e"] == "True"
+    assert resolved["f"] == "True"
+
+
+def test_a_list_does_not_equal_a_tuple():
+    # as for a plain list, [1, 2, 3] == (1, 2, 3) is False
+    assert _evaluate("${ l == (1, 2, 3) }") == "False"
+
+
+def test_a_dict_converted_to_a_string_is_the_text_of_the_dict_it_resolves_to():
+    # the string filter calls str() on d; it should give the text of the plain
+    # dict, as for a dict written in the expression, not an internal object's repr
+    assert _evaluate("${ d | string }") == "{'x': 1, 'y': 2}"
+
+
+def test_a_list_converted_to_a_string_is_the_text_of_the_list_it_resolves_to():
+    # ~ joins the text of each side, calling str() on l
+    assert _evaluate("${ 'l is ' ~ l }") == "l is [1, 2, 3]"
