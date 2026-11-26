@@ -11,6 +11,7 @@ from ..types import (
     Configuration,
 )
 from ..exceptions import ResolutionError
+from .._utils import jinja_reserved_name_problem
 from ._integers import to_integer
 
 
@@ -161,6 +162,14 @@ def loop(args: FunctionArgs) -> Configuration:
             "The value of 'variable' in 'list.loop' must be a string.", args.keypath
         )
 
+    # a name like true or self could never be referred to: ${ true } would be
+    # Jinja's literal, silently, not the variable
+    problem = jinja_reserved_name_problem(args.input["variable"])
+    if problem is not None:
+        raise ResolutionError(
+            f"Invalid 'variable' in 'list.loop': {problem}", args.keypath
+        )
+
     result = []
     for i, element in enumerate(over):
         local_variables = {args.input["variable"]: element}
@@ -205,15 +214,33 @@ def filter_(args: FunctionArgs) -> ConfigurationList:
     )
 
     assert isinstance(iterable, list)
-    assert isinstance(args.input["variable"], str)
+
+    # the variable is a name, bound in the condition; a bare assert would give no
+    # keypath, as in list.loop
+    if not isinstance(args.input["variable"], str):
+        raise ResolutionError(
+            "The value of 'variable' in 'list.filter' must be a string.", args.keypath
+        )
+
+    # a name like true or self could never be referred to: ${ true } would be
+    # Jinja's literal, silently, not the variable
+    problem = jinja_reserved_name_problem(args.input["variable"])
+    if problem is not None:
+        raise ResolutionError(
+            f"Invalid 'variable' in 'list.filter': {problem}", args.keypath
+        )
 
     result = []
-    for element in iterable:
+    for i, element in enumerate(iterable):
         local_variables = {args.input["variable"]: element}
         if args.resolve(
             args.input["condition"],
             local_variables=local_variables,
             schema={"type": "boolean"},
+            # so that an error in the condition says which element it was for, as
+            # in list.loop. The index is the element's place in the iterable: the
+            # output has no place for an element whose condition failed
+            relative_keypath=(str(i),),
         ):
             result.append(element)
 

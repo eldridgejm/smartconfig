@@ -434,6 +434,24 @@ def test_loop_raises_if_variable_is_not_a_string():
     assert "'variable'" in str(exc.value)
 
 
+def test_loop_raises_if_variable_is_reserved_by_jinja():
+    # ${ true } is Jinja's literal True, so a variable named true could never be
+    # referred to: the body would silently ignore the elements
+    cfg: ConfigurationDict = {
+        "x": {"__loop__": {"variable": "true", "over": [1, 2], "in": "${ true }"}}
+    }
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"x": {"type": "list", "element_schema": {"type": "any"}}},
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"loop": loop})
+
+    assert exc.value.keypath == ("x",)
+    assert '"true" is reserved by Jinja' in str(exc.value)
+
+
 def test_loop_with_function_returning_over():
     def over(_):
         return [1, 2, 3]
@@ -499,6 +517,29 @@ def test_filter_simple_example():
     assert resolved == [2, 4, 5]
 
 
+def test_filter_reports_an_error_in_its_condition_at_the_element():
+    # the condition divides by i - 2, so it fails for the second element (i = 2):
+    # the error should say which element, x.1, not just x
+    cfg: ConfigurationDict = {
+        "x": {
+            "__filter__": {
+                "iterable": [1, 2],
+                "variable": "i",
+                "condition": "${ 10 // (i - 2) > 0 }",
+            }
+        }
+    }
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"x": {"type": "list", "element_schema": {"type": "any"}}},
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"filter": filter_})
+
+    assert exc.value.keypath == ("x", "1")
+
+
 def test_filter_raises_if_input_is_not_a_dict():
     # given
     schema: Schema = {
@@ -535,6 +576,53 @@ def test_filter_raises_if_value_of_iterable_does_not_resolve_to_a_list():
     # when
     with raises(exceptions.ResolutionError):
         resolve(cfg, schema, functions={"filter": filter_})
+
+
+def test_filter_raises_if_variable_is_not_a_string():
+    # the filter variable must be a name, but it's the integer 3
+    cfg: ConfigurationDict = {
+        "x": {
+            "__filter__": {
+                "iterable": [1, 2],
+                "variable": 3,
+                "condition": "${ True }",
+            }
+        }
+    }
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"x": {"type": "list", "element_schema": {"type": "any"}}},
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"filter": filter_})
+
+    assert exc.value.keypath == ("x",)
+    assert "'variable'" in str(exc.value)
+
+
+def test_filter_raises_if_variable_is_reserved_by_jinja():
+    # ${ self } is Jinja's template object, so a variable named self could never
+    # be referred to in the condition
+    cfg: ConfigurationDict = {
+        "x": {
+            "__filter__": {
+                "iterable": [1, 2],
+                "variable": "self",
+                "condition": "${ True }",
+            }
+        }
+    }
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"x": {"type": "list", "element_schema": {"type": "any"}}},
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"filter": filter_})
+
+    assert exc.value.keypath == ("x",)
+    assert '"self" is reserved by Jinja' in str(exc.value)
 
 
 # range ================================================================================
