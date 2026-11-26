@@ -231,12 +231,16 @@ def filter_(args: FunctionArgs) -> ConfigurationList:
         )
 
     result = []
-    for element in iterable:
+    for i, element in enumerate(iterable):
         local_variables = {args.input["variable"]: element}
         if args.resolve(
             args.input["condition"],
             local_variables=local_variables,
             schema={"type": "boolean"},
+            # so that an error in the condition says which element it was for, as
+            # in list.loop. The index is the element's place in the iterable: the
+            # output has no place for an element whose condition failed
+            relative_keypath=(str(i),),
         ):
             result.append(element)
 

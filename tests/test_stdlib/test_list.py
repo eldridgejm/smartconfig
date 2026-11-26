@@ -517,6 +517,29 @@ def test_filter_simple_example():
     assert resolved == [2, 4, 5]
 
 
+def test_filter_reports_an_error_in_its_condition_at_the_element():
+    # the condition divides by i - 2, so it fails for the second element (i = 2):
+    # the error should say which element, x.1, not just x
+    cfg: ConfigurationDict = {
+        "x": {
+            "__filter__": {
+                "iterable": [1, 2],
+                "variable": "i",
+                "condition": "${ 10 // (i - 2) > 0 }",
+            }
+        }
+    }
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"x": {"type": "list", "element_schema": {"type": "any"}}},
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"filter": filter_})
+
+    assert exc.value.keypath == ("x", "1")
+
+
 def test_filter_raises_if_input_is_not_a_dict():
     # given
     schema: Schema = {
