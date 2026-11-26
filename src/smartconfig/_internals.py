@@ -691,6 +691,14 @@ class _UnresolvedDict(_types.UnresolvedDict):
     def __contains__(self, key) -> bool:
         return key in self.dict_node.children
 
+    # str() is what ${ d | string } and ${ 'x' ~ d } call; without this it fell
+    # back to object's repr, inserting "<..._UnresolvedDict object at 0x...>".
+    # Give the text of the plain dict, as for a dict written in the expression.
+    # __repr__ is left alone: resolving there would run in debuggers and error
+    # messages, where it could raise
+    def __str__(self) -> str:
+        return str(self.resolve())
+
     def resolve(self) -> _types.ConfigurationDict:
         """Resolve all values recursively, returning a ConfigurationDict."""
         return self.dict_node.resolve()
@@ -774,6 +782,11 @@ class _UnresolvedList(_types.UnresolvedList):
         if not isinstance(other, (list, _types.UnresolvedList)):
             return NotImplemented
         return len(self) == len(other) and list(self) == list(other)
+
+    # for the same reason as _UnresolvedDict.__str__: the text of the plain list,
+    # not "<..._UnresolvedList object at 0x...>"
+    def __str__(self) -> str:
+        return str(self.resolve())
 
     def resolve(self) -> _types.ConfigurationList:
         """Resolve all values recursively, returning a ConfigurationList."""

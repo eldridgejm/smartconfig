@@ -254,3 +254,14 @@ def test_a_dict_holding_a_list_equals_the_dict_it_resolves_to():
 def test_a_list_does_not_equal_a_tuple():
     # as for a plain list, [1, 2, 3] == (1, 2, 3) is False
     assert _evaluate("${ l == (1, 2, 3) }") == "False"
+
+
+def test_a_dict_converted_to_a_string_is_the_text_of_the_dict_it_resolves_to():
+    # the string filter calls str() on d; it should give the text of the plain
+    # dict, as for a dict written in the expression, not an internal object's repr
+    assert _evaluate("${ d | string }") == "{'x': 1, 'y': 2}"
+
+
+def test_a_list_converted_to_a_string_is_the_text_of_the_list_it_resolves_to():
+    # ~ joins the text of each side, calling str() on l
+    assert _evaluate("${ 'l is ' ~ l }") == "l is [1, 2, 3]"

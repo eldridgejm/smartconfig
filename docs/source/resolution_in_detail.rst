@@ -156,6 +156,7 @@ elsewhere in the configuration, use :ref:`__splice__ <func-splice>`:
        "title": "${course.name}",                  # "DSC 40B"
        "first": "${course.topics[0]}",             # "Sorting"
        "topics": "${course.topics | join(', ')}",  # "Sorting, Graphs"
+       "list": "${course.topics | string}",        # "['Sorting', 'Graphs']"
        "copy": {"__splice__": "course"},           # the whole dict
    }
 
