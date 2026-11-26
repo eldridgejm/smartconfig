@@ -16,6 +16,16 @@ def test_raises_if_type_field_is_omitted():
         validate_schema(schema)
 
 
+def test_raises_if_the_schema_is_a_list_of_pairs():
+    # dict() would accept this, but resolve() needs an actual mapping
+    schema = [("type", "any")]
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)  # type: ignore[arg-type]
+
+    assert exc.value.keypath == ()
+
+
 def test_raises_if_the_type_is_not_a_string():
     # the type is a list of names, not a name
     schema = {"type": ["dict"]}

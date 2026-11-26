@@ -371,9 +371,9 @@ def validate_schema(
             )
         return
 
-    try:
-        schema = dict(schema)
-    except Exception:
+    # check the type rather than trying dict(schema): dict() also accepts a list of
+    # pairs, which would pass here and then crash resolve(), which needs a mapping
+    if not isinstance(schema, Mapping):
         raise _exceptions.InvalidSchemaError("Schema must be a mapping.", keypath)
 
     if "type" not in schema:
