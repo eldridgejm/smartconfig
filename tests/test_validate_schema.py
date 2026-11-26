@@ -173,6 +173,22 @@ def test_raises_if_unknown_key_is_provided_for_list_schema():
         validate_schema(schema)
 
 
+def test_raises_if_default_is_provided_for_the_element_schema_of_an_optional_list():
+    # a list element can't be missing, so a default there would never be used. The
+    # list itself may have a default, since it is under optional_keys
+    schema = {
+        "type": "dict",
+        "optional_keys": {
+            "l": {"type": "list", "element_schema": {"type": "integer", "default": 1}}
+        },
+    }
+
+    with raises(exceptions.InvalidSchemaError) as excinfo:
+        validate_schema(schema)
+
+    assert excinfo.value.keypath == ("optional_keys", "l", "element_schema", "default")
+
+
 # nullable =============================================================================
 
 
