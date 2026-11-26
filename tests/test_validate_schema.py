@@ -16,6 +16,16 @@ def test_raises_if_type_field_is_omitted():
         validate_schema(schema)
 
 
+def test_raises_if_the_schema_is_a_list_of_pairs():
+    # dict() would accept this, but resolve() needs an actual mapping
+    schema = [("type", "any")]
+
+    with raises(exceptions.InvalidSchemaError) as exc:
+        validate_schema(schema)  # type: ignore[arg-type]
+
+    assert exc.value.keypath == ()
+
+
 def test_raises_if_the_type_is_not_a_string():
     # the type is a list of names, not a name
     schema = {"type": ["dict"]}
@@ -171,6 +181,22 @@ def test_raises_if_unknown_key_is_provided_for_list_schema():
 
     with raises(exceptions.InvalidSchemaError):
         validate_schema(schema)
+
+
+def test_raises_if_default_is_provided_for_the_element_schema_of_an_optional_list():
+    # a list element can't be missing, so a default there would never be used. The
+    # list itself may have a default, since it is under optional_keys
+    schema = {
+        "type": "dict",
+        "optional_keys": {
+            "l": {"type": "list", "element_schema": {"type": "integer", "default": 1}}
+        },
+    }
+
+    with raises(exceptions.InvalidSchemaError) as excinfo:
+        validate_schema(schema)
+
+    assert excinfo.value.keypath == ("optional_keys", "l", "element_schema", "default")
 
 
 # nullable =============================================================================
