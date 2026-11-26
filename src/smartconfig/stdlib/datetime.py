@@ -110,9 +110,10 @@ def _read_offset(value: Configuration, keypath: KeyPath) -> datetimelib.timedelt
     ----------
     value : str or dict
         If a string, a comma-separated list of ``"<n> <unit>"`` pairs, e.g.,
-        ``"1 week, 2 days"``. If a dict, keys are unit names and values are
-        integers, e.g., ``{"weeks": 1, "days": 2}``. Valid units are
-        ``weeks``, ``days``, ``hours``, ``minutes``, and ``seconds``.
+        ``"1 week, 2 days"``; each unit may appear only once. If a dict, keys
+        are unit names and values are integers, e.g., ``{"weeks": 1, "days": 2}``.
+        Valid units are ``weeks``, ``days``, ``hours``, ``minutes``, and
+        ``seconds``.
     keypath : tuple of str
         The keypath for error reporting.
 
@@ -123,7 +124,8 @@ def _read_offset(value: Configuration, keypath: KeyPath) -> datetimelib.timedelt
     Raises
     ------
     ResolutionError
-        If the string cannot be parsed or the dict contains unknown units.
+        If the string cannot be parsed or repeats a unit, or the dict contains
+        unknown units.
 
     Examples
     --------
@@ -163,7 +165,16 @@ def _read_offset(value: Configuration, keypath: KeyPath) -> datetimelib.timedelt
             if not match:
                 raise ResolutionError(f"Cannot parse offset: '{value}'.", keypath)
             amount, unit = match.groups()
-            kwargs[unit.lower() + "s"] = int(amount)
+            key = unit.lower() + "s"
+            # a repeated unit ("1 day, 2 days") is almost surely a mistake;
+            # assigning would silently drop the earlier amount, so reject it
+            if key in kwargs:
+                raise ResolutionError(
+                    f"Unit '{unit.lower()}' appears more than once in offset: "
+                    f"'{value}'.",
+                    keypath,
+                )
+            kwargs[key] = int(amount)
         return datetimelib.timedelta(**kwargs)
 
     raise ResolutionError(

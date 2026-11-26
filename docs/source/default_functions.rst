@@ -1071,7 +1071,7 @@ Parses a natural language date/datetime string.
 
 - An ISO date or datetime: ``"2021-10-05"`` or ``"2021-10-05 23:59:10"``
 - An offset: ``"3 days after 2021-10-05"`` (multiple units can be comma-separated,
-  e.g., ``"1 week, 2 days after 2021-10-05"``)
+  e.g., ``"1 week, 2 days after 2021-10-05"``; each unit may appear only once)
 - A first-weekday: ``"first monday after 2021-09-14"`` (multiple day names can be
   separated by commas, e.g., ``"first monday, wednesday after 2021-09-14"``)
 
@@ -1133,7 +1133,7 @@ Offsets a date or datetime by a given amount.
      - The reference date to offset forward from. Mutually exclusive with ``before``; exactly one must be provided.
    * - ``by``
      - Yes
-     - The offset amount. Either a string like ``"7 days"`` or ``"1 week, 2 days"``, or a dictionary like ``{"weeks": 1, "days": 2}``. Valid units are ``weeks``, ``days``, ``hours``, ``minutes``, and ``seconds``.
+     - The offset amount. Either a string like ``"7 days"`` or ``"1 week, 2 days"`` (each unit may appear only once, so ``"1 day, 2 days"`` is an error), or a dictionary like ``{"weeks": 1, "days": 2}``. Valid units are ``weeks``, ``days``, ``hours``, ``minutes``, and ``seconds``.
    * - ``skip``
      - No
      - A list of dates to skip over. If the result lands on a skipped date, it advances in the same direction until a non-skipped date is found.

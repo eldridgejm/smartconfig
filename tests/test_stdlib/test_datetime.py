@@ -475,6 +475,26 @@ def test_offset_raises_if_by_string_is_invalid():
     assert "Cannot parse offset" in str(exc.value)
 
 
+def test_offset_raises_if_by_string_repeats_a_unit():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "deadline": {"type": "date"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "deadline": {
+            "__datetime.offset__": {"after": "2021-10-05", "by": "1 day, 2 days"}
+        }
+    }
+
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions={"datetime": {"offset": offset}})
+
+    assert "Unit 'day' appears more than once" in str(exc.value)
+
+
 def test_offset_raises_if_by_dict_has_unknown_units():
     schema: Schema = {
         "type": "dict",
@@ -1297,6 +1317,15 @@ def test_parse_raises_if_unrecognized_format():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, PARSE_SCHEMA, functions=PARSE_FUNCTIONS)
     assert "Cannot parse date" in str(exc.value)
+
+
+def test_parse_raises_if_offset_repeats_a_unit():
+    cfg: ConfigurationDict = {
+        "result": {"__datetime.parse__": "1 day, 2 days after 2021-10-05"}
+    }
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, PARSE_DATE_SCHEMA, functions=PARSE_FUNCTIONS)
+    assert "Unit 'day' appears more than once" in str(exc.value)
 
 
 def test_parse_raises_if_invalid_at_time():
