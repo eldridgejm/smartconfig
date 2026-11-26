@@ -65,6 +65,20 @@ def test_float_from_bool_raises():
         converters.float_(True)
 
 
+def test_float_from_int_too_large_raises():
+    with raises(ConversionError):
+        converters.float_(10**400)
+
+
+def test_float_from_numeric_string_too_large_raises():
+    with raises(ConversionError):
+        converters.float_("1e400")
+
+
+def test_float_from_infinity_string():
+    assert converters.float_("inf") == float("inf")
+
+
 # boolean ==============================================================================
 
 
