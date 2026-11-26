@@ -8,7 +8,7 @@ from smartconfig.types import Template
 from smartconfig.types import ConfigurationDict, ConfigurationList, Schema
 
 
-# a template field holding a string, with one variable
+# a template field holding a string, with one parameter
 STRING_TEMPLATE = {
     "type": "template",
     "schema": {"type": "string"},
@@ -238,7 +238,7 @@ def test_unwrapped_value_raises_template_required(value):
     )
 
 
-def test_template_required_message_with_no_variables():
+def test_template_required_message_with_no_parameters():
     schema = {
         "type": "dict",
         "required_keys": {

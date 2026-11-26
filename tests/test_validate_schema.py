@@ -272,7 +272,7 @@ def test_template_type_raises_if_schema_is_missing():
     assert "Missing key." in str(exc.value)
 
 
-def test_template_type_raises_if_variables_is_missing():
+def test_template_type_raises_if_parameters_is_missing():
     schema = {"type": "template", "schema": {"type": "string"}}
 
     with raises(exceptions.InvalidSchemaError) as exc:
@@ -297,7 +297,7 @@ def test_template_type_raises_on_unknown_key():
     assert "Unexpected key." in str(exc.value)
 
 
-def test_template_type_raises_if_variables_is_not_a_list():
+def test_template_type_raises_if_parameters_is_not_a_list():
     schema = {
         "type": "template",
         "schema": {"type": "string"},
@@ -310,7 +310,7 @@ def test_template_type_raises_if_variables_is_not_a_list():
     assert exc.value.keypath == ("parameters",)
 
 
-def test_template_type_raises_if_a_variable_is_not_a_string():
+def test_template_type_raises_if_a_parameter_is_not_a_string():
     schema = {
         "type": "template",
         "schema": {"type": "string"},
@@ -323,7 +323,7 @@ def test_template_type_raises_if_a_variable_is_not_a_string():
     assert exc.value.keypath == ("parameters", "0")
 
 
-def test_template_type_raises_if_a_variable_is_not_an_identifier():
+def test_template_type_raises_if_a_parameter_is_not_an_identifier():
     schema = {
         "type": "template",
         "schema": {"type": "string"},
@@ -374,7 +374,7 @@ def test_template_type_raises_if_a_parameter_is_reserved_by_jinja():
 
 
 def test_template_type_raises_if_globals_is_given():
-    # names other than the variables are not declared
+    # names other than the parameters are not declared
     schema = {
         "type": "template",
         "schema": {"type": "string"},

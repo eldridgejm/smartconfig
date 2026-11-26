@@ -21,7 +21,7 @@ def test_constructor_defaults():
     assert t.keypath == ()
 
 
-def test_variables_and_keypath_are_tuples():
+def test_parameters_and_keypath_are_tuples():
     t = Template(
         "Hi ${ name }",
         schema={"type": "string"},
@@ -70,7 +70,7 @@ def test_templates_with_different_source_are_not_equal():
     assert Template("a") != Template("b")
 
 
-def test_templates_with_different_variables_are_not_equal():
+def test_templates_with_different_parameters_are_not_equal():
     assert Template("a", parameters=["x"]) != Template("a", parameters=["y"])
 
 
