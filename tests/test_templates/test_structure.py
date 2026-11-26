@@ -187,6 +187,22 @@ def test_wrapper_inside_a_template_is_unexpected(inner, value, keypath):
     )
 
 
+def test_wrapper_under_raw_inside_a_template_is_kept_as_data():
+    # everything under __raw__ is data, so the wrapper isn't a nested template
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "x": {"type": "template", "schema": {"type": "any"}, "parameters": []}
+        },
+    }
+    value: ConfigurationDict = {"__raw__": {"a": {"__template__": "b"}}}
+    cfg: ConfigurationDict = {"x": {"__template__": value}}
+
+    result = resolve(cfg, schema)
+
+    assert result["x"].evaluate({}) == {"a": {"__template__": "b"}}
+
+
 # nested template fields ===============================================================
 
 

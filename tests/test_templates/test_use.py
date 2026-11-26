@@ -47,6 +47,26 @@ def test_use_as_the_value_of_a_template_field_gives_the_fragment_as_written():
     assert result["x"].evaluate({"name": "hw"}) == {"title": "hw", "body": "hw!"}
 
 
+def test_use_under_raw_inside_a_template_is_kept_as_data():
+    # the target doesn't exist, which doesn't matter: the __use__ is never expanded
+    cfg: ConfigurationDict = {
+        "fragments": {},
+        "x": {
+            "__template__": {
+                "title": "${ name }",
+                "body": {"__raw__": {"__use__": "nowhere"}},
+            }
+        },
+    }
+
+    result = resolve(cfg, SCHEMA)
+
+    assert result["x"].evaluate({"name": "hw"}) == {
+        "title": "hw",
+        "body": {"__use__": "nowhere"},
+    }
+
+
 def test_use_with_overrides_is_merged_as_written():
     cfg: ConfigurationDict = {
         "fragments": {

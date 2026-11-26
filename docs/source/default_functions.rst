@@ -42,7 +42,7 @@ The default functions are summarized in the tables below:
    * - :ref:`__let__ <func-let>`
      - Define local variables and references
    * - :ref:`__raw__ <func-raw>`
-     - Prevent interpolation
+     - Keep a value as written, with nothing evaluated
    * - :ref:`__resolve__ <func-resolve>`
      - Single-pass interpolation (e.g., inside ``__fully_resolve__``)
    * - :ref:`__fully_resolve__ <func-fully-resolve>`
@@ -226,11 +226,15 @@ This produces:
 raw
 ~~~
 
-Prevents interpolation of ``${...}`` references, preserving them as literal text.
-Note that the raw wrapper is removed upon resolution — if you need a template
-that survives resolution boundaries, see :ref:`__template__ <func-template>`.
+Keeps its input as written: everything in it is data. ``${...}`` references are
+not interpolated, and function calls (including ``__template__`` and ``__use__``)
+are not evaluated, but kept as the dicts they are written as. The value is still
+converted to the field's schema. Note that the raw wrapper is removed upon
+resolution — if you need a template that survives resolution boundaries, see
+:ref:`__template__ <func-template>`.
 
-**Input**: Any configuration. The input is returned as-is without interpolation.
+**Input**: Any configuration. The input is returned as written, with nothing in it
+interpolated or evaluated.
 
 **Example**:
 
@@ -238,14 +242,16 @@ that survives resolution boundaries, see :ref:`__template__ <func-template>`.
 
     config = {
         "x": {"__raw__": "${y}"},
-        "y": 4
+        "y": 4,
+        "z": {"__raw__": {"__splice__": "y"}},
     }
 
     schema = {
         "type": "dict",
         "required_keys": {
             "x": {"type": "string"},
-            "y": {"type": "integer"}
+            "y": {"type": "integer"},
+            "z": {"type": "any"},
         }
     }
 
@@ -255,7 +261,11 @@ This produces:
 
 .. testoutput:: python
 
-    {'x': '${y}', 'y': 4}
+    {'x': '${y}', 'y': 4, 'z': {'__splice__': 'y'}}
+
+Since nothing under ``__raw__`` is evaluated, it can't give a template field its
+value: ``{"__raw__": {"__template__": ...}}`` there is a dict, not a template, and
+is an error.
 
 .. _func-resolve:
 

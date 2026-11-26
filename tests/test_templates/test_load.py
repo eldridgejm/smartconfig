@@ -3,9 +3,14 @@
 import pytest
 from pytest import raises
 
-from smartconfig import CORE_FUNCTIONS, exceptions, resolve
+from smartconfig import CORE_FUNCTIONS, DEFAULT_FUNCTIONS, exceptions, resolve
 from smartconfig.types import Template
-from smartconfig.types import ConfigurationDict, ConfigurationList, Schema
+from smartconfig.types import ConfigurationDict, ConfigurationList, FunctionArgs, Schema
+
+
+def explode(args: FunctionArgs):
+    """A function that must not be called."""
+    raise AssertionError("explode was called")
 
 
 # a template field holding a string, with one variable
@@ -236,6 +241,19 @@ def test_unwrapped_value_raises_template_required(value):
         "This field expects a template (parameters: publication). "
         'Write it as {"__template__": ...}.'
     )
+
+
+def test_function_call_under_raw_as_the_value_of_a_template_field_is_not_evaluated():
+    # everything under __raw__ is data, so the value is a dict, not a call that
+    # could make a template
+    schema = {"type": "dict", "required_keys": {"x": STRING_TEMPLATE}}
+    cfg: ConfigurationDict = {"x": {"__raw__": {"__explode__": None}}}
+    functions = {**DEFAULT_FUNCTIONS, "explode": explode}
+
+    with raises(exceptions.TemplateRequiredError) as exc:
+        resolve(cfg, schema, functions=functions)
+
+    assert exc.value.keypath == ("x",)
 
 
 def test_template_required_message_with_no_variables():

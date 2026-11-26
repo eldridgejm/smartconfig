@@ -2153,6 +2153,13 @@ def _is_use_function(function: _types.Function) -> bool:
     return function is _use
 
 
+def _is_raw_function(function: _types.Function) -> bool:
+    """Whether ``function`` is the core ``raw`` function, whatever its name."""
+    from ._core_functions import _raw
+
+    return function is _raw
+
+
 def _template_schema_parts(
     schema: _types.Schema, keypath: _types.KeyPath
 ) -> tuple[_types.Schema | _types.DynamicSchema, tuple[str, ...]]:
@@ -2437,7 +2444,8 @@ class _TemplateNode(_Node):
         """The value with each ``__use__`` replaced by the value it stands for.
 
         Every dict and list is visited, including the inputs of other function
-        calls. The target template's own ``__use__`` calls were already expanded
+        calls, except the input of ``__raw__``, which is kept as written. The
+        target template's own ``__use__`` calls were already expanded
         when that template was resolved.
 
         """
@@ -2460,6 +2468,9 @@ class _TemplateNode(_Node):
         if call is not None and _is_use_function(call[0]):
             # a __use__ call: replace it with the value it stands for
             return _expand_use(call[1], self, keypath)
+        if call is not None and _is_raw_function(call[0]):
+            # everything under __raw__ is data, so a __use__ in it is kept as written
+            return value
 
         # an ordinary dict, or a call to a function other than __use__ (whose input
         # is a dict too): expand the __use__ calls inside each value
@@ -2522,7 +2533,8 @@ def _make_template_node(
     Raises
     ------
     TemplateRequiredError
-        If the value is neither a function call nor a Template.
+        If the value is neither a function call nor a Template. In RAW mode (under
+        ``__raw__``), a dict is never a function call, so it is this error too.
     ResolutionError
         If the value is an invalid function call.
 
@@ -2552,7 +2564,9 @@ def _make_template_node(
             local_variables=local_variables,
         )
 
-    if isinstance(cfg, dict):
+    # under __raw__ (RAW mode) everything is data, as in make_node, so a dict is
+    # never a call: it falls through to the error below like any other value
+    if isinstance(cfg, dict) and mode != ResolutionMode.RAW:
         try:
             call = resolution_context.check_for_function_call(
                 cfg, resolution_context.functions
