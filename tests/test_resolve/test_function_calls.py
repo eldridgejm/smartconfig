@@ -38,6 +38,43 @@ def test_function_call_at_root_raises_if_circular_reference():
         resolve(cfg, schema, functions={"double": double})
 
 
+def test_function_call_at_root_can_use_a_global_variable_in_its_input():
+    # while the root function call is evaluated, it has no keys to look names up
+    # in, so names in its input come from the global variables
+    schema: Schema = {"type": "string"}
+    cfg: ConfigurationDict = {
+        "__if__": {"condition": "${ flag }", "then": "yes", "else": "no"}
+    }
+
+    result = resolve(cfg, schema, global_variables={"flag": True})
+
+    assert result == "yes"
+
+
+def test_root_if_returning_a_string_can_use_a_global_variable_in_its_result():
+    # once __if__ has returned "${ x }", the root is a plain string, which has no
+    # keys, so x comes from the global variables
+    schema: Schema = {"type": "string"}
+    cfg: ConfigurationDict = {
+        "__if__": {"condition": True, "then": "${ x }", "else": "no"}
+    }
+
+    result = resolve(cfg, schema, global_variables={"x": "hi"})
+
+    assert result == "hi"
+
+
+def test_root_let_returning_a_string_can_use_a_global_variable_in_its_result():
+    schema: Schema = {"type": "string"}
+    cfg: ConfigurationDict = {
+        "__let__": {"variables": {"a": "hi"}, "in": "${ a } ${ x }"}
+    }
+
+    result = resolve(cfg, schema, global_variables={"x": "there"})
+
+    assert result == "hi there"
+
+
 def test_function_call_at_root_without_circular_reference():
     # given
     schema: Schema = {
@@ -164,6 +201,22 @@ def test_function_call_other_nodes_can_reference_keys_within_dict_computed_by_fu
 
     # then
     assert result["foo"] == 30
+
+
+def test_function_call_returning_a_container_from_args_root():
+    # given — the function returns args.root["a"], which is an unresolved
+    # container, not a plain dict
+    def grab(args):
+        return args.root["a"]
+
+    cfg: ConfigurationDict = {"a": {"x": 1}, "b": {"__grab__": None}}
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions={"grab": grab})
+
+    # then — b is a plain dict
+    assert result == {"a": {"x": 1}, "b": {"x": 1}}
+    assert type(result["b"]) is dict
 
 
 def test_function_call_with_input_not_resolved():
@@ -476,9 +529,12 @@ def test_function_call_with_infinite_recursion():
     def add_one(args):
         return {"__add_one__": args.input + 1}
 
-    # when
-    with raises(RecursionError):
+    # when — add_one returns another call to add_one, so this never ends; the
+    # RecursionError is reported as a ResolutionError
+    with raises(exceptions.ResolutionError) as exc:
         resolve({"foo": {"__add_one__": 10}}, schema, functions={"add_one": add_one})
+
+    assert "never ends" in str(exc.value)
 
 
 def test_function_with_custom_call_syntax():
@@ -637,3 +693,71 @@ def test_mixed_flat_and_namespaced_functions():
 
     # then
     assert result == {"x": 10, "y": 12}
+
+
+# resolve_output =======================================================================
+
+
+def test_function_with_resolve_output_false_returns_its_result_without_interpolating():
+    # given
+    @Function.new(resolve_output=False)
+    def template_text(args: FunctionArgs) -> str:
+        return "Hello ${ name }"
+
+    # when
+    result = resolve(
+        {"name": "x", "greeting": {"__template_text__": None}},
+        {"type": "any"},
+        functions={"template_text": template_text},
+    )
+
+    # then
+    assert result == {"name": "x", "greeting": "Hello ${ name }"}
+
+
+def test_function_with_resolve_output_false_does_not_evaluate_function_calls_it_returns():
+    # given
+    @Function.new(resolve_output=False)
+    def make_call(args: FunctionArgs) -> ConfigurationDict:
+        return {"__double__": 5}
+
+    def double(args):
+        return args.input * 2
+
+    # when
+    result = resolve(
+        {"x": {"__make_call__": None}},
+        {"type": "any"},
+        functions={"make_call": make_call, "double": double},
+    )
+
+    # then
+    assert result == {"x": {"__double__": 5}}
+
+
+def test_function_with_resolve_output_false_still_converts_its_result_to_the_schema():
+    # given
+    @Function.new(resolve_output=False)
+    def five(args: FunctionArgs) -> str:
+        return "5"
+
+    schema: Schema = {"type": "dict", "required_keys": {"x": {"type": "integer"}}}
+
+    # when
+    result = resolve({"x": {"__five__": None}}, schema, functions={"five": five})
+
+    # then
+    assert result == {"x": 5}
+
+
+def test_function_call_with_another_key_names_the_key():
+    # given — a function call is a dict with exactly one key, but this one also
+    # has the key "b"
+    cfg: ConfigurationDict = {"a": {"__if__": 1, "b": 2}}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then — the message says what's wrong, not just "Invalid function call"
+    assert "'b'" in str(exc.value)

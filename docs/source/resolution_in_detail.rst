@@ -24,7 +24,7 @@ For example, consider the following configuration:
    {
         "course_name": "Introduction to Python",
         "date_of_first_lecture": "2025-01-10",
-        "date_of_first_discussion": "7 days after ${date_of_first_lecture}",
+        "date_of_first_discussion": "${date_of_first_lecture}",
         "message": [
             "Welcome to ${course_name}!",
             "The first lecture is on ${date_of_first_lecture}.",
@@ -156,6 +156,7 @@ elsewhere in the configuration, use :ref:`__splice__ <func-splice>`:
        "title": "${course.name}",                  # "DSC 40B"
        "first": "${course.topics[0]}",             # "Sorting"
        "topics": "${course.topics | join(', ')}",  # "Sorting, Graphs"
+       "list": "${course.topics | string}",        # "['Sorting', 'Graphs']"
        "copy": {"__splice__": "course"},           # the whole dict
    }
 
@@ -173,8 +174,10 @@ the configuration in special "unresolved" container types:
 - :class:`types.UnresolvedList` wraps lists
 - :class:`types.UnresolvedFunctionCall` wraps function call nodes
 
-These unresolved containers behave like their resolved counterparts (you can
-access keys, iterate over elements, etc.), but with one crucial difference: when
+These unresolved containers behave like their resolved counterparts (an
+:class:`types.UnresolvedDict` is a :class:`collections.abc.Mapping` and an
+:class:`types.UnresolvedList` a :class:`collections.abc.Sequence`, so you can
+access keys, slice, iterate over elements, etc.), but with one crucial difference: when
 you access a leaf value, the container automatically triggers resolution of that
 value *on demand*.
 

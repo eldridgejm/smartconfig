@@ -65,6 +65,20 @@ def test_float_from_bool_raises():
         converters.float_(True)
 
 
+def test_float_from_int_too_large_raises():
+    with raises(ConversionError):
+        converters.float_(10**400)
+
+
+def test_float_from_numeric_string_too_large_raises():
+    with raises(ConversionError):
+        converters.float_("1e400")
+
+
+def test_float_from_infinity_string():
+    assert converters.float_("inf") == float("inf")
+
+
 # boolean ==============================================================================
 
 
@@ -144,11 +158,20 @@ def test_datetime_from_date_only_string_raises():
     assert "time component" in str(exc.value)
 
 
+def test_datetime_from_a_string_that_is_not_a_date_does_not_ask_for_a_time():
+    # "tomorrow" isn't a date at all, so adding a time component wouldn't help
+    with raises(ConversionError) as exc:
+        converters.datetime("tomorrow")
+
+    assert "time component" not in str(exc.value)
+
+
 def test_datetime_from_date_object_raises():
     with raises(ConversionError) as exc:
         converters.datetime(datetime.date(2021, 10, 5))
 
     assert "Cannot implicitly convert" in str(exc.value)
+    assert "time component" in str(exc.value)
 
 
 def test_datetime_raises_on_invalid_string():

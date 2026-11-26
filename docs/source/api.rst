@@ -8,24 +8,19 @@ The core functionality of `smartconfig` is exposed through two main functions:
 :func:`resolve` for resolving configurations and :func:`validate_schema` for
 checking the validity of schemas.
 
-.. function:: resolve(...) -> Configuration or Prototype
+.. function:: resolve(...) -> Configuration
 
     Resolve a configuration by interpolating and parsing its entries. The
-    structure of the configuration can be described either by an explicit
-    schema dictionary or by a :class:`Prototype` subclass. If a prototype
-    is provided, the return value is an instance of that class.
+    structure of the configuration is described by a schema dictionary.
 
     Parameters
     ----------
     cfg : :class:`types.Configuration`
         The "raw" configuration to resolve.
-    spec : :class:`types.Schema` or :class:`types.DynamicSchema` or :class:`Prototype`
+    spec : :class:`types.Schema` or :class:`types.DynamicSchema`
         Either a schema dictionary describing the structure of the resolved
-        configuration, a :class:`types.DynamicSchema` (a callable that returns
-        a schema based on the configuration and keypath), or a
-        :class:`Prototype` subclass to use as a typed target. When a prototype
-        is provided, the return value is an instance of that class instead of
-        a plain dictionary.
+        configuration, or a :class:`types.DynamicSchema` (a callable that
+        returns a schema based on the configuration and keypath).
         See: :ref:`schemas`.
     converters : Mapping[str, Callable]
         A dictionary mapping value types (as strings) to converter functions.
@@ -43,8 +38,9 @@ checking the validity of schemas.
         nested to provide namespaced functions (e.g., ``{"list": {"loop": loop_fn}}``
         becomes callable as ``__list.loop__``).
 
-        Defaults to :data:`DEFAULT_FUNCTIONS`. Pass ``None`` to disable
-        function calls entirely.
+        Defaults to :data:`DEFAULT_FUNCTIONS`. Pass ``None`` to make no functions
+        available, so that any function call is an error. To turn off function calls
+        entirely, use ``check_for_function_call=None``.
         See :doc:`default_functions` for more information on the default functions.
         See :doc:`custom_functions` for how to define custom functions.
     global_variables : Optional[Mapping[str, Any]]
@@ -98,6 +94,10 @@ checking the validity of schemas.
     :class:`exceptions.ResolutionError`
         If the configuration does not match the schema, if there is a circular
         reference, or there is some other issue with the configuration itself.
+    ValueError
+        If the name of a global variable, or ``inject_root_as``, is one that
+        ``${ ... }`` could never refer to (``true``, ``false``, ``none`` in
+        either case, ``not`` or ``self``).
 
 
 .. autofunction:: validate_schema
@@ -107,9 +107,11 @@ Constants
 
 .. data:: DEFAULT_CONVERTERS
 
-    A dictionary mapping schema type strings (``"integer"``, ``"float"``,
-    ``"boolean"``, ``"date"``, ``"datetime"``) to the default converter
-    functions in the :mod:`smartconfig.converters` module.
+    A dictionary mapping schema type strings to the default converters:
+    ``"string"`` to :class:`str`, and ``"integer"``, ``"float"``, ``"boolean"``,
+    ``"date"`` and ``"datetime"`` to the functions in the
+    :mod:`smartconfig.converters` module. The ``any`` type needs no converter: its
+    values are never converted. See :doc:`default_converters`.
 
 .. data:: DEFAULT_FUNCTIONS
 
@@ -120,9 +122,19 @@ Constants
 .. data:: CORE_FUNCTIONS
 
     A dictionary containing only the core functions (``if``, ``let``,
-    ``raw``, ``resolve``, ``fully_resolve``, ``splice``, ``use``).
+    ``raw``, ``resolve``, ``fully_resolve``, ``splice``, ``template``, ``use``).
 
-.. data:: STDLIB_FUNCTIONS
+.. currentmodule:: smartconfig.stdlib
 
-    A dictionary containing the standard library functions, organized
-    by namespace (``datetime``, ``dict``, ``list``).
+.. data:: DEFAULT_FUNCTIONS
+
+    A dictionary containing the standard library functions that are on by
+    default, organized by namespace (``datetime``, ``dict``, ``list``).
+
+.. module:: smartconfig.stdlib.python
+
+.. data:: python
+
+    The function that runs Python code written in the configuration. It is not
+    on by default; add it to the ``functions`` passed to :func:`resolve` to use
+    it. See :doc:`inline_python`.

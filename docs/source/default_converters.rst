@@ -6,7 +6,8 @@ needs out of the box. This includes a set of built-in converters for common type
 
 Which converter is applied to a configuration value depends on the schema
 provided to :func:`smartconfig.resolve`. Each converter is associated with one
-or more schema types.
+or more schema types. Values of type ``any`` are never converted, so that type
+has no converter.
 
 .. testsetup:: python
 
@@ -54,6 +55,31 @@ is ``integer``, and the float converter is applied to values with schema type
 .. testoutput:: python
 
     {'count': 42, 'ratio': 3.14}
+
+
+String
+------
+
+The string converter is applied to any configuration value whose schema type is
+``string``. It is Python's :class:`str`, so it accepts any value: a number like
+``5`` becomes the string ``"5"``.
+
+.. testcode:: python
+
+    config = {"version": 5}
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "version": {"type": "string"},
+        }
+    }
+
+    print(smartconfig.resolve(config, schema))
+
+.. testoutput:: python
+
+    {'version': '5'}
 
 
 Boolean

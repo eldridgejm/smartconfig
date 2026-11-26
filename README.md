@@ -28,25 +28,29 @@ This configuration uses `${...}` for string interpolation and the `__datetime.pa
 ```python
 import json
 import smartconfig
-import datetime
+from pprint import pprint as print
 
 # 1. Load raw configuration
 with open("config.json") as f:
     raw_config = json.load(f)
 
-# 2. Define a prototype (class-based schema)
-class Course(smartconfig.Prototype):
-    course_name: str
-    start_date: datetime.date
-    first_homework_due: datetime.date
-    welcome_msg: str
+# 2. Describe the expected structure with a schema
+schema = {
+    "type": "dict",
+    "required_keys": {
+        "course_name": {"type": "string"},
+        "start_date": {"type": "date"},
+        "first_homework_due": {"type": "date"},
+        "welcome_msg": {"type": "string"},
+    },
+}
 
-# 3. Resolve to a Prototype instance
-resolved = smartconfig.resolve(raw_config, Course)
-print(resolved._as_dict())
+# 3. Resolve
+resolved = smartconfig.resolve(raw_config, schema)
+print(resolved)
 ```
 
-The resolved configuration is an instance of `Course` with all values computed:
+The resolved configuration is a dictionary with all values computed:
 
 **Output**
 

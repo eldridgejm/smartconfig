@@ -8,6 +8,7 @@ type validators, ensuring that the resulting value is of the correct type.
 """
 
 import datetime as datetimelib
+import math
 import re
 
 from . import exceptions
@@ -70,8 +71,8 @@ def float_(value: int | float | str) -> float:
     """Convert a value to a float.
 
     Accepts ``float`` values (pass-through), ``int`` values (coerced to
-    ``float``), and numeric strings. Rejects ``bool`` values and non-numeric
-    strings.
+    ``float``), and numeric strings, including ``"inf"`` and ``"nan"``. Rejects
+    ``bool`` values, non-numeric strings, and numbers too large for a float.
 
     Parameters
     ----------
@@ -101,11 +102,32 @@ def float_(value: int | float | str) -> float:
 
     if isinstance(value, (int, str)):
         try:
-            return float(value)
+            result = float(value)
         except (ValueError, TypeError):
             raise exceptions.ConversionError(
                 f"Cannot convert to float: '{value}'.",
             )
+        # float() raises OverflowError for an int too large for a float. The int
+        # has hundreds of digits, so the message doesn't repeat it
+        except OverflowError:
+            raise exceptions.ConversionError(
+                "Cannot convert to float: the integer is too large for a float.",
+            )
+
+        # for a string too large, float() instead returns infinity. Reject that,
+        # unless the string spells infinity itself (as "inf" or "infinity")
+        if isinstance(value, str):
+            unsigned = value.strip().lstrip("+-").lower()
+            spells_infinity = unsigned in {"inf", "infinity"}
+        else:
+            spells_infinity = False
+
+        if math.isinf(result) and not spells_infinity:
+            raise exceptions.ConversionError(
+                f"Cannot convert to float: '{value}'. It is too large for a float.",
+            )
+
+        return result
 
     raise exceptions.ConversionError(f"Cannot convert to float: {value!r}.")
 
@@ -210,6 +232,15 @@ def date(value: str | datetimelib.date | datetimelib.datetime) -> datetimelib.da
     raise exceptions.ConversionError(f"Cannot convert to date: '{value}'.")
 
 
+def _is_iso_date(s: str) -> bool:
+    """Whether ``s`` is an ISO date, like ``2021-10-05``."""
+    try:
+        datetimelib.date.fromisoformat(s.strip())
+    except ValueError:
+        return False
+    return True
+
+
 def datetime(
     value: str | datetimelib.date | datetimelib.datetime,
 ) -> datetimelib.datetime:
@@ -243,19 +274,24 @@ def datetime(
     >>> datetime(dt.date(2021, 10, 1))
     Traceback (most recent call last):
     ...
-    smartconfig.exceptions.ConversionError: Cannot implicitly convert date '2021-10-01' into datetime.
+    smartconfig.exceptions.ConversionError: Cannot implicitly convert date '2021-10-01' into datetime. Please include a time component.
 
     """
     if isinstance(value, datetimelib.datetime):
         return value
 
     if isinstance(value, datetimelib.date):
+        # the same advice as for a date string: a date computed by a stdlib
+        # function from a date with no time ends up here
         raise exceptions.ConversionError(
-            f"Cannot implicitly convert date '{value}' into datetime.",
+            f"Cannot implicitly convert date '{value}' into datetime. Please include "
+            "a time component.",
         )
 
     if isinstance(value, str):
-        if not _contains_time_component(value):
+        # advise adding a time only if the string is a date; for anything else
+        # (like "tomorrow"), adding a time wouldn't help
+        if not _contains_time_component(value) and _is_iso_date(value):
             raise exceptions.ConversionError(
                 f"Cannot implicitly convert date string '{value}' into datetime. "
                 "Please include a time component.",

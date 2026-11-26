@@ -1,21 +1,16 @@
 Configurations
 --------------
 
+In the next few sections, we will introduce the main concepts of `smartconfig`.
+
 Using `smartconfig` involves three steps:
 
-1. Specify the expected structure and types of the configuration using either a **schema** or a **prototype**.
+1. Specify the expected structure and types of the configuration using a **schema**.
 2. Read a **"raw" configuration** (usually from JSON, YAML, or TOML) into a Python dictionary.
 3. Call :func:`smartconfig.resolve()` to produce a **"resolved" configuration** where all dynamic values have been computed.
 
-This section introduces the first concept: the **configuration**. For the others, see :doc:`schemas` and :doc:`resolution`.
-
-.. note::
-
-    `smartconfig` does not actually read the input file; that is left to
-    third-party packages for reading configuration formats (like `PyYaml` or
-    the `json` module). Instead, `smartconfig` accepts as input the standard
-    Python types returned by those libraries; this makes it agnostic to the
-    configuration format used and very general in its applicability.
+This section introduces the main concept: the **configuration**. For the
+others, see :doc:`schemas` and :doc:`resolution`.
 
 
 Structure of a Configuration
@@ -28,6 +23,8 @@ Formally, a configuration is defined recursively as one of the following:
 - A **dictionary** whose keys are strings and whose values are again configurations.
 - A **list** of configurations.
 - A **value** (a string, integer, float, boolean, date or datetime, or None).
+- A :class:`~smartconfig.types.Template`: the value of a template field, which the
+  program evaluates later (see :ref:`template_fields_example`).
 
 The input to `smartconfig` is a "raw" configuration. It typically comes directly from a configuration file (JSON, YAML, TOML) and contains values that are not yet fully processed. In the example below, the ``config`` dictionary is a raw configuration: it contains interpolation placeholders (``${...}``) and natural language expressions that have not yet been evaluated.
 

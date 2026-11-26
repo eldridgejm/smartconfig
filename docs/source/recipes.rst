@@ -178,8 +178,7 @@ For example, instead of writing:
 .. code:: yaml
 
     doubled:
-        __double__:
-            number: 5
+        __double__: 5
 
 You could write:
 
@@ -250,3 +249,80 @@ As expected, we see:
 .. testoutput:: python
 
     {'doubled': 10}
+
+
+Recipe 4: Natural language dates without calling ``datetime.parse``
+-------------------------------------------------------------------
+
+The :ref:`datetime.parse <func-datetime-parse>` function reads dates written in
+words, like ``"3 days after 2025-10-01"`` or ``"first monday after ${ due }"``.
+Calling it means wrapping each such string in ``{"__datetime.parse__": ...}``.
+If most of the dates in a configuration are written this way, we can instead
+replace the ``datetime`` converter with one that runs every string through
+``datetime.parse`` first. Then a ``datetime`` field can simply read ``"3 days
+after ${ released }"``.
+
+The ``smarten`` function below takes an existing converter and returns a new
+one that parses strings before passing them to it. The original converter
+still checks the type of the result, so a date in a ``datetime`` field gets the
+usual request for a time, as in ``"3 days after 2025-10-01 at 23:59"``. Here we
+smarten both the ``datetime`` and ``date`` converters:
+
+.. testcode:: smart-dates
+
+    import types
+    from pprint import pprint
+
+    import smartconfig
+    from smartconfig import converters
+    from smartconfig.exceptions import ConversionError, ResolutionError
+    from smartconfig.stdlib.datetime import parse
+
+    def smarten(convert):
+        """Make a converter that runs strings through datetime.parse first."""
+
+        def smart_convert(value):
+            if isinstance(value, str):
+                args = types.SimpleNamespace(input=value, keypath=())
+                try:
+                    value = parse(args)
+                except ResolutionError as exc:
+                    raise ConversionError(exc.reason)
+            return convert(value)
+
+        return smart_convert
+
+    smart_converters = smartconfig.DEFAULT_CONVERTERS.copy()
+    smart_converters["datetime"] = smarten(converters.datetime)
+    smart_converters["date"] = smarten(converters.date)
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "released": {"type": "datetime"},
+            "due": {"type": "datetime"},
+            "late_deadline": {"type": "datetime"},
+            "review": {"type": "date"},
+        },
+    }
+
+    config = {
+        "released": "2025-10-01 09:00",
+        "due": "3 days after ${ released }",
+        "late_deadline": "first monday after ${ due } at 23:59",
+        "review": "1 week after ${ due }",
+    }
+
+    pprint(smartconfig.resolve(config, schema, converters=smart_converters))
+
+The result is:
+
+.. testoutput:: smart-dates
+
+    {'due': datetime.datetime(2025, 10, 4, 9, 0),
+     'late_deadline': datetime.datetime(2025, 10, 6, 23, 59),
+     'released': datetime.datetime(2025, 10, 1, 9, 0),
+     'review': datetime.date(2025, 10, 11)}
+
+A plain ISO string like ``"2025-10-01 09:00"`` is one of the forms
+``datetime.parse`` reads, so it still works as before.

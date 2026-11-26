@@ -168,6 +168,121 @@ def test_raises_if_cyclical_reference_detected():
     assert str(exc.value) == 'Cannot resolve keypath "foo": Circular reference.'
 
 
+def test_raises_if_function_calls_refer_to_each_other():
+    # given — each splice needs the other's result
+    cfg: ConfigurationDict = {
+        "a": {"__splice__": "b"},
+        "b": {"__splice__": "a"},
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then — the same message as for a cycle of strings
+    assert str(exc.value) == 'Cannot resolve keypath "a": Circular reference.'
+
+
+def test_a_name_in_an_untaken_branch_of_an_expression_is_not_a_cycle():
+    # given — x refers to y only when debug is true, so there is no cycle
+    cfg: ConfigurationDict = {
+        "debug": False,
+        "x": "${ y if debug else 'plain' }",
+        "y": "${ x } dbg",
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result == {"debug": False, "x": "plain", "y": "plain dbg"}
+
+
+def test_a_name_in_an_untaken_if_block_is_not_a_cycle():
+    # given
+    cfg: ConfigurationDict = {"r": "{% if false %}${ r }{% endif %}ok"}
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result == {"r": "ok"}
+
+
+def test_a_name_in_the_taken_branch_still_raises_its_cycle():
+    # given — debug is true, so x really does need y, which needs x
+    cfg: ConfigurationDict = {
+        "debug": True,
+        "x": "${ y if debug else 'plain' }",
+        "y": "${ x } dbg",
+    }
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert str(exc.value) == 'Cannot resolve keypath "x": Circular reference.'
+
+
+def test_testing_whether_a_name_that_fails_to_resolve_is_defined_raises_its_error():
+    # given — y exists but can't be resolved, which "is defined" must not hide
+    cfg: ConfigurationDict = {
+        "x": "${ 'yes' if y is defined else 'no' }",
+        "y": "${ z }",
+    }
+
+    # when
+    with raises(exceptions.UndefinedNameError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert str(exc.value).startswith(
+        """Cannot resolve keypath "y": 'z' is undefined."""
+    )
+
+
+def test_a_custom_filter_given_a_name_that_fails_to_resolve_raises_its_error():
+    # given — the filter never uses its argument, but y is still an error
+    cfg: ConfigurationDict = {"x": "${ y | ignore }", "y": "${ x }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, filters={"ignore": lambda value: "ignored"})
+
+    # then
+    assert str(exc.value) == 'Cannot resolve keypath "x": Circular reference.'
+
+
+def test_tojson_of_a_dict_holding_a_name_that_fails_to_resolve_raises_its_error():
+    # given — y reaches tojson inside a dict, not as the filter's own argument
+    cfg: ConfigurationDict = {"x": "${ {'a': y} | tojson }", "y": "${ x }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert str(exc.value) == 'Cannot resolve keypath "x": Circular reference.'
+
+
+def test_a_default_for_a_name_that_fails_to_resolve_raises_its_error():
+    # given — the default is for a missing name, not for a broken one
+    cfg: ConfigurationDict = {
+        "x": "${ y | default('fallback') }",
+        "y": "${ z }",
+    }
+
+    # when
+    with raises(exceptions.UndefinedNameError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert str(exc.value).startswith(
+        """Cannot resolve keypath "y": 'z' is undefined."""
+    )
+
+
 def test_interpolation_can_use_jinja_to_loop_over_list():
     # given
     schema: Schema = {
@@ -255,6 +370,75 @@ def test_can_use_jinja_methods():
     # then
     assert result["foo"] == "this"
     assert result["bar"] == "testing THIS"
+
+
+def test_keys_named_like_container_methods_are_looked_up_as_keys():
+    # Jinja tries attributes before items, so without care ${ a.keys } would be
+    # the method of the container that stands for "a"
+    names = ["keys", "values", "resolve", "get_keypath"]
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {
+                "type": "dict",
+                "required_keys": {name: {"type": "integer"} for name in names},
+            },
+            "dot": {"type": "string"},
+            "subscript": {"type": "string"},
+        },
+    }
+    cfg: ConfigurationDict = {
+        "a": {name: i for i, name in enumerate(names)},
+        "dot": " ".join(f"${{ a.{name} }}" for name in names),
+        "subscript": " ".join(f'${{ a["{name}"] }}' for name in names),
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["dot"] == "0 1 2 3"
+    assert result["subscript"] == "0 1 2 3"
+
+
+def test_keys_named_like_container_methods_are_looked_up_in_function_results():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {
+                "type": "dict",
+                "required_keys": {"get_keypath": {"type": "integer"}},
+            },
+            "b": {"type": "string"},
+        },
+    }
+    cfg: ConfigurationDict = {
+        "a": {"__dict.update__": [{"get_keypath": 1}, {}]},
+        "b": "${ a.get_keypath }",
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["b"] == "1"
+
+
+def test_container_methods_can_be_called_when_no_key_shadows_them():
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {
+                "type": "dict",
+                "required_keys": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+            },
+            "b": {"type": "string"},
+        },
+    }
+    cfg: ConfigurationDict = {
+        "a": {"x": 1, "y": 2},
+        "b": "${ a.keys() | join(',') } ${ a.values() | sum }",
+    }
+
+    result = resolve(cfg, schema)
+
+    assert result["b"] == "x,y 3"
 
 
 def test_can_use_builtin_jinja_function_range():
@@ -463,9 +647,10 @@ def test_interpolate_entire_dict_raises_exception():
     with raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema)
 
-    assert (
-        str(exc.value)
-        == 'Cannot resolve keypath "bar": Expected a dict, but got the string "${foo}".'
+    assert str(exc.value) == (
+        'Cannot resolve keypath "bar": Expected a dict, but got the string "${foo}". '
+        "A ${ ... } always gives a string: to copy a dict or list, use __splice__ "
+        "(or __use__ for a template)."
     )
 
 
@@ -566,3 +751,87 @@ def test_interpolate_entire_list_raises_exception():
 
     # then
     assert "Expected a list, but got the string" in str(exc.value)
+
+
+# strings are kept as written ==========================================================
+
+
+def test_interpolation_keeps_a_trailing_newline():
+    # given — the string is interpolated, and ends with a newline
+    cfg: ConfigurationDict = {"n": 2, "line": "${ n }\n"}
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result["line"] == "2\n"
+
+
+def test_a_string_without_template_syntax_is_unchanged():
+    # given — a plain string, with Windows line endings and a trailing newline
+    cfg: ConfigurationDict = {"text": "a\r\nb\r\n"}
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result["text"] == "a\r\nb\r\n"
+
+
+# None can't be inserted into a string =================================================
+
+
+def test_interpolating_none_raises_and_suggests_splice():
+    # given — the value of ${ a } is None, even though b may be null
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "a": {"type": "integer", "nullable": True},
+            "b": {"type": "integer", "nullable": True},
+        },
+    }
+
+    cfg: ConfigurationDict = {"a": None, "b": "${ a }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert str(exc.value) == (
+        'Cannot resolve keypath "b": A ${ ... } in "${ a }" is None, which can\'t be '
+        "inserted into a string. To copy the None itself, use __splice__; to insert "
+        "something else, give a default, as in ${ value or '' }."
+    )
+
+
+def test_none_can_be_tested_or_given_a_default_inside_a_string():
+    # given — only the final value of each ${ ... } is checked
+    cfg: ConfigurationDict = {
+        "a": None,
+        "default": "x${ a or '' }y",
+        "test": "{% if a is none %}missing{% endif %}",
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"})
+
+    # then
+    assert result["default"] == "xy"
+    assert result["test"] == "missing"
+
+
+def test_interpolating_self_raises():
+    # given — Jinja reads self as the template itself, never a key named self
+    cfg: ConfigurationDict = {"self": "mine", "b": "${ self }"}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then
+    assert str(exc.value) == (
+        'Cannot resolve keypath "b": In ${ ... }, Jinja reads "self" as the template '
+        "itself, not a key or variable of that name. To use a key named self, give "
+        "its container, as in ${ parent.self }, or use inject_root_as."
+    )

@@ -91,3 +91,20 @@ def test_any_can_be_None_without_being_nullable():
 
     # then
     assert result["foo"] is None
+
+
+def test_any_is_not_nullable_if_nullable_is_false():
+    # given — "any" accepts None by default, but this one says it isn't nullable
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {"foo": {"type": "any", "nullable": False}},
+    }
+
+    cfg: ConfigurationDict = {"foo": None}
+
+    # when
+    with raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert exc.value.keypath == ("foo",)

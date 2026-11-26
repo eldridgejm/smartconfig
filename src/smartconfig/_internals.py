@@ -87,6 +87,10 @@ looks for "foo" in a custom context object that searches three sources, in this 
     Jinja2 looks for it in a dictionary of global variables that can be passed to the
     resolve() function.
 
+If the name is found in none of these (nor among Jinja's own names, like ``range``), it
+is an _UndefinedName, which knows the names that were available; using it raises an
+UndefinedNameError that suggests a close name or lists them.
+
 Local Variables
 ~~~~~~~~~~~~~~~
 
@@ -208,6 +212,48 @@ When resolve() is called on this configuration, the following major steps occur:
        representing the root of the configuration tree is also fully resolved. The
        resolved configuration is returned from resolve().
 
+Template Fields
+---------------
+
+A field whose schema has ``"type": "template"`` is represented by a _TemplateNode.
+When a configuration containing a template field is resolved, the field is not
+resolved to an ordinary value (an int, a string, a dict, etc.). Rather, the node
+resolves to a :class:`smartconfig.types.Template` holding the value as written.
+
+The resolver does not unwrap a template field's value itself. make_node() (through
+_make_template_node()) builds an ordinary _FunctionCallNode for it, whose function is
+given the template schema; the value of a template field must be a function call (or
+a Template passed in). The core functions decide what to do with that schema:
+``__template__`` returns a _TemplateNode of its input, and ``__use__`` returns a
+_TemplateNode of the template it copies (see _core_functions.py). Any other function's
+result is built under the template schema too, so ``__if__`` choosing between two
+``__template__`` values works, and a result that isn't a template is an error.
+
+Like a _ValueNode, a _TemplateNode is resolved lazily and the result cached.
+Resolving it:
+
+    1. replaces each ``__use__`` in the value with the value it stands for (as written).
+       The target is looked up as a ``${...}`` reference would be (local variables,
+       the document, then the global variables), so it is done here rather than
+       when the node is built, since looking in the document needs the whole tree;
+    2. builds a node tree of the value against the inner schema, which checks its
+       structure, and walks that tree without resolving it (_TemplateNode._check),
+       rejecting template fields and ``__template__`` wrappers (templates do not
+       nest). The tree is marked with the template's keypath, so a template field in
+       it raises when resolved.
+
+    Steps 1 and 2 are the only places where the resolver must recognize a core
+    function by identity (_is_use_function, _is_template_function): a template's
+    value is not evaluated, so no function in it runs that could act for itself;
+    3. returns a Template that remembers the resolution options and the parameters.
+
+A ``__template__`` wrapper on a field of type ``any`` also gives a _TemplateNode (with
+an ``any`` inner schema and no parameters); see ``_template()`` in _core_functions.py.
+Template.evaluate() (in types.py) builds and resolves a new tree from the
+template's source, with the given names as the global variables. It marks the root
+with the template's keypath, so that a template field produced while evaluating (by a
+function call, say) is rejected too.
+
 """
 
 from __future__ import annotations
@@ -215,19 +261,118 @@ from __future__ import annotations
 from typing import (
     Any,
     Callable,
+    Iterable,
     Mapping,
     TypedDict,
 )
 import abc
+import contextlib
+import copy
 import difflib
 import enum
+import functools
 import typing
 
 import jinja2
 
 from . import types as _types
-from .exceptions import Error, ResolutionError
+from .exceptions import (
+    Error,
+    InvalidSchemaError,
+    ResolutionError,
+    TemplateRequiredError,
+    UndefinedNameError,
+    UnexpectedTemplateError,
+)
 from ._schemas import validate_schema as _validate_schema
+from .types import Template
+from ._utils import deep_update
+
+
+# Exceptions that are not wrapped in a ResolutionError when raised by an expression,
+# a filter or a function: smartconfig's own errors already say where they happened;
+# an AssertionError is a bug in the code, not a mistake in the configuration; and a
+# RecursionError is reported by reporting_recursion_errors, at the root.
+_NOT_WRAPPED = (Error, AssertionError, RecursionError)
+
+
+def _wrapped(exc: Exception, keypath: _types.KeyPath) -> ResolutionError:
+    """A ResolutionError at ``keypath`` for an exception that isn't smartconfig's.
+
+    The exception's type is kept in the message, since some messages (a KeyError's
+    ``'x'``, say) mean little without it. Raise it ``from exc`` to keep the cause.
+
+    """
+    return ResolutionError(f"{type(exc).__name__}: {exc}", keypath)
+
+
+def _call_dynamic_schema(
+    schema: _types.DynamicSchema,
+    cfg: _types.Configuration,
+    keypath: _types.KeyPath,
+    resolution_context: _types.ResolutionContext,
+    allow_default: bool,
+) -> _types.Schema:
+    """Call a dynamic schema and validate the schema it returns.
+
+    Every place that calls a dynamic schema goes through here, so that each reports
+    its errors in the same way, at ``keypath``.
+
+    Parameters
+    ----------
+    schema
+        The dynamic schema.
+    cfg
+        The configuration it is called with (``None`` for a missing optional key).
+    keypath
+        The keypath of that configuration.
+    resolution_context
+        The resolution context; its converters are the valid value types.
+    allow_default
+        Whether the returned schema may have a "default".
+
+    Returns
+    -------
+    Schema
+        The validated schema.
+
+    Raises
+    ------
+    ResolutionError
+        If the dynamic schema raises an exception that isn't smartconfig's (other
+        than an AssertionError or RecursionError), with the exception as its cause.
+    InvalidSchemaError
+        If the returned schema is another dynamic schema, or is invalid.
+
+    """
+    # an exception raised by the dynamic schema gets the keypath it was called for,
+    # as one raised by a function gets the call's
+    try:
+        result = schema(cfg, keypath)
+    except _NOT_WRAPPED:
+        raise
+    except Exception as exc:
+        raise _wrapped(exc, keypath) from exc
+
+    # _validate_schema accepts a callable without calling it (dynamic schemas nested
+    # in the result are fine), so a callable result is rejected here, before it is
+    # used as a schema dict
+    if callable(result):
+        raise InvalidSchemaError(
+            "A dynamic schema must return a schema, not another dynamic schema.",
+            keypath,
+        )
+
+    # the keypath makes an error read "a.0.type", not "type"; the converters make a
+    # type defined by a custom converter valid here as it is in a static schema
+    _validate_schema(
+        result,
+        keypath,
+        allow_default=allow_default,
+        allow_dynamic=True,
+        converters=resolution_context.converters,
+    )
+    return result
 
 
 class ResolutionMode(enum.Enum):
@@ -280,8 +425,8 @@ class StrictUndefined(jinja2.StrictUndefined):
     'topc'``. With it, the message names the configuration key when there is
     one, and suggests a close key or attribute (or lists the keys).
 
-    It is used when resolving configurations, and can be used as the
-    ``undefined`` class of other Jinja environments.
+    It is the ``undefined`` class of the environment used to resolve
+    configurations. It is not part of the public API.
 
     """
 
@@ -291,8 +436,25 @@ class StrictUndefined(jinja2.StrictUndefined):
         # Undefined.__getattr__, which asks for this message again, forever
         obj = self._undefined_obj
         name = self._undefined_name
+
+        # before the check below, since a list's missing element is usually named
+        # by an integer index, which would get Jinja's message naming the
+        # internal container class
+        if isinstance(obj, _UnresolvedList):
+            keypath = getattr(obj.list_node, "keypath", ())
+            where = ".".join(str(k) for k in keypath) or "The list"
+            element = f'"{name}"' if isinstance(name, str) else str(name)
+            return f'"{where}" has no element {element}.'
+
         if obj is jinja2.utils.missing or not isinstance(name, str):
             return super()._undefined_message
+
+        # the root is a function call that evaluated to a plain value, such as the
+        # string an __if__ returns; without this, the message names the internal class
+        if isinstance(obj, _UnresolvedFunctionCall) and isinstance(
+            obj.function_node.evaluate(), (_ValueNode, _TemplateNode)
+        ):
+            return f'The configuration is a single value, so it has no key "{name}".'
 
         if isinstance(obj, _UnresolvedDict):
             keypath = getattr(obj.dict_node, "keypath", ())
@@ -305,11 +467,6 @@ class StrictUndefined(jinja2.StrictUndefined):
             keys = [str(k) for k in getattr(obj.dict_node, "children", {})]
             return message + (_did_you_mean(name, keys) or "")
 
-        if isinstance(obj, _UnresolvedList):
-            keypath = getattr(obj.list_node, "keypath", ())
-            where = ".".join(str(k) for k in keypath) or "The list"
-            return f'"{where}" has no element "{name}".'
-
         if isinstance(obj, typing.Mapping):
             keys = [str(k) for k in obj]
             message = f'The {type(obj).__name__} has no key "{name}".'
@@ -320,12 +477,112 @@ class StrictUndefined(jinja2.StrictUndefined):
         return message + (_did_you_mean(name, attributes) or "")
 
 
-class _InsertedContainer(Exception):
-    """A dict or list was inserted into a string with ``${...}``."""
+class _UndefinedNameJinjaError(jinja2.exceptions.UndefinedError):
+    """Raised by Jinja for an undefined top-level name; see _UndefinedName."""
+
+    def __init__(self, message: str, name: str, available: tuple[str, ...]):
+        super().__init__(message)
+        self.name = name
+        self.available = available
+
+
+class _UndefinedName(StrictUndefined):
+    """An undefined top-level name, which knows the names that were available.
+
+    Using it raises a _UndefinedNameJinjaError, which _interpolate turns into an
+    UndefinedNameError.
+
+    """
+
+    def __init__(self, name: str, available: tuple[str, ...]):
+        def exception(message: str) -> _UndefinedNameJinjaError:
+            return _UndefinedNameJinjaError(message, name, available)
+
+        # Jinja raises self._undefined_exception(message) whenever the value is used
+        super().__init__(name=name, exc=typing.cast(type, exception))
+        self._available = available
+
+    @property
+    def _undefined_message(self) -> str:
+        name = str(self._undefined_name)
+        hint = _did_you_mean(name, self._available)
+        if hint is None and self._available:
+            hint = f" Names available here: {', '.join(self._available)}."
+        return f"'{name}' is undefined.{hint or ''}"
+
+
+class _DeferredError(StrictUndefined):
+    """A name whose value failed to resolve, standing in until the name is used.
+
+    Jinja looks up every name in a string before evaluating any of it, so in
+    ``${ y if debug else 'plain' }`` it asks for ``y`` even when ``debug`` is
+    false. If resolving ``y`` fails (say, with a circular reference, because ``y``
+    refers back to this string), the lookup gives this instead of raising. Using it
+    in any way raises the original error; a branch that never uses it is unharmed.
+
+    """
+
+    def __init__(self, name: str, error: ResolutionError):
+        def exception(message: str) -> ResolutionError:
+            return error
+
+        # Jinja raises self._undefined_exception(message) whenever the value is used
+        # (overriding _fail_with_undefined_error wouldn't do: StrictUndefined binds
+        # its dunder methods to the base class's)
+        super().__init__(name=name, exc=typing.cast(type, exception))
+        self.error = error
+
+
+def _raise_if_deferred_error(value: typing.Any) -> None:
+    """Raise the error a _DeferredError stands for; do nothing for other values."""
+    if isinstance(value, _DeferredError):
+        raise value.error
+
+
+def _raising_deferred_errors(function: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a Jinja test or filter so that a _DeferredError argument raises its error.
+
+    Jinja's tests and filters treat any undefined value as missing: ``y is
+    defined`` is false, ``y | default(1)`` is 1 and ``y is none`` is false. For a
+    name that exists but failed to resolve, that would hide the error.
+
+    """
+
+    # wraps copies jinja_pass_arg, which tells Jinja what to pass the filter first
+    @functools.wraps(function)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        for arg in (*args, *kwargs.values()):
+            _raise_if_deferred_error(arg)
+        return function(*args, **kwargs)
+
+    return wrapper
+
+
+_JINJA_FILTERS = {
+    name: _raising_deferred_errors(f) for name, f in jinja2.filters.FILTERS.items()
+}
+# some of Jinja's tests are typed as plain functions, which mypy won't take as Callable
+_JINJA_TESTS = {
+    name: _raising_deferred_errors(typing.cast(Callable[..., Any], t))
+    for name, t in jinja2.tests.TESTS.items()
+}
+
+
+class _Uninsertable(Exception):
+    """A ``${...}`` gave a value that can't go into a string: a dict, a list or
+    Jinja's ``self``."""
 
     def __init__(self, message: str):
         super().__init__(message)
         self.message = message
+
+
+class _InsertedNone(Exception):
+    """A ``${...}`` in a string gave None.
+
+    _interpolate writes the message, since it knows the string.
+
+    """
 
 
 def _key_reference(where: str, key: str) -> str:
@@ -335,44 +592,126 @@ def _key_reference(where: str, key: str) -> str:
     return f'${{ {where}["{key}"] }}'
 
 
-def _refuse_containers(value: typing.Any) -> typing.Any:
-    """Raise if *value*, the value of a ``${...}``, is a dict or a list.
+def _resolve_for_json(value: typing.Any) -> typing.Any:
+    """Plain data for an unresolved container, for Jinja's ``tojson`` filter."""
+    # a name that failed to resolve, inside a list or dict given to tojson
+    _raise_if_deferred_error(value)
+    if isinstance(value, (_UnresolvedDict, _UnresolvedList)):
+        return value.resolve()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
-    Inserted into a string, a dict or list would become its Python repr (or, for
-    an unresolved one, the repr of an internal object), which is almost never
-    what's meant. Used as the ``finalize`` of the Jinja environment.
+
+def _refuse_uninsertable(value: typing.Any) -> typing.Any:
+    """Raise if *value*, the value of a ``${...}``, is None, a dict or a list.
+
+    Inserted into a string, None would become "None", and a dict or list its
+    Python repr (or, for an unresolved one, the repr of an internal object),
+    which is almost never what's meant. Used as the ``finalize`` of the Jinja
+    environment.
 
     """
+    # None would silently become the string "None", which a nullable field would
+    # then keep (or fail to convert) instead of being null. __splice__ copies it
+    if value is None:
+        raise _InsertedNone()
+    # Jinja reads self as the template itself, whatever the configuration holds,
+    # and would insert "<TemplateReference None>"
+    if isinstance(value, jinja2.runtime.TemplateReference):
+        raise _Uninsertable(
+            'In ${ ... }, Jinja reads "self" as the template itself, not a key or '
+            "variable of that name. To use a key named self, give its container, as "
+            "in ${ parent.self }, or use inject_root_as."
+        )
     cant = "can't be inserted into a string"
+    if isinstance(value, Template):
+        where = ".".join(value.keypath)
+        raise _Uninsertable(
+            f'"{where}" is a template, which {cant}. Use it with __use__ instead.'
+        )
     if isinstance(value, _UnresolvedDict):
         where = ".".join(str(k) for k in getattr(value.dict_node, "keypath", ()))
         keys = [str(k) for k in getattr(value.dict_node, "children", {})]
-        if keys == ["__template__"]:
-            raise _InsertedContainer(
-                f'"{where}" is a template, which {cant}. Use it with __use__ instead.'
-            )
         example = f", as in {_key_reference(where, keys[0])}," if keys else ""
-        raise _InsertedContainer(
+        raise _Uninsertable(
             f'"{where}" is a dict, which {cant}. Use one of its keys{example} or copy '
             f"the whole value with __splice__."
         )
     if isinstance(value, _UnresolvedList):
         where = ".".join(str(k) for k in getattr(value.list_node, "keypath", ()))
-        raise _InsertedContainer(
+        raise _Uninsertable(
             f'"{where}" is a list, which {cant}. Use one of its elements, as in '
             f"${{ {where}[0] }}, or copy the whole value with __splice__."
         )
     if isinstance(value, typing.Mapping):
         described = _describe_value(dict(value))
-        raise _InsertedContainer(
+        raise _Uninsertable(
             f"{described[0].upper()}{described[1:]} {cant}. Use one of its keys "
             f"instead."
         )
     if isinstance(value, (list, tuple)):
-        raise _InsertedContainer(
+        raise _Uninsertable(
             f"A {type(value).__name__} {cant}. Use one of its elements instead."
         )
     return value
+
+
+class _Environment(jinja2.Environment):
+    """A Jinja environment in which ``${ a.b }`` on a configuration container is a["b"].
+
+    Jinja tries Python attributes before items, so a key named like a method of an
+    unresolved container (``keys``, ``values``, ``resolve``, ``get_keypath``) would
+    give the method. Here a container's items come first; its methods are found
+    only when no item has the name, so ``${ a.keys() }`` still works.
+
+    """
+
+    def getattr(self, obj: typing.Any, attribute: str) -> typing.Any:
+        # Check that the item exists before looking it up, rather than catching
+        # LookupError or TypeError from obj[attribute]: the lookup also resolves the
+        # item, so catching would hide an error raised while resolving it.
+        if _is_unresolved_container(obj) and _has_item(obj, attribute):
+            return obj[attribute]
+        return super().getattr(obj, attribute)
+
+    def getitem(self, obj: typing.Any, argument: typing.Any) -> typing.Any:
+        # Override Jinja's getitem for the same reason as getattr: it catches lookup
+        # and type errors from obj[argument], hiding errors raised while resolving
+        # the item.
+        if _is_unresolved_container(obj) and _has_item(obj, argument):
+            return obj[argument]
+        return super().getitem(obj, argument)
+
+
+def _is_unresolved_container(obj: typing.Any) -> bool:
+    return isinstance(obj, (_UnresolvedDict, _UnresolvedList, _UnresolvedFunctionCall))
+
+
+def _has_item(container: typing.Any, key: typing.Any) -> bool:
+    """Whether the container has an item at key, found without resolving the item.
+
+    ``container[key]`` resolves the item too, so catching a KeyError or IndexError
+    from it can't tell a missing key from an error raised while resolving the
+    value. Code that looks up a name checks with this first, then looks it up
+    without catching anything, so errors in the value are reported as themselves.
+
+    """
+    if isinstance(container, _UnresolvedFunctionCall):
+        # a function call (at the root) may evaluate to a plain value, such as the
+        # string an __if__ returns; a value has no keys, so nothing is found in it
+        if isinstance(container.function_node.evaluate(), (_ValueNode, _TemplateNode)):
+            return False
+        container = container._evaluate_to_unresolved_container()
+    if isinstance(container, _UnresolvedDict):
+        children = container.dict_node.children
+    elif isinstance(container, _UnresolvedList):
+        # mirrors _UnresolvedList.__getitem__: integer indices in range only
+        return isinstance(key, int) and key in range(len(container))
+    else:
+        children = container
+    try:
+        return key in children
+    except TypeError:  # an unhashable key
+        return False
 
 
 class _UnresolvedDict(_types.UnresolvedDict):
@@ -404,7 +743,7 @@ class _UnresolvedDict(_types.UnresolvedDict):
             return _UnresolvedDict(child)
         elif isinstance(child, _ListNode):
             return _UnresolvedList(child)
-        elif isinstance(child, _ValueNode):
+        elif isinstance(child, (_ValueNode, _TemplateNode)):
             return child.resolve()
 
     def __len__(self):
@@ -416,9 +755,18 @@ class _UnresolvedDict(_types.UnresolvedDict):
     def keys(self):
         return self.dict_node.children.keys()
 
-    def values(self):
-        for key in self.keys():
-            yield self[key]
+    # Mapping's default `in` looks the value up, which would resolve it, and could
+    # even report a circular reference. Checking the keys doesn't resolve anything
+    def __contains__(self, key) -> bool:
+        return key in self.dict_node.children
+
+    # str() is what ${ d | string } and ${ 'x' ~ d } call; without this it fell
+    # back to object's repr, inserting "<..._UnresolvedDict object at 0x...>".
+    # Give the text of the plain dict, as for a dict written in the expression.
+    # __repr__ is left alone: resolving there would run in debuggers and error
+    # messages, where it could raise
+    def __str__(self) -> str:
+        return str(self.resolve())
 
     def resolve(self) -> _types.ConfigurationDict:
         """Resolve all values recursively, returning a ConfigurationDict."""
@@ -438,9 +786,17 @@ class _UnresolvedList(_types.UnresolvedList):
     def __init__(self, list_node: _ListNode):
         self.list_node = list_node
 
+    @typing.overload
     def __getitem__(
-        self, ix
-    ) -> _UnresolvedDict | _UnresolvedList | _types.Configuration:
+        self, ix: int
+    ) -> _UnresolvedDict | _UnresolvedList | _types.Configuration: ...
+
+    @typing.overload
+    def __getitem__(
+        self, ix: slice
+    ) -> list[_types.UnresolvedDict | _types.UnresolvedList | _types.Configuration]: ...
+
+    def __getitem__(self, ix):
         """Access an element in the unresolved list.
 
         If the element is a _ValueNode, this resolves it. If the element is a _DictNode
@@ -448,9 +804,19 @@ class _UnresolvedList(_types.UnresolvedList):
         _FunctionCallNode, this evaluates the function and returns an unresolved
         container if the result is a collection, or the resolved value otherwise.
 
-        If the index is out of range, an IndexError is raised.
+        If the index is out of range, an IndexError is raised. A negative index
+        counts from the end, and a slice gives a plain list of the elements.
 
         """
+        # a slice gives a list of the elements, each looked up as below (so a
+        # container in it stays unresolved), as slicing a list would
+        if isinstance(ix, slice):
+            return [self[i] for i in range(len(self))[ix]]
+
+        # a negative index counts from the end, as for a list
+        if isinstance(ix, int) and -len(self) <= ix < 0:
+            ix += len(self)
+
         if ix not in range(len(self)):
             raise IndexError(ix)
 
@@ -464,7 +830,7 @@ class _UnresolvedList(_types.UnresolvedList):
             return _UnresolvedDict(child)
         elif isinstance(child, _ListNode):
             return _UnresolvedList(child)
-        elif isinstance(child, _ValueNode):
+        elif isinstance(child, (_ValueNode, _TemplateNode)):
             return child.resolve()
         else:
             raise TypeError(f"Unexpected node type: {type(child)}")  # pragma: no cover
@@ -475,6 +841,21 @@ class _UnresolvedList(_types.UnresolvedList):
 
     def __len__(self):
         return len(self.list_node.children)
+
+    # Sequence defines no __eq__, so == compared identity and l == [1, 2] was always
+    # False (as was a dict holding a list, since Mapping's == compares the values).
+    # Compare element by element like a list; an element that is a container is
+    # itself unresolved, so nesting works. Like a list, it equals only lists:
+    # anything else (a tuple) gets NotImplemented, so Python gives False
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, (list, _types.UnresolvedList)):
+            return NotImplemented
+        return len(self) == len(other) and list(self) == list(other)
+
+    # for the same reason as _UnresolvedDict.__str__: the text of the plain list,
+    # not "<..._UnresolvedList object at 0x...>"
+    def __str__(self) -> str:
+        return str(self.resolve())
 
     def resolve(self) -> _types.ConfigurationList:
         """Resolve all values recursively, returning a ConfigurationList."""
@@ -499,7 +880,7 @@ class _UnresolvedFunctionCall(_types.UnresolvedFunctionCall):
     ) -> _UnresolvedDict | _UnresolvedList:
         """Evaluate the function call and return a unresolved container."""
         node = self.function_node.evaluate()
-        assert not isinstance(node, _ValueNode)
+        assert not isinstance(node, (_ValueNode, _TemplateNode))
         if isinstance(node, _DictNode):
             return _UnresolvedDict(node)
         else:
@@ -516,6 +897,11 @@ class _UnresolvedFunctionCall(_types.UnresolvedFunctionCall):
         collection. If the result is not a dictionary or list, a TypeError is raised.
 
         """
+        # raise the TypeError rather than reaching the assert in
+        # _evaluate_to_unresolved_container; Jinja reads it as an undefined name
+        node = self.function_node.evaluate()
+        if isinstance(node, (_ValueNode, _TemplateNode)):
+            raise TypeError("The function call evaluated to a value with no keys.")
         return self._evaluate_to_unresolved_container()[key]
 
     def get_keypath(self, keypath: _types.KeyPath | str) -> _types.Configuration:
@@ -550,13 +936,21 @@ def _get_node_at_keypath(
     ``_FunctionCallNode`` instances encountered along the path are evaluated so that
     their children can be traversed.
 
+    If there is no node at the keypath, a KeyError is raised.
+
     """
     if isinstance(keypath, str):
         keypath = tuple(keypath.split("."))
 
     head_key, *rest = keypath
 
-    child: _ConcreteNode = node.children[cast_key(head_key)]
+    # A list index that is out of range or not an integer raises IndexError or
+    # ValueError here. Raise KeyError instead, which is what callers such as
+    # __splice__ catch to report that the keypath does not exist.
+    try:
+        child: _ConcreteNode = node.children[cast_key(head_key)]
+    except (IndexError, ValueError):
+        raise KeyError(head_key) from None
 
     # if the child is a function call, evaluate it to get the underlying node
     if isinstance(child, _FunctionCallNode):
@@ -586,10 +980,76 @@ def _get_node_at_keypath(
 #       nodes.
 #
 #   _FunctionCallNode: a node that represents a function call.
+#
+#   _TemplateNode: a leaf node representing a template field. Its value is kept as
+#       written and resolves to a Template, which is evaluated later.
 
 # _Node ABC ----------------------------------------------------------------------------
 
-type _ConcreteNode = _DictNode | _ListNode | _ValueNode | _FunctionCallNode
+type _ConcreteNode = (
+    _DictNode | _ListNode | _ValueNode | _FunctionCallNode | _TemplateNode
+)
+
+
+# computing a node's result once ----------------------------------------------------
+
+# a node's result, while it is being computed
+_IN_PROGRESS = object()
+
+
+def _cache_and_detect_cycles[N: _Node, R](method: Callable[[N], R]) -> Callable[[N], R]:
+    """Make a node's method compute its result once, and detect circular references.
+
+    The first call runs the method and keeps its result, which later calls return.
+    A call made while the method is still running (because computing the result
+    needs the result itself) raises a ResolutionError, "Circular reference.", at
+    the node's keypath. If the method raises, nothing is kept, so a later call
+    runs it again and reports the same error rather than a circular reference.
+
+    The result is kept in the node's ``_cache``, under the method's name. Use
+    :func:`_is_in_progress` to ask whether it is running, and :func:`_set_result`
+    to give a result without running it.
+
+    """
+    name = method.__name__
+
+    @functools.wraps(method)
+    def wrapper(node: N) -> R:
+        if name in node._cache:
+            if node._cache[name] is _IN_PROGRESS:
+                raise ResolutionError("Circular reference.", node.keypath)
+            return node._cache[name]
+
+        node._cache[name] = _IN_PROGRESS
+        try:
+            result = method(node)
+        except BaseException:
+            del node._cache[name]
+            raise
+        node._cache[name] = result
+        return result
+
+    return wrapper
+
+
+def _is_in_progress(method: Callable[[], object]) -> bool:
+    """Whether a node's method, given bound, is running.
+
+    The method must be decorated with :func:`_cache_and_detect_cycles`.
+
+    """
+    node = typing.cast(_Node, getattr(method, "__self__"))
+    return node._cache.get(method.__name__) is _IN_PROGRESS
+
+
+def _set_result(method: Callable[[], object], result: object) -> None:
+    """Give a node's method, given bound, its result without running it.
+
+    The method must be decorated with :func:`_cache_and_detect_cycles`.
+
+    """
+    node = typing.cast(_Node, getattr(method, "__self__"))
+    node._cache[method.__name__] = result
 
 
 class _Node(abc.ABC):
@@ -603,8 +1063,21 @@ class _Node(abc.ABC):
     local_variables : Mapping[str, Configuration | UnresolvedDict | UnresolvedList | UnresolvedFunctionCall] | None
         A dictionary of local variables that can be accessed during string
         interpolation. If None, this is made an empty dictionary.
+    template_keypath : KeyPath | None
+        Used to detect a template inside a template, which is not allowed. It is set
+        on the root of a tree built from a template's value (by
+        :meth:`Template.evaluate`, and by _TemplateNode.resolve to check the
+        structure), and it is the keypath of that template. A _TemplateNode checks
+        its root's ``template_keypath`` when it is resolved: if it is set, the node
+        is a template inside a template, and the error message uses the keypath to
+        name the enclosing template. ``None`` on any other root.
 
     """
+
+    template_keypath: _types.KeyPath | None = None
+
+    # set by each kind of node; used in error messages
+    keypath: _types.KeyPath
 
     def __init__(
         self,
@@ -612,6 +1085,9 @@ class _Node(abc.ABC):
         local_variables: Mapping[str, _types.Configuration] | None = None,
     ):
         self.parent = parent
+
+        # the results of the node's _cache_and_detect_cycles methods, by method name
+        self._cache: dict[str, Any] = {}
 
         if local_variables is None:
             self.local_variables: dict[
@@ -630,7 +1106,9 @@ class _Node(abc.ABC):
     @property
     def root(self) -> _ConcreteNode:
         """The root of the configuration tree."""
-        assert isinstance(self, (_DictNode, _ListNode, _ValueNode, _FunctionCallNode))
+        assert isinstance(
+            self, (_DictNode, _ListNode, _ValueNode, _FunctionCallNode, _TemplateNode)
+        )
         if self._root is None:
             if self.parent is None:
                 self._root = self
@@ -642,6 +1120,62 @@ class _Node(abc.ABC):
     @abc.abstractmethod
     def resolve(self) -> _types.Configuration:
         """Recursively resolve the node into a configuration."""
+
+    # name lookup ----------------------------------------------------------------------
+    #
+    # ${...} references (see _ValueNode._make_custom_jinja_context) and __use__
+    # targets (see _look_up_keypath) find names the same way, using these methods.
+
+    def _root_container(
+        self,
+    ) -> _UnresolvedDict | _UnresolvedList | _UnresolvedFunctionCall | dict[str, Any]:
+        """The root of the tree as an unresolved container, for looking up names.
+
+        If the root is a value or template node, the tree is a single isolated node.
+        It cannot have in-tree references, because they'd be circular, so an empty
+        dict does the job.
+
+        """
+        if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
+            return _make_unresolved_container(self.root)
+        return {}
+
+    def _look_up_name(
+        self,
+        key: str,
+        root_container: _UnresolvedDict
+        | _UnresolvedList
+        | _UnresolvedFunctionCall
+        | dict[str, Any],
+        global_variables: Mapping[str, Any],
+    ) -> Any:
+        """Look up a name as seen from this node.
+
+        The name is looked up in the local variables of this node and its ancestors,
+        then in the root of the tree, then in the global variables.
+
+        Raises
+        ------
+        KeyError
+            If the name is in none of them.
+
+        """
+        try:
+            return self.get_local_variable(key)
+        except KeyError:
+            pass
+
+        # the root is skipped if it is a function call still being evaluated (we
+        # are in its input): it has no keys yet, and looking one up would be circular
+        root = self.root
+        if not (isinstance(root, _FunctionCallNode) and _is_in_progress(root.evaluate)):
+            # check before looking up, rather than catching KeyError or IndexError,
+            # so that an error raised while resolving the value isn't mistaken for
+            # a missing name (see _has_item)
+            if _has_item(root_container, key):
+                return root_container[key]  # type: ignore[index, call-overload]
+
+        return global_variables[key]
 
     def get_local_variable(
         self, key: str
@@ -702,6 +1236,18 @@ def _populate_required_children(
                 f'Dictionary is missing required key "{key}".', (keypath + (key,))
             )
 
+        # make_node validates a dynamic schema's result with defaults allowed, as
+        # for an optional key. A required key is never missing, so a default for
+        # it is a mistake, and is rejected here as it would be in a static schema
+        if callable(key_schema):
+            key_schema = _call_dynamic_schema(
+                key_schema,
+                dct[key],
+                keypath + (key,),
+                resolution_context,
+                allow_default=False,
+            )
+
         existing_children[key] = make_node(
             dct[key],
             key_schema,
@@ -740,15 +1286,30 @@ def _populate_optional_children(
         else:
             # key is missing; resolve dynamic schema before checking for default
             if callable(key_schema):
-                key_schema = key_schema(None, keypath + (key,))
-                _validate_schema(
-                    key_schema, keypath + (key,), allow_default=True, allow_dynamic=True
+                key_schema = _call_dynamic_schema(
+                    key_schema,
+                    None,
+                    keypath + (key,),
+                    resolution_context,
+                    allow_default=True,
                 )
             if "default" in key_schema:
                 # default was provided
                 value = key_schema["default"]
             else:
                 # no default was provided
+                continue
+
+            if key_schema.get("type") == "template" and value is not None:
+                # the default of a template field is the template's value as
+                # written, without a __template__ wrapper
+                existing_children[key] = _TemplateNode(
+                    value,
+                    key_schema,
+                    keypath + (key,),
+                    resolution_context,
+                    parent=parent,
+                )
                 continue
 
         existing_children[key] = make_node(
@@ -1055,12 +1616,6 @@ class _ValueNode(_Node):
 
     """
 
-    # sentinel object denoting that a node is currently being resolved
-    _PENDING = object()
-
-    # sentinel object denoting that the resolution of this node has not yet started
-    _UNDISCOVERED = object()
-
     def __init__(
         self,
         value: _types.ConfigurationValue,
@@ -1079,13 +1634,6 @@ class _ValueNode(_Node):
         self.resolution_context = resolution_context
         self.nullable = nullable
         self.mode = mode
-
-        # The resolved value of the leaf node. There are two special values. If this is
-        # _UNDISCOVERED, the resolution process has not yet discovered the leaf node
-        # (this is the default value). If this is _PENDING, a step in the resolution
-        # process has started to resolve the leaf. Otherwise, this contains the resolved
-        # value. Necessary in order to detect circular references.
-        self._resolved = _ValueNode._UNDISCOVERED
 
     @classmethod
     def from_configuration(
@@ -1133,6 +1681,7 @@ class _ValueNode(_Node):
             mode=mode,
         )
 
+    @_cache_and_detect_cycles
     def resolve(self) -> _types.ConfigurationValue:
         """Resolve the leaf's value by 1) interpolating and 2) converting.
 
@@ -1150,18 +1699,6 @@ class _ValueNode(_Node):
         The resolved value.
 
         """
-        # check for circular references
-        if self._resolved is _ValueNode._PENDING:
-            raise ResolutionError("Circular reference.", self.keypath)
-
-        # if the value is already resolved, return it
-        if self._resolved is not _ValueNode._UNDISCOVERED:
-            self._resolved = typing.cast(_types.ConfigurationValue, self._resolved)
-            return self._resolved
-
-        # if we've reached this point, we're resolving this node for the first time
-        self._resolved = _ValueNode._PENDING
-
         # Step 1: interpolate the string (if its a string and mode is not RAW)
         value: _types.ConfigurationValue
         if isinstance(self.value, str) and self.mode != ResolutionMode.RAW:
@@ -1173,14 +1710,10 @@ class _ValueNode(_Node):
         else:
             value = self.value
 
-        # Step 2: convert the value to the expected type (if it's not None) and cache
-        # the result
+        # Step 2: convert the value to the expected type (if it's not None)
         if self.nullable and self.value is None:
-            self._resolved = None
-        else:
-            self._resolved = self._safely_evaluate(self._convert, value, self.type_)
-
-        return typing.cast(_types.ConfigurationValue, self._resolved)
+            return None
+        return self._safely_evaluate(self._convert, value, self.type_)
 
     def _make_custom_jinja_context(
         self, global_variables: Mapping[str, Any], inject_root_as: str | None = None
@@ -1210,16 +1743,7 @@ class _ValueNode(_Node):
         looking up the key in the template variables.
 
         """
-        root_container: (
-            _UnresolvedDict | _UnresolvedList | _UnresolvedFunctionCall | dict[str, Any]
-        )
-        if isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode)):
-            root_container = _make_unresolved_container(self.root)
-        else:
-            # if the root is a value node, then the configuration tree is a single
-            # isolated node. This node cannot have any in-tree references, because
-            # they'd be circular. In this case, an empty root container does the job.
-            root_container = {}
+        root_container = self._root_container()
 
         # save a copy of self, because we shadow `self` in `resolve_or_missing` below
         this_node = self
@@ -1232,26 +1756,36 @@ class _ValueNode(_Node):
 
         class CustomContext(jinja2.runtime.Context):
             def resolve_or_missing(self, key):
-                # first try local variables
+                # first try local variables, then the root, then the globals
                 try:
-                    return this_node.get_local_variable(key)
+                    return this_node._look_up_name(
+                        key, root_container, global_variables
+                    )
                 except KeyError:
                     pass
-
-                # then try the root of the configuration tree
-                try:
-                    return root_container[key]
-                except (KeyError, IndexError):
-                    pass
-
-                # then try the global variables
-                try:
-                    return global_variables[key]
-                except KeyError:
-                    pass
+                # Jinja looks up every name up front, even in untaken branches, so
+                # the error (of any kind) is raised only if the name is used. An
+                # unused name loses nothing: its value is resolved on its own anyway
+                except ResolutionError as exc:
+                    return _DeferredError(key, exc)
 
                 # finally, try jinja's default behavior, including jinja builtins
-                return super().resolve_or_missing(key)
+                result = super().resolve_or_missing(key)
+                if result is jinja2.utils.missing:
+                    return _UndefinedName(key, available_names())
+                return result
+
+        def available_names() -> tuple[str, ...]:
+            """The names a reference could use here, in lookup order."""
+            names: list[str] = []
+            node: _Node | None = this_node
+            while node is not None:
+                names += node.local_variables
+                node = node.parent
+            if isinstance(root_container, _UnresolvedDict):
+                names += [str(k) for k in root_container.dict_node.children]
+            names += global_variables
+            return tuple(dict.fromkeys(names))
 
         return CustomContext
 
@@ -1274,11 +1808,19 @@ class _ValueNode(_Node):
         The interpolated string.
 
         """
-        environment = jinja2.Environment(
+        # Jinja changes text even where there is nothing to interpolate (it
+        # converts line endings to \n and drops a trailing newline), so a string
+        # with no template syntax is returned exactly as written
+        if not any(marker in s for marker in ("${", "{%", "{#")):
+            return s
+
+        environment = _Environment(
             variable_start_string="${",
             variable_end_string="}",
-            # inserting a dict or list into a string is an error
-            finalize=_refuse_containers,
+            # without this, Jinja drops a single trailing newline from the result
+            keep_trailing_newline=True,
+            # inserting None, a dict or a list into a string is an error
+            finalize=_refuse_uninsertable,
         )
 
         # create a custom jinja context for resolving references. This will first look
@@ -1290,8 +1832,25 @@ class _ValueNode(_Node):
             inject_root_as=self.resolution_context.inject_root_as,
         )
 
+        # a name whose value failed to resolve is a _DeferredError, which tests and
+        # filters would take for a missing name; these raise its error instead
+        environment.tests.update(_JINJA_TESTS)
+        environment.filters.update(_JINJA_FILTERS)
+
         # register the custom filters
-        environment.filters.update(self.resolution_context.filters)
+        environment.filters.update(
+            {
+                name: _raising_deferred_errors(f)
+                for name, f in self.resolution_context.filters.items()
+            }
+        )
+
+        # json can't serialize the unresolved containers, so tojson resolves them to
+        # plain data first (sort_keys is Jinja's default for tojson)
+        environment.policies["json.dumps_kwargs"] = {
+            "sort_keys": True,
+            "default": _resolve_for_json,
+        }
 
         # make undefined references raise an error
         environment.undefined = StrictUndefined
@@ -1305,10 +1864,28 @@ class _ValueNode(_Node):
 
         try:
             result = template.render()
+        except _UndefinedNameJinjaError as exc:
+            raise UndefinedNameError(
+                exc.message or "", self.keypath, exc.name, exc.available
+            ) from None
         except jinja2.exceptions.UndefinedError as exc:
             raise ResolutionError(str(exc), self.keypath)
-        except _InsertedContainer as exc:
+        except _Uninsertable as exc:
             raise ResolutionError(exc.message, self.keypath) from None
+        except _InsertedNone:
+            raise ResolutionError(
+                f'A ${{ ... }} in "{s}" is None, which can\'t be inserted into a '
+                "string. To copy the None itself, use __splice__; to insert something "
+                "else, give a default, as in ${ value or '' }.",
+                self.keypath,
+            ) from None
+        # an exception raised by the expression or a filter in it gets this string's
+        # keypath. One from a value it refers to was already wrapped where it was
+        # raised, so it is a ResolutionError by now and passes through unchanged
+        except _NOT_WRAPPED:
+            raise
+        except Exception as exc:
+            raise _wrapped(exc, self.keypath) from exc
 
         if full and result != s:
             # if the string changed, we need to interpolate again
@@ -1335,6 +1912,11 @@ class _ValueNode(_Node):
             The converted value.
 
         """
+        # "any" is a built-in type, like "dict": validate_schema accepts it whatever
+        # the converters are, so it must not depend on one here either
+        if type_ == "any":
+            return value
+
         converters = self.resolution_context.converters
 
         try:
@@ -1387,12 +1969,6 @@ class _FunctionCallNode(_Node):
 
     """
 
-    # sentinel object denoting that a node is currently being evaluated
-    PENDING = object()
-
-    # sentinel object denoting that the evaluation of this node has not yet started
-    UNDISCOVERED = object()
-
     def __init__(
         self,
         keypath: _types.KeyPath,
@@ -1412,14 +1988,6 @@ class _FunctionCallNode(_Node):
         self.input = input
         self.mode = mode
 
-        # The evaluated value of the function node. There are two special
-        # values. If this is _UNDISCOVERED, the evaluation process has not yet
-        # discovered the function node (this is the default value). If this is
-        # _PENDING, a step in the resolution process has started to evaluate
-        # the function. Otherwise, this contains the evaluated value. Necessary
-        # in order to detect circular references.
-        self._evaluated = _FunctionCallNode.UNDISCOVERED
-
     def _make_resolver(self) -> _types.Resolver:
         """Make a "resolver" function that can be used by functions to resolve configs.
 
@@ -1432,6 +2000,7 @@ class _FunctionCallNode(_Node):
             configuration: _types.Configuration,
             schema: _types.Schema | None = None,
             local_variables: Mapping[str, _types.Configuration] | None = None,
+            relative_keypath: _types.KeyPath = (),
         ) -> _types.Configuration:
             if schema is None:
                 schema = self.schema
@@ -1440,7 +2009,8 @@ class _FunctionCallNode(_Node):
                 schema,
                 self.resolution_context,
                 parent=self,
-                keypath=self.keypath,
+                # relative_keypath places it under the call, for error messages
+                keypath=self.keypath + tuple(relative_keypath),
                 local_variables=local_variables,
                 mode=self.mode,
             )
@@ -1448,7 +2018,8 @@ class _FunctionCallNode(_Node):
 
         return resolver
 
-    def evaluate(self) -> _DictNode | _ListNode | _ValueNode:
+    @_cache_and_detect_cycles
+    def evaluate(self) -> _DictNode | _ListNode | _ValueNode | _TemplateNode:
         """Evaluate the function, returning a _DictNode, _ListNode, or _ValueNode.
 
         This operates recursively, so that if the function returns a ConfigurationDict
@@ -1461,17 +2032,6 @@ class _FunctionCallNode(_Node):
         # (_DictNode, _ListNode, _ValueNode, _FunctionCallNode). This bypasses
         # make_node and gives core functions precise control over how the result is
         # built (e.g., choosing the resolution mode).
-
-        if self._evaluated is _FunctionCallNode.PENDING:
-            raise ResolutionError("Circular reference", self.keypath)
-
-        # if the function has already been evaluated, return the cached result
-        if self._evaluated is not _FunctionCallNode.UNDISCOVERED:
-            assert isinstance(self._evaluated, (_DictNode, _ListNode, _ValueNode))
-            return self._evaluated
-
-        # at this point, we're evaluating the function for the first time
-        self._evaluated = _FunctionCallNode.PENDING
 
         # if the function wants its input to be resolved, we resolve it by creating
         # a node out of its input configuration and resolving it
@@ -1509,24 +2069,41 @@ class _FunctionCallNode(_Node):
             _function_call_node=self,
         )
 
-        # evaluate the function itself
-        output = self.function(args)
+        # evaluate the function itself. An exception it raises that isn't
+        # smartconfig's gets the call's keypath, so that it is reported where the
+        # function was called, not wherever the call happened to be referenced from
+        try:
+            output = self.function(args)
+        except _NOT_WRAPPED:
+            raise
+        except Exception as exc:
+            raise _wrapped(exc, self.keypath) from exc
 
         # see the comment at the top of this method: privately, functions are allowed to
         # return node types directly, in which case we skip make_node and use the
         # returned node as the result directly; publicly, functions should return
         # Configuration, in which case we pass the output through make_node to
         # construct the appropriate node type
-        if isinstance(output, (_DictNode, _ListNode, _ValueNode, _FunctionCallNode)):
+        if isinstance(
+            output,
+            (_DictNode, _ListNode, _ValueNode, _FunctionCallNode, _TemplateNode),
+        ):
             result = output
         else:
+            # By default the output is configuration, resolved in this call's mode.
+            # With resolve_output=False it is finished data: RAW mode converts it to
+            # the schema without interpolating it or evaluating function calls in it.
+            if self.function.resolve_output:
+                output_mode = self.mode
+            else:
+                output_mode = ResolutionMode.RAW
             result = make_node(
                 output,
                 self.schema,
                 self.resolution_context,
                 parent=self,
                 keypath=self.keypath,
-                mode=self.mode,
+                mode=output_mode,
             )
 
         # the result may be a function call itself, in which case we need to evaluate it
@@ -1534,7 +2111,6 @@ class _FunctionCallNode(_Node):
             # this will evaluate the function call recursively
             result = result.evaluate()
 
-        self._evaluated = result
         return result
 
     def resolve(self) -> _types.Configuration:
@@ -1553,7 +2129,576 @@ class _FunctionCallNode(_Node):
         raise KeyError(keypath)
 
 
+# _TemplateNode ------------------------------------------------------------------------
+
+
+def _nested_template_field_error(
+    keypath: _types.KeyPath, enclosing: _types.KeyPath
+) -> UnexpectedTemplateError:
+    """The error for a template field at ``keypath`` inside the template at
+    ``enclosing``."""
+    where = ".".join(enclosing)
+    return UnexpectedTemplateError(
+        f'A template can\'t contain a template field: the template at "{where}" '
+        "already defers everything in it. Make the field a sibling of the template "
+        "instead.",
+        keypath,
+        enclosing,
+    )
+
+
+@contextlib.contextmanager
+def reporting_recursion_errors() -> typing.Iterator[None]:
+    """Report a RecursionError raised inside the block as a ResolutionError.
+
+    Checking the schema, building the tree and resolving it are all recursive: a
+    node's children, and the values its references point to, are handled inside
+    it. A configuration or schema nested deeply enough (a few hundred levels, with
+    Python's default limit), or a long enough chain of references or of function
+    calls that return function calls, exhausts the stack and raises a bare
+    RecursionError, with no explanation.
+
+    """
+    try:
+        yield
+    except RecursionError as exc:
+        # chained, so that if smartconfig itself recursed forever, the traceback
+        # still shows where
+        raise ResolutionError(
+            "The configuration is nested too deeply to resolve, or has a chain of "
+            "references or of function calls that is too long (or never ends).",
+            (),
+        ) from exc
+
+
+def make_template_tree(
+    value: _types.Configuration,
+    schema: _types.Schema | _types.DynamicSchema,
+    resolution_context: _types.ResolutionContext,
+    keypath: _types.KeyPath,
+) -> _ConcreteNode:
+    """Build the node tree of a template's value, marked as a template's tree.
+
+    The root's ``template_keypath`` is set to ``keypath``, so that a template field
+    in the tree raises when it is resolved (templates do not nest).
+
+    Raises
+    ------
+    UnexpectedTemplateError
+        If the tree has a template field whose value is not a template. The
+        template's own field was accepted before its value was built, so the field
+        is a template inside this one, and that is the error reported (rather than
+        asking for a ``__template__`` wrapper, which would be an error too).
+
+    """
+    try:
+        tree = make_node(value, schema, resolution_context, keypath=keypath)
+    except TemplateRequiredError as exc:
+        raise _nested_template_field_error(exc.keypath, keypath) from None
+    tree.template_keypath = keypath
+    return tree
+
+
+def check_keys_are_not_parameters(
+    tree: _ConcreteNode, parameters: Iterable[str]
+) -> None:
+    """Raise if a top-level key of a template's tree is named like a parameter.
+
+    A template's top-level keys can be referenced by name, like its parameters, so
+    ``${ name }`` would be ambiguous if both a key and a parameter were called
+    ``name``. Nested keys are not names, so they are not checked.
+
+    Raises
+    ------
+    ResolutionError
+        At the keypath of the first key named like a parameter.
+
+    """
+    if not isinstance(tree, _DictNode):
+        return
+    for key, child in tree.children.items():
+        if key in parameters:
+            raise ResolutionError(
+                f'"{key}" is both a key of this template and one of its '
+                "parameters. A template's keys can be referenced by name, like its "
+                "parameters, so the name is ambiguous. Rename the key or the "
+                "parameter.",
+                child.keypath,
+            )
+
+
+def _is_template_function(function: _types.Function) -> bool:
+    """Whether ``function`` is the core ``template`` function, whatever its name."""
+    # imported here: _core_functions imports this module
+    from ._core_functions import _template
+
+    return function is _template
+
+
+def _is_use_function(function: _types.Function) -> bool:
+    """Whether ``function`` is the core ``use`` function, whatever its name."""
+    from ._core_functions import _use
+
+    return function is _use
+
+
+def _is_raw_function(function: _types.Function) -> bool:
+    """Whether ``function`` is the core ``raw`` function, whatever its name."""
+    from ._core_functions import _raw
+
+    return function is _raw
+
+
+def _template_schema_parts(
+    schema: _types.Schema, keypath: _types.KeyPath
+) -> tuple[_types.Schema | _types.DynamicSchema, tuple[str, ...]]:
+    """The inner schema and parameters of a template schema.
+
+    Static schemas are not validated by resolve(), so the keys are read defensively.
+
+    Raises
+    ------
+    InvalidSchemaError
+        If the schema has no "schema" or no "parameters".
+
+    """
+    for key in ("schema", "parameters"):
+        if key not in schema:
+            raise InvalidSchemaError(
+                f'A template schema must have a "{key}" key.', keypath + (key,)
+            )
+    return schema["schema"], tuple(schema["parameters"])
+
+
+def _look_up_keypath(node: _ConcreteNode, keypath: str) -> Any:
+    """The value at a dotted keypath, found as ``${...}`` would find it from ``node``.
+
+    The first part of the keypath is looked up as a name in a ``${...}`` reference
+    is: in the local variables, then the root of the tree, then the global variables
+    (including the root, under ``inject_root_as``). Each later part is looked up as
+    Jinja looks up ``.part``: a container's keys first, then Python attributes. A
+    part that is a number is also tried as a list index. So ``__use__: "a.b.0"``
+    finds whatever ``${ a.b.0 }`` would.
+
+    Raises
+    ------
+    KeyError
+        If no value is found.
+
+    """
+    first, *rest = keypath.split(".")
+
+    context = node.resolution_context
+    root_container = node._root_container()
+    global_variables = dict(context.global_variables)
+    if context.inject_root_as is not None:
+        global_variables[context.inject_root_as] = root_container
+
+    value = node._look_up_name(first, root_container, global_variables)
+
+    environment = _Environment()
+    for part in rest:
+        found = jinja2.Undefined()
+        if part.isdigit():
+            found = environment.getitem(value, int(part))
+        if isinstance(found, jinja2.Undefined):
+            found = environment.getattr(value, part)
+        if isinstance(found, jinja2.Undefined):
+            raise KeyError(keypath)
+        value = found
+
+    return value
+
+
+def _expand_use(
+    use_input: _types.Configuration, node: _ConcreteNode, keypath: _types.KeyPath
+) -> _types.Configuration:
+    """The value that a ``__use__`` stands for: its target's source, as written.
+
+    ``use_input`` is the input of the ``__use__`` call. It takes one of two forms:
+
+    - a keypath string naming the target, as in ``{"__use__": "a.b"}``;
+    - a dict with a ``"template"`` key (the target's keypath) and an optional
+      ``"overrides"`` key (a dict), as in
+      ``{"__use__": {"template": "a.b", "overrides": {...}}}``.
+
+    The target is looked up from ``node`` as a ``${...}`` reference would be (see
+    _look_up_keypath), so it can be in the document or in a global variable. It
+    must be a :class:`Template`. Its source is copied and the overrides, if any, are
+    deep-merged on top of the copy. Nothing is interpolated: the source and the
+    overrides are both used as written.
+
+    Raises
+    ------
+    ResolutionError
+        If the input is malformed, the target does not exist or is not a template,
+        or overrides are given for a template that is not written as a dict (or is
+        written as a function call).
+
+    """
+    # parse the input: a keypath string, or a dict with "template" and "overrides"
+    if isinstance(use_input, str):
+        target = use_input
+        overrides = None
+    elif isinstance(use_input, dict):
+        if "template" not in use_input:
+            raise ResolutionError(
+                "Dict input to 'use' must contain a 'template' key.", keypath
+            )
+        target_ = use_input["template"]
+        if not isinstance(target_, str):
+            raise ResolutionError(
+                "The 'template' value in 'use' must be a string.", keypath
+            )
+        target = target_
+        overrides = use_input.get("overrides")
+        if overrides is not None and not isinstance(overrides, dict):
+            raise ResolutionError(
+                "The 'overrides' value in 'use' must be a dictionary.", keypath
+            )
+        extra = set(use_input.keys()) - {"template", "overrides"}
+        if extra:
+            raise ResolutionError(f"Unexpected keys in 'use': {extra}.", keypath)
+    else:
+        raise ResolutionError(
+            "Input to 'use' must be a string or a dictionary.", keypath
+        )
+
+    # look up the target, as a ${...} reference would be
+    try:
+        resolved = _look_up_keypath(node, target)
+    except KeyError:
+        raise ResolutionError(f"Keypath '{target}' does not exist.", keypath)
+
+    if not isinstance(resolved, Template):
+        raise ResolutionError(
+            "The target of 'use' must be a template (written with __template__).",
+            keypath,
+        )
+
+    # copy the template's source and merge the overrides on top of it
+    value = copy.deepcopy(resolved.source)
+    if overrides is not None:
+        if not isinstance(value, dict):
+            raise ResolutionError(
+                "Overrides can only be applied when the template is written as a "
+                "dictionary.",
+                keypath,
+            )
+
+        # a template written as a function call is a dict too, but merging into it
+        # would add keys to the call, not to the dict it makes. An invalid call
+        # (ValueError) is call-shaped as well, so it is rejected the same way
+        context = node.resolution_context
+        try:
+            is_call = (
+                context.check_for_function_call(value, context.functions) is not None
+            )
+        except ValueError:
+            is_call = True
+        if is_call:
+            raise ResolutionError(
+                "Overrides can only be applied when the template is written as a "
+                "dictionary, not a function call.",
+                keypath,
+            )
+
+        assert isinstance(overrides, dict)  # checked when the input was parsed
+        value = deep_update([value, overrides])
+
+    return value
+
+
+class _TemplateNode(_Node):
+    """Represents a template field in the configuration tree.
+
+    The value of a template field is not resolved; it is kept as written and the node
+    resolves to a :class:`Template`. Like a _ValueNode, the node is resolved lazily
+    (and the result cached).
+
+    Attributes
+    ----------
+    value : Configuration
+        The template's value as written (without the ``__template__`` wrapper).
+    template_schema : Schema
+        The template schema (``{"type": "template", ...}``).
+    inner_schema : Schema | DynamicSchema
+        The schema of the template's value once evaluated.
+    parameters : tuple[str, ...]
+        The template field's parameters: the names given each time it is evaluated.
+    keypath : KeyPath
+        The keypath to this node in the configuration tree.
+    resolution_context : ResolutionContext
+        The resolution context (converters, functions, variables, filters, etc.).
+    parent : _ConcreteNode | None
+        The parent of this node. Can be `None`, in which case this is the root.
+
+    """
+
+    def __init__(
+        self,
+        value: _types.Configuration,
+        template_schema: _types.Schema,
+        keypath: _types.KeyPath,
+        resolution_context: _types.ResolutionContext,
+        parent: _ConcreteNode | None = None,
+        local_variables: Mapping[str, _types.Configuration] | None = None,
+    ):
+        super().__init__(parent, local_variables)
+        self.value = value
+        self.template_schema = template_schema
+        self.inner_schema, self.parameters = _template_schema_parts(
+            template_schema, keypath
+        )
+        self.keypath = keypath
+        self.resolution_context = resolution_context
+
+    @classmethod
+    def from_template(
+        cls,
+        template: Template,
+        template_schema: _types.Schema,
+        keypath: _types.KeyPath,
+        resolution_context: _types.ResolutionContext,
+        parent: _ConcreteNode | None = None,
+    ) -> _TemplateNode:
+        """A node that resolves to an existing Template, unchanged."""
+        node = cls(
+            template.source, template_schema, keypath, resolution_context, parent
+        )
+        _set_result(node._build_template, template)
+        return node
+
+    def resolve(self) -> Template:
+        """Build (once) and return the Template for this field.
+
+        Raises
+        ------
+        UnexpectedTemplateError
+            If the node is in a tree built from a template's value: templates do
+            not nest. Checked first, so that an existing Template is rejected too.
+
+        """
+        # templates do not nest. If the root of this node's tree has a
+        # template_keypath, the tree was built from a template's value, so this
+        # node is a template inside that template
+        enclosing = self.root.template_keypath
+        if enclosing is not None:
+            raise _nested_template_field_error(self.keypath, enclosing)
+
+        return self._build_template()
+
+    @_cache_and_detect_cycles
+    def _build_template(self) -> Template:
+        """Expand, check and build the Template.
+
+        Separate from resolve(), which checks for nesting each time, even when the
+        Template was built already or given by from_template.
+
+        """
+        # replace every __use__ in the value with the value it stands for, so
+        # that the template's source does not depend on the rest of the document
+        self.value = self._expand_uses(self.value, self.keypath)
+
+        # check the structure of the value as written: building the tree raises
+        # structure errors; it is walked but never resolved. Like the tree that
+        # Template.evaluate builds, it is marked as a template's tree, so a template
+        # field in it is an error when resolved
+        tree = make_template_tree(
+            self.value, self.inner_schema, self.resolution_context, self.keypath
+        )
+        self._check(tree)
+
+        # report a key named like a parameter now, when the configuration is
+        # resolved, rather than only when the program evaluates the template
+        check_keys_are_not_parameters(tree, self.parameters)
+
+        context = self.resolution_context
+        return Template(
+            self.value,
+            self.inner_schema,
+            parameters=self.parameters,
+            keypath=self.keypath,
+            converters=context.converters,
+            functions=context.functions,
+            filters=context.filters,
+            global_variables=context.global_variables,
+            inject_root_as=context.inject_root_as,
+            check_for_function_call=context.check_for_function_call,
+        )
+
+    def _expand_uses(
+        self, value: _types.Configuration, keypath: _types.KeyPath
+    ) -> _types.Configuration:
+        """The value with each ``__use__`` replaced by the value it stands for.
+
+        Every dict and list is visited, including the inputs of other function
+        calls, except the input of ``__raw__``, which is kept as written. The
+        target template's own ``__use__`` calls were already expanded
+        when that template was resolved.
+
+        """
+        if isinstance(value, list):
+            return [
+                self._expand_uses(item, keypath + (str(i),))
+                for i, item in enumerate(value)
+            ]
+        if not isinstance(value, dict):
+            return value
+
+        # at this point, value is a dict. It is either a function call (a __use__ or
+        # some other function) or an ordinary dict configuration
+        context = self.resolution_context
+        try:
+            call = context.check_for_function_call(value, context.functions)
+        except ValueError:
+            # an invalid call is reported when the tree is built
+            call = None
+        if call is not None and _is_use_function(call[0]):
+            # a __use__ call: replace it with the value it stands for
+            return _expand_use(call[1], self, keypath)
+        if call is not None and _is_raw_function(call[0]):
+            # everything under __raw__ is data, so a __use__ in it is kept as written
+            return value
+
+        # an ordinary dict, or a call to a function other than __use__ (whose input
+        # is a dict too): expand the __use__ calls inside each value
+        return {k: self._expand_uses(v, keypath + (k,)) for k, v in value.items()}
+
+    def _check(self, node: _ConcreteNode) -> None:
+        """Raise if a tree built from this template's value contains a template.
+
+        Templates do not nest. This walks the tree without resolving it, and raises
+        an UnexpectedTemplateError at the first template field or ``__template__``
+        wrapper it finds. Function calls are not evaluated, and their inputs are not
+        walked.
+
+        """
+        if isinstance(node, _DictNode):
+            for child in node.children.values():
+                self._check(child)
+        elif isinstance(node, _ListNode):
+            for child in node.children:
+                self._check(child)
+        elif isinstance(node, _TemplateNode) or (
+            isinstance(node, _FunctionCallNode)
+            and node.schema.get("type") == "template"
+        ):
+            # a template field. Its value is a Template passed in, or a function call
+            # that would make one when evaluated (a __template__, a __use__, ...)
+            raise _nested_template_field_error(node.keypath, self.keypath)
+        elif isinstance(node, _FunctionCallNode) and _is_template_function(
+            node.function
+        ):
+            # a __template__ wrapper on a field of type "any"
+            where = ".".join(self.keypath)
+            raise UnexpectedTemplateError(
+                f'A template can\'t contain another __template__: the template at "{where}" '
+                "already defers everything in it. Remove the wrapper.",
+                node.keypath,
+                self.keypath,
+            )
+
+
+def _make_template_node(
+    cfg: _types.Configuration,
+    schema: _types.Schema,
+    resolution_context: _types.ResolutionContext,
+    parent: _ConcreteNode | None,
+    keypath: _types.KeyPath,
+    local_variables: Mapping[str, _types.Configuration] | None,
+    mode: ResolutionMode,
+) -> _TemplateNode | _FunctionCallNode:
+    """Build the node for a template field (a value whose schema is a template).
+
+    The value must be a function call or an existing Template. A Template that is
+    already this field's (same inner schema, parameters and keypath) is passed
+    through unchanged; any other is rebuilt from its source under this field's
+    schema. A function call becomes an ordinary _FunctionCallNode, whose
+    function is given the template schema: ``__template__`` and ``__use__`` return a
+    _TemplateNode for it. Any other function's result is built under the template
+    schema too, so it must in turn be a Template or a function call that makes one.
+
+    Raises
+    ------
+    TemplateRequiredError
+        If the value is neither a function call nor a Template. In RAW mode (under
+        ``__raw__``), a dict is never a function call, so it is this error too.
+    ResolutionError
+        If the value is an invalid function call.
+
+    """
+    inner_schema, parameters = _template_schema_parts(schema, keypath)
+
+    if isinstance(cfg, Template):
+        if (
+            cfg.schema == inner_schema
+            and cfg.parameters == parameters
+            and cfg.keypath == keypath
+        ):
+            # this field's own Template (as when a resolved configuration is
+            # resolved again): passed through unchanged
+            return _TemplateNode.from_template(
+                cfg, schema, keypath, resolution_context, parent
+            )
+        # a Template made elsewhere (by a __template__ on an "any" field that a
+        # function returned, say): like a __use__ copy, its value is kept as written
+        # under this field's schema and parameters
+        return _TemplateNode(
+            cfg.source,
+            schema,
+            keypath,
+            resolution_context,
+            parent=parent,
+            local_variables=local_variables,
+        )
+
+    # under __raw__ (RAW mode) everything is data, as in make_node, so a dict is
+    # never a call: it falls through to the error below like any other value
+    if isinstance(cfg, dict) and mode != ResolutionMode.RAW:
+        try:
+            call = resolution_context.check_for_function_call(
+                cfg, resolution_context.functions
+            )
+        except ValueError as exc:
+            raise ResolutionError(f"Invalid function call: {exc}", keypath)
+
+        if call is not None:
+            return _FunctionCallNode(
+                keypath,
+                resolution_context,
+                function=call[0],
+                input=call[1],
+                schema=schema,
+                parent=parent,
+                local_variables=local_variables,
+                mode=mode,
+            )
+
+    names = ", ".join(parameters) if parameters else "none"
+    raise TemplateRequiredError(
+        f"This field expects a template (parameters: {names}). "
+        'Write it as {"__template__": ...}.',
+        keypath,
+        parameters,
+    )
+
+
 # make_node() ==========================================================================
+
+
+# defined here rather than in make_node: a class statement in a function builds a
+# new class on every call, and for a TypedDict that is slow (it was most of the
+# time spent building the tree)
+class _CommonKwargs(TypedDict):
+    """Common keyword arguments passed to node constructors in make_node."""
+
+    resolution_context: _types.ResolutionContext
+    parent: _ConcreteNode | None
+    keypath: _types.KeyPath
+    local_variables: Mapping[str, _types.Configuration] | None
+    schema: _types.Schema
+    mode: ResolutionMode
 
 
 def make_node(
@@ -1564,7 +2709,7 @@ def make_node(
     keypath: _types.KeyPath = tuple(),
     local_variables: Mapping[str, _types.Configuration] | None = None,
     mode: ResolutionMode = ResolutionMode.STANDARD,
-) -> _DictNode | _ListNode | _ValueNode | _FunctionCallNode:
+) -> _ConcreteNode:
     """Recursively constructs a configuration tree from a configuration.
 
     The configuration can be a dictionary, list, or a non-container type. In any case,
@@ -1598,24 +2743,26 @@ def make_node(
 
     Returns
     -------
-    _DictNode | _ListNode | _ValueNode | _FunctionCallNode
+    _ConcreteNode
         The root node of the configuration tree.
 
     """
+    # In some instances, the provided configuration is an UnresolvedDict or
+    # UnresolvedList; for example, when a function returns `args.root["a"]`. The code
+    # below wouldn't recognize it as a dict or list, so it would be treated as a single
+    # value, and the result would contain an _UnresolvedDict object instead of a dict.
+    # Resolving it gives a plain dict or list. After that, its values are already
+    # resolved, so the node is built in RAW mode, which converts the values without
+    # interpolating them a second time.
+    if isinstance(cfg, (_UnresolvedDict, _UnresolvedList)):
+        cfg = cfg.resolve()
+        mode = ResolutionMode.RAW
+
     if callable(schema):
         # dynamic schema: call the function to get the actual schema
-        schema = schema(cfg, keypath)
-        _validate_schema(schema, allow_default=True, allow_dynamic=True)
-
-    class _CommonKwargs(TypedDict):
-        """Common keyword arguments passed to node constructors in make_node."""
-
-        resolution_context: _types.ResolutionContext
-        parent: _ConcreteNode | None
-        keypath: _types.KeyPath
-        local_variables: Mapping[str, _types.Configuration] | None
-        schema: _types.Schema
-        mode: ResolutionMode
+        schema = _call_dynamic_schema(
+            schema, cfg, keypath, resolution_context, allow_default=True
+        )
 
     common_kwargs: _CommonKwargs = {
         "resolution_context": resolution_context,
@@ -1627,13 +2774,30 @@ def make_node(
     }
 
     if cfg is None:
-        if ("nullable" in schema and schema["nullable"]) or (
-            "type" in schema and schema["type"] == "any"
-        ):
+        # "any" accepts None unless the schema says explicitly that it isn't
+        # nullable; other types accept it only if they are nullable
+        if schema.get("nullable", schema.get("type") == "any"):
             kwargs: _CommonKwargs = {**common_kwargs, "schema": {"type": "any"}}
             return _ValueNode.from_configuration(None, **kwargs)
         else:
             raise ResolutionError("Unexpectedly null.", keypath)
+
+    # keys must be strings: keypaths and ${...} references name keys, and checking
+    # for a function call reads them as strings. YAML reads "2: y" as the key 2.
+    # Checked here, before the function-call checks below, so every dict is covered
+    if isinstance(cfg, dict):
+        for key in cfg:
+            if not isinstance(key, str):
+                raise ResolutionError(
+                    f"A key must be a string, but this key is {type(key).__name__} "
+                    f"{key!r}.",
+                    keypath + (str(key),),
+                )
+
+    if schema.get("type") == "template":
+        return _make_template_node(
+            cfg, schema, resolution_context, parent, keypath, local_variables, mode
+        )
 
     # construct the configuration tree. the configuration tree is a nested container
     # whose terminal leaf values are _ValueNodes. "Internal" nodes are dictionaries or
@@ -1692,7 +2856,10 @@ def _check_shape(
     if expected == "any":
         return
 
-    if isinstance(cfg, dict):
+    if isinstance(cfg, Template):
+        # template fields are handled by make_node before shapes are checked
+        matches = False
+    elif isinstance(cfg, dict):
         matches = expected == "dict"
     elif isinstance(cfg, list):
         matches = expected == "list"
@@ -1700,8 +2867,15 @@ def _check_shape(
         matches = expected not in ("dict", "list")
 
     if not matches:
+        hint = ""
+        if isinstance(cfg, str) and "${" in cfg and expected in ("dict", "list"):
+            hint = (
+                " A ${ ... } always gives a string: to copy a dict or list, use "
+                "__splice__ (or __use__ for a template)."
+            )
         raise ResolutionError(
-            f"Expected {_a(str(expected))}, but got {_describe_value(cfg)}.", keypath
+            f"Expected {_a(str(expected))}, but got {_describe_value(cfg)}.{hint}",
+            keypath,
         )
 
 
@@ -1712,6 +2886,8 @@ def _a(noun: str) -> str:
 
 def _describe_value(value: _types.Configuration) -> str:
     """A short description of a configuration value, for error messages."""
+    if isinstance(value, Template):
+        return "a template"
     if isinstance(value, dict):
         if not value:
             return "an empty dict"

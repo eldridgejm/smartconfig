@@ -4,6 +4,7 @@ import datetime
 import typing
 
 from smartconfig import resolve, exceptions, CORE_FUNCTIONS
+from smartconfig.types import Template
 from smartconfig.types import (
     ConfigurationDict,
     ConfigurationList,
@@ -303,6 +304,36 @@ def test_splice_referenced_value_is_a_function_call():
     assert result == {"items": [1, 2, 1, 2], "copy": [1, 2, 1, 2]}
 
 
+def test_splice_of_a_raw_string_is_not_interpolated():
+    # given
+    cfg: ConfigurationDict = {
+        "b": 1,
+        "r": {"__raw__": "${b}"},
+        "x": {"__splice__": "r"},
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions={"raw": _raw, "splice": _splice})
+
+    # then — x is a copy of r's resolved value, which is the literal "${b}"
+    assert result == {"b": 1, "r": "${b}", "x": "${b}"}
+
+
+def test_splice_of_a_raw_function_call_is_not_evaluated():
+    # given
+    cfg: ConfigurationDict = {
+        "c": 7,
+        "r": {"__raw__": {"__splice__": "c"}},
+        "x": {"__splice__": "r"},
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions={"raw": _raw, "splice": _splice})
+
+    # then — r resolves to a plain dict, and x is a copy of it
+    assert result["x"] == {"__splice__": "c"}
+
+
 def test_splice_with_nested_keypath():
     # given
     schema: Schema = {
@@ -470,6 +501,64 @@ def test_splice_raises_if_data_does_not_match_target_schema():
         resolve(cfg, schema, functions={"splice": _splice})
 
     assert "missing required key" in str(exc.value)
+
+
+def test_splice_at_the_root_is_not_reported_as_a_circular_reference():
+    # the whole configuration is a splice, so there is nothing else to copy from;
+    # there is no circular reference, so the message shouldn't say there is
+    cfg: ConfigurationDict = {"__splice__": "a"}
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"splice": _splice})
+
+    assert "Circular reference" not in str(exc.value)
+    assert "nothing to copy from" in str(exc.value)
+
+
+def test_splice_in_the_output_of_a_call_at_the_root_is_not_a_circular_reference():
+    # the configuration is the output of the __if__, which is still being
+    # evaluated when the splice is, so it has no keys to copy from yet
+    cfg: ConfigurationDict = {
+        "__if__": {"condition": True, "then": {"__splice__": "x"}, "else": 1}
+    }
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"splice": _splice, "if": _if})
+
+    assert "Circular reference" not in str(exc.value)
+    assert "nothing to copy from" in str(exc.value)
+
+
+def test_splice_in_the_input_of_a_call_at_the_root_is_not_a_circular_reference():
+    # dict.update resolves its input before it is called, so the splice runs while
+    # the root call is being evaluated
+    cfg: ConfigurationDict = {"__dict.update__": [{"a": 1}, {"b": {"__splice__": "a"}}]}
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    assert "Circular reference" not in str(exc.value)
+    assert "nothing to copy from" in str(exc.value)
+
+
+def test_splice_under_nested_calls_at_the_root_is_not_a_circular_reference():
+    # the splice's parent is an __if__ whose parent is the __if__ at the root, so
+    # checking only the splice's parent would not be enough
+    cfg: ConfigurationDict = {
+        "__if__": {
+            "condition": True,
+            "then": {
+                "__if__": {"condition": True, "then": {"__splice__": "x"}, "else": 2}
+            },
+            "else": 1,
+        }
+    }
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"splice": _splice, "if": _if})
+
+    assert "Circular reference" not in str(exc.value)
+    assert "nothing to copy from" in str(exc.value)
 
 
 def test_splice_raises_when_root_is_a_splice():
@@ -698,7 +787,9 @@ def test_let_references_self_raises_on_scalar_in_block():
     with pytest.raises(exceptions.ResolutionError) as exc:
         resolve(cfg, schema, functions={"let": _let})
 
-    assert "'__this__' cannot be used when 'in' is a scalar value" in str(exc.value)
+    assert "'__this__' cannot be used when 'in' is a value or a template" in str(
+        exc.value
+    )
 
 
 def test_let_arithmetic_with_this_reference():
@@ -759,6 +850,24 @@ def test_let_references_previous_in_list():
     assert result == [{"x": 10}, {"x": 11}]
 
 
+def test_let_references_previous_that_is_a_function_call():
+    # given — the previous element is a function call (a splice of v), not a value
+    # written in place, so it has to be evaluated before it can be used
+    cfg: ConfigurationDict = {
+        "v": 5,
+        "l": [
+            {"__splice__": "v"},
+            {"__let__": {"references": {"prev": "__previous__"}, "in": "${ prev }"}},
+        ],
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then — prev is the splice's value
+    assert result == {"v": 5, "l": [5, "5"]}
+
+
 def test_let_references_previous_raises_on_first_element():
     # given
     schema: Schema = {
@@ -780,6 +889,42 @@ def test_let_references_previous_raises_on_first_element():
         resolve(cfg, schema, functions={"let": _let})
 
     assert "__previous__" in str(exc.value)
+
+
+def test_let_variable_named_like_a_jinja_literal_raises():
+    # given — ${ none } is Jinja's literal None, never the variable
+    cfg: ConfigurationDict = {
+        "a": {"__let__": {"variables": {"none": 1}, "in": {"b": "${ none }"}}}
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"let": _let})
+
+    # then
+    assert str(exc.value) == (
+        "Cannot resolve keypath \"a\": Invalid name in 'variables' of 'let': "
+        '"none" is reserved by Jinja, which reads it as a literal, so ${ none } '
+        "can't refer to it. Use another name."
+    )
+
+
+def test_let_reference_named_like_a_jinja_literal_raises():
+    # given — ${ none } is Jinja's literal None, never the reference
+    cfg: ConfigurationDict = {
+        "a": {"__let__": {"references": {"none": "__this__"}, "in": {"b": "${ none }"}}}
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"let": _let})
+
+    # then
+    assert str(exc.value) == (
+        "Cannot resolve keypath \"a\": Invalid name in 'references' of 'let': "
+        '"none" is reserved by Jinja, which reads it as a literal, so ${ none } '
+        "can't refer to it. Use another name."
+    )
 
 
 def test_let_references_previous_uses_innermost_list():
@@ -934,6 +1079,81 @@ def test_let_references_previous_combined_with_this():
     ]
 
 
+def test_let_references_previous_when_wrapped_in_an_if():
+    # given — the __if__'s result is the list element, so prev is the element before
+    cfg: ConfigurationList = [
+        {"n": 1},
+        {
+            "__if__": {
+                "condition": True,
+                "then": {
+                    "__let__": {
+                        "references": {"prev": "__previous__"},
+                        "in": {"n": "${ prev.n + 1 }"},
+                    }
+                },
+                "else": {"n": 0},
+            }
+        },
+    ]
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert result == [{"n": 1}, {"n": "2"}]
+
+
+def test_let_references_previous_when_wrapped_in_another_let():
+    # given
+    cfg: ConfigurationList = [
+        {"n": 1},
+        {
+            "__let__": {
+                "variables": {"k": 10},
+                "in": {
+                    "__let__": {
+                        "references": {"prev": "__previous__"},
+                        "in": {"n": "${ prev.n + k }"},
+                    }
+                },
+            }
+        },
+    ]
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert result == [{"n": 1}, {"n": "11"}]
+
+
+def test_let_references_previous_raises_in_the_body_of_a_loop():
+    # given — the body is resolved once per item, with no list around it, so
+    # there is no previous element to refer to
+    cfg: ConfigurationDict = {
+        "__list.loop__": {
+            "over": [1, 2, 3],
+            "variable": "i",
+            "in": {
+                "__let__": {
+                    "references": {"prev": "__previous__"},
+                    "in": {"n": "${ prev.n + i }"},
+                }
+            },
+        }
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"})
+
+    # then — the error says that loops are not supported, not just "not in a list"
+    assert "__previous__" in str(exc.value)
+    assert "list.loop" in str(exc.value)
+    assert exc.value.keypath == ("0",)
+
+
 def test_let_provides_local_variables_to_in_block():
     # given
     schema: Schema = {"type": "integer"}
@@ -1077,6 +1297,30 @@ def test_let_raises_if_does_not_contain_in_key():
     assert "must contain an 'in' key" in str(exc.value)
 
 
+def test_let_raises_if_a_reference_target_is_unknown():
+    # the only reference targets are __this__ and __previous__
+    cfg: ConfigurationDict = {
+        "__let__": {"references": {"r": "__nope__"}, "in": "a"},
+    }
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"let": _let})
+
+    assert "__nope__" in str(exc.value)
+
+
+def test_let_raises_if_there_is_an_unknown_key():
+    # "extra" isn't one of let's keys (variables, references and in)
+    cfg: ConfigurationDict = {
+        "__let__": {"variables": {"v": 1}, "in": "a", "extra": 1},
+    }
+
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"let": _let})
+
+    assert "extra" in str(exc.value)
+
+
 def test_let_raises_if_variables_is_not_a_dict():
     # given
     schema: Schema = {"type": "integer"}
@@ -1202,6 +1446,32 @@ def test_resolve_on_raw():
     # "${foo}" → "hello". Since input is NOT pre-resolved, __raw__ is handled
     # inside __resolve__'s own node tree, preserving raw behavior.
     assert result == {"foo": "hello", "bar": "${foo}"}
+
+
+def test_resolve_inside_fully_resolve_does_a_single_pass():
+    # t is "hello ${name}". __fully_resolve__ alone would fill in name too, but
+    # __resolve__ inside it switches back to a single pass
+    cfg: ConfigurationDict = {
+        "name": "world",
+        "t": {"__raw__": "hello ${name}"},
+        "r": {"__fully_resolve__": {"a": {"__resolve__": "${t}"}}},
+    }
+
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    assert result["r"] == {"a": "hello ${name}"}
+
+
+def test_resolve_inside_raw_has_no_effect():
+    # nothing inside __raw__ is evaluated, so the __resolve__ is kept as written
+    cfg: ConfigurationDict = {
+        "x": 1,
+        "r": {"__raw__": {"a": {"__resolve__": "${x}"}}},
+    }
+
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    assert result["r"] == {"a": {"__resolve__": "${x}"}}
 
 
 def test_resolve_does_standard_not_full_resolution():
@@ -1369,9 +1639,10 @@ def test_fully_resolve_scalar_with_interpolation_and_conversion():
 # template =============================================================================
 
 
-def test_template_resolves_to_itself():
-    """__template__ should resolve to a dict {"__template__": <contents>}, preserving
-    any ${...} references in the contents as literal text."""
+def test_template_resolves_to_a_template():
+    """On an "any" field, __template__ resolves to a Template of schema "any" and
+    no variables, preserving any ${...} references in the contents as literal
+    text."""
     # given
     template = CORE_FUNCTIONS["template"]
 
@@ -1390,12 +1661,17 @@ def test_template_resolves_to_itself():
     result = resolve(cfg, schema, functions={"template": template})
 
     # then
-    assert result == {"foo": {"__template__": "Hello ${name}!"}}
+    assert result == {
+        "foo": Template("Hello ${name}!", schema={"type": "any"}, keypath=["foo"])
+    }
+    # it has no parameters, so none may be given
+    with pytest.raises(exceptions.ResolutionError):
+        result["foo"].evaluate({"name": "x"})
 
 
 def test_template_survives_multiple_resolutions():
     """Resolving a __template__ and then resolving the output again should produce
-    the same result — the template wrapper persists across resolution boundaries."""
+    the same result: the Template passes through the second resolution."""
     # given
     template = CORE_FUNCTIONS["template"]
 
@@ -1415,49 +1691,8 @@ def test_template_survives_multiple_resolutions():
     second = resolve(first, schema, functions={"template": template})
 
     # then
-    assert first == second == {"foo": {"__template__": "Hello ${name}!"}}
-
-
-def test_template_with_content_schema():
-    """The schema can describe what a template must contain by using a dict schema
-    with a __template__ required key whose value schema specifies the expected
-    structure of the template contents."""
-    # given
-    template = CORE_FUNCTIONS["template"]
-
-    schema: Schema = {
-        "type": "dict",
-        "required_keys": {
-            "my_template": {
-                "type": "dict",
-                "required_keys": {
-                    "__template__": {
-                        "type": "dict",
-                        "required_keys": {
-                            "host": {"type": "string"},
-                            "port": {"type": "string"},
-                        },
-                    },
-                },
-            },
-        },
-    }
-
-    cfg: ConfigurationDict = {
-        "my_template": {
-            "__template__": {"host": "localhost", "port": "${default_port}"}
-        },
-    }
-
-    # when
-    result = resolve(cfg, schema, functions={"template": template})
-
-    # then — structure is validated, ${...} references are preserved
-    assert result == {
-        "my_template": {
-            "__template__": {"host": "localhost", "port": "${default_port}"}
-        },
-    }
+    assert second == first
+    assert isinstance(second["foo"], Template)
 
 
 # use ==================================================================================
@@ -1500,7 +1735,11 @@ def test_use_works_when_keypath_resolves_to_a_template():
     # then — __use__ resolves "source", gets the template dict, unwraps and resolves it
     assert result == {
         "name": "world",
-        "source": {"__template__": {"greeting": "Hello ${name}!", "farewell": "Bye!"}},
+        "source": Template(
+            {"greeting": "Hello ${name}!", "farewell": "Bye!"},
+            schema={"type": "any"},
+            keypath=["source"],
+        ),
         "result": {"greeting": "Hello world!", "farewell": "Bye!"},
     }
 
@@ -1539,9 +1778,11 @@ def test_use_resolves_template():
     # then — __use__ unwraps the template and resolves it with interpolation.
     assert result == {
         "timeout": 30,
-        "template": {
-            "__template__": {"timeout": "${timeout}", "health_check": "/health"}
-        },
+        "template": Template(
+            {"timeout": "${timeout}", "health_check": "/health"},
+            schema={"type": "any"},
+            keypath=["template"],
+        ),
         "service": {"timeout": 30, "health_check": "/health"},
     }
 
@@ -1581,9 +1822,11 @@ def test_use_applies_destination_schema_for_type_conversion():
 
     # then — strings are converted per the destination schema
     assert result == {
-        "template": {
-            "__template__": {"port": "8080", "debug": "True", "name": "my-service"}
-        },
+        "template": Template(
+            {"port": "8080", "debug": "True", "name": "my-service"},
+            schema={"type": "any"},
+            keypath=["template"],
+        ),
         "result": {"port": 8080, "debug": True, "name": "my-service"},
     }
 
@@ -1619,9 +1862,43 @@ def test_use_performs_only_one_resolve():
     assert result == {
         "x": "world",
         "y": "${x}",
-        "template": {"__template__": "${y}"},
+        "template": Template("${y}", schema={"type": "any"}, keypath=["template"]),
         "result": "${x}",
     }
+
+
+def test_use_inside_fully_resolve_interpolates_until_stable():
+    # given — the same setup as above, but the __use__ is inside __fully_resolve__,
+    # so "${x}" should be expanded too, as a "${template}" reference would be
+    cfg: ConfigurationDict = {
+        "x": "world",
+        "y": {"__raw__": "${x}"},
+        "template": {"__template__": "${y}"},
+        "result": {"__fully_resolve__": {"__use__": "template"}},
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert result["result"] == "world"
+
+
+def test_use_inside_resolve_inside_fully_resolve_does_a_single_pass():
+    # given — __resolve__ switches back to a single pass, and the __use__ inside it
+    # keeps that single pass
+    cfg: ConfigurationDict = {
+        "x": "world",
+        "y": {"__raw__": "${x}"},
+        "template": {"__template__": "${y}"},
+        "result": {"__fully_resolve__": {"__resolve__": {"__use__": "template"}}},
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert result["result"] == "${x}"
 
 
 def test_use_with_nested_keypath():
@@ -1651,7 +1928,13 @@ def test_use_with_nested_keypath():
 
     # then
     assert result == {
-        "templates": {"greeting": {"__template__": "hello ${name}"}},
+        "templates": {
+            "greeting": Template(
+                "hello ${name}",
+                schema={"type": "any"},
+                keypath=["templates", "greeting"],
+            )
+        },
         "name": "world",
         "result": "hello world",
     }
@@ -1780,12 +2063,11 @@ def test_use_with_overrides_replaces_template_key():
     # then
     assert result == {
         "name": "Alice",
-        "template": {
-            "__template__": {
-                "greeting": "Hello ${name}!",
-                "farewell": "Goodbye ${name}!",
-            }
-        },
+        "template": Template(
+            {"greeting": "Hello ${name}!", "farewell": "Goodbye ${name}!"},
+            schema={"type": "any"},
+            keypath=["template"],
+        ),
         "messages": {"greeting": "Hi Alice!", "farewell": "Goodbye Alice!"},
     }
 
@@ -1830,7 +2112,9 @@ def test_use_with_overrides_adds_new_key():
     # then
     assert result == {
         "name": "Alice",
-        "template": {"__template__": {"greeting": "Hello ${name}!"}},
+        "template": Template(
+            {"greeting": "Hello ${name}!"}, schema={"type": "any"}, keypath=["template"]
+        ),
         "messages": {"greeting": "Hello Alice!", "farewell": "Goodbye Alice!"},
     }
 
@@ -1874,7 +2158,9 @@ def test_use_with_overrides_interpolates_override_values():
     # then
     assert result == {
         "name": "Bob",
-        "template": {"__template__": {"greeting": "Hello!"}},
+        "template": Template(
+            {"greeting": "Hello!"}, schema={"type": "any"}, keypath=["template"]
+        ),
         "result": {"greeting": "Hi Bob!"},
     }
 
@@ -1916,7 +2202,9 @@ def test_use_with_empty_overrides_is_noop():
     # then
     assert result == {
         "name": "Alice",
-        "template": {"__template__": {"greeting": "Hello ${name}!"}},
+        "template": Template(
+            {"greeting": "Hello ${name}!"}, schema={"type": "any"}, keypath=["template"]
+        ),
         "result": {"greeting": "Hello Alice!"},
     }
 
@@ -1957,7 +2245,9 @@ def test_use_dict_form_without_overrides_key():
     # then
     assert result == {
         "name": "Alice",
-        "template": {"__template__": {"greeting": "Hello ${name}!"}},
+        "template": Template(
+            {"greeting": "Hello ${name}!"}, schema={"type": "any"}, keypath=["template"]
+        ),
         "result": {"greeting": "Hello Alice!"},
     }
 
@@ -1987,6 +2277,35 @@ def test_use_with_overrides_raises_if_template_contents_is_not_dict():
         resolve(cfg, schema, functions={"use": _use, "template": _template})
 
     assert "dictionary" in str(exc.value).lower()
+
+
+def test_use_with_overrides_raises_if_template_is_written_as_a_function_call():
+    # given: the template makes a dict, but is written as a call, so the overrides
+    # would be merged into the call itself
+    schema: Schema = {"type": "any"}
+
+    cfg: ConfigurationDict = {
+        "template": {
+            "__template__": {"__dict.from_items__": [{"key": "a", "value": 1}]}
+        },
+        "result": {
+            "__use__": {
+                "template": "template",
+                "overrides": {"a": 2},
+            }
+        },
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema)
+
+    # then
+    assert exc.value.keypath == ("result",)
+    assert exc.value.reason == (
+        "Overrides can only be applied when the template is written as a "
+        "dictionary, not a function call."
+    )
 
 
 def test_use_raises_if_dict_missing_template_key():
@@ -2126,7 +2445,11 @@ def test_use_with_overrides_deep_merge():
 
     # then — deep merge should preserve "host" while overriding "port"
     assert result == {
-        "template": {"__template__": {"server": {"host": "localhost", "port": "8080"}}},
+        "template": Template(
+            {"server": {"host": "localhost", "port": "8080"}},
+            schema={"type": "any"},
+            keypath=["template"],
+        ),
         "result": {"server": {"host": "localhost", "port": 9090}},
     }
 
@@ -2204,6 +2527,109 @@ def test_if_resolves_then_branch_only_if_condition_is_true():
     if_body["condition"] = "True"
     with pytest.raises(exceptions.ResolutionError):
         resolve(cfg, schema, functions={"if": _if})
+
+
+def test_if_does_not_evaluate_the_branch_not_taken():
+    # given
+    cfg: ConfigurationDict = {
+        "n": 0,
+        "x": {"__if__": {"condition": "${n == 0}", "then": 0, "else": "${10 // n}"}},
+    }
+
+    # when
+    resolved = resolve(cfg, {"type": "any"}, functions={"if": _if})
+
+    # then
+    assert resolved == {"n": 0, "x": 0}
+
+
+def test_if_keeps_raw_in_the_chosen_branch_raw():
+    # given
+    cfg: ConfigurationDict = {
+        "b": 1,
+        "x": {"__if__": {"condition": "True", "then": {"__raw__": "${b}"}, "else": 0}},
+    }
+
+    # when
+    resolved = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert resolved == {"b": 1, "x": "${b}"}
+
+
+def test_if_reports_errors_in_the_branch_at_the_keypath_of_the_call():
+    # given
+    cfg: ConfigurationDict = {
+        "x": {"__if__": {"condition": "False", "then": 0, "else": "${nope}"}},
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, {"type": "any"}, functions={"if": _if})
+
+    # then
+    assert exc.value.keypath == ("x",)
+
+
+def test_if_gives_a_template_in_the_branch_the_keypath_of_the_call():
+    # given
+    cfg: ConfigurationDict = {
+        "t": {
+            "__if__": {"condition": "True", "then": {"__template__": "a"}, "else": 0}
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert isinstance(resolved, dict)
+    assert isinstance(resolved["t"], Template)
+    assert resolved["t"].keypath == ("t",)
+
+
+# The chosen branch must be resolved lazily, like a plain dict in its place. If
+# it were resolved all at once while the __if__ call is evaluated, references
+# from inside the branch back into it would be reported as circular.
+
+
+def test_if_branch_can_refer_to_its_own_keys():
+    # given
+    cfg: ConfigurationDict = {
+        "x": {
+            "__if__": {
+                "condition": "True",
+                "then": {"a": 1, "b": "${x.a}"},
+                "else": 0,
+            }
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, {"type": "any"}, functions={"if": _if})
+
+    # then
+    assert resolved == {"x": {"a": 1, "b": "1"}}
+
+
+def test_if_branch_and_a_sibling_can_refer_to_each_other():
+    # given
+    cfg: ConfigurationDict = {
+        "y": "${x.a}",
+        "x": {
+            "__if__": {
+                "condition": "True",
+                "then": {"a": 1, "b": "${y}"},
+                "else": 0,
+            }
+        },
+    }
+
+    # when
+    resolved = resolve(cfg, {"type": "any"}, functions={"if": _if})
+
+    # then
+    assert resolved == {"y": "1", "x": {"a": 1, "b": "1"}}
 
 
 def test_if_raises_if_keys_are_not_condition_then_else():
@@ -2408,14 +2834,14 @@ def test_use_and_previous_with_multiple_templates():
 
     # then
     assert result == {
-        "slides_template": {
-            "__template__": {
-                "path": "slides.pdf",
-                "ready": "False",
-                "missing_ok": "True",
-            }
-        },
-        "number_template": {"__template__": "${prev.number + 1}"},
+        "slides_template": Template(
+            {"path": "slides.pdf", "ready": "False", "missing_ok": "True"},
+            schema={"type": "any"},
+            keypath=["slides_template"],
+        ),
+        "number_template": Template(
+            "${prev.number + 1}", schema={"type": "any"}, keypath=["number_template"]
+        ),
         "lectures": [
             {
                 "number": 1,

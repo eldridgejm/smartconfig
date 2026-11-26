@@ -11,6 +11,8 @@ from ..types import (
     Configuration,
 )
 from ..exceptions import ResolutionError
+from .._utils import jinja_reserved_name_problem
+from ._integers import to_integer
 
 
 # helpers ==============================================================================
@@ -24,6 +26,7 @@ def _all_elements_are_instances_of(container, type_):
 # functions ============================================================================
 
 
+@Function.new(resolve_output=False)
 def concatenate(args: FunctionArgs) -> ConfigurationList:
     """Concatenates lists.
 
@@ -34,12 +37,13 @@ def concatenate(args: FunctionArgs) -> ConfigurationList:
         args.input, list
     ):
         raise ResolutionError(
-            "Input to 'concatenate' must be a list of lists.", args.keypath
+            "Input to 'list.concatenate' must be a list of lists.", args.keypath
         )
 
     if len(args.input) == 0:
         raise ResolutionError(
-            "Input to 'concatenate' must be a non-empty list of lists.", args.keypath
+            "Input to 'list.concatenate' must be a non-empty list of lists.",
+            args.keypath,
         )
 
     # true since we checked _all_elements_are_instances_of(args.input, list) above
@@ -48,6 +52,7 @@ def concatenate(args: FunctionArgs) -> ConfigurationList:
     return list(itertools.chain(*input))
 
 
+@Function.new(resolve_output=False)
 def zip_(args: FunctionArgs) -> ConfigurationList:
     """Zips lists together.
 
@@ -57,11 +62,13 @@ def zip_(args: FunctionArgs) -> ConfigurationList:
     if not isinstance(args.input, list) or not _all_elements_are_instances_of(
         args.input, list
     ):
-        raise ResolutionError("Input to 'zip' must be a list of lists.", args.keypath)
+        raise ResolutionError(
+            "Input to 'list.zip' must be a list of lists.", args.keypath
+        )
 
     if len(args.input) == 0:
         raise ResolutionError(
-            "Input to 'zip' must be a non-empty list of lists.", args.keypath
+            "Input to 'list.zip' must be a non-empty list of lists.", args.keypath
         )
 
     return [list(entry) for entry in zip(*args.input)]
@@ -78,11 +85,14 @@ def range_(args: FunctionArgs) -> ConfigurationList:
 
     """
     if not isinstance(args.input, dict):
-        raise ResolutionError("Input to 'range' must be a dictionary.", args.keypath)
+        raise ResolutionError(
+            "Input to 'list.range' must be a dictionary.", args.keypath
+        )
 
     if "stop" not in args.input:
         raise ResolutionError(
-            "Input to 'range' must be a dictionary with a key 'stop'.", args.keypath
+            "Input to 'list.range' must be a dictionary with a key 'stop'.",
+            args.keypath,
         )
 
     start = args.input.get("start", 0)
@@ -91,24 +101,26 @@ def range_(args: FunctionArgs) -> ConfigurationList:
 
     if set(args.input.keys()) - {"start", "stop", "step"}:
         raise ResolutionError(
-            "Input to 'range' must be a dictionary with keys 'start', 'stop' and 'step'.",
+            "Input to 'list.range' must be a dictionary with keys 'start', 'stop' and 'step'.",
             args.keypath,
         )
 
-    if (
-        not isinstance(start, int)
-        or not isinstance(stop, int)
-        or not isinstance(step, int)
-    ):
+    # convert rather than check the type, so that a value written as "${ n }",
+    # which interpolates to a string, is accepted
+    start = to_integer(start, "start", "list.range", args)
+    stop = to_integer(stop, "stop", "list.range", args)
+    step = to_integer(step, "step", "list.range", args)
+
+    # range() raises a bare ValueError for a step of 0, with no keypath
+    if step == 0:
         raise ResolutionError(
-            "The values of 'start', 'stop' and 'step' in 'range' must be integers.",
-            args.keypath,
+            "The value of 'step' in 'list.range' must not be 0.", args.keypath
         )
 
     return list(range(start, stop, step))
 
 
-@Function.new(resolve_input=False)
+@Function.new(resolve_input=False, resolve_output=False)
 def loop(args: FunctionArgs) -> Configuration:
     """Loops over a list of configurations.
 
@@ -129,7 +141,7 @@ def loop(args: FunctionArgs) -> Configuration:
         or "in" not in args.input
     ):
         raise ResolutionError(
-            "Input to 'loop' must be a dictionary with keys 'variable', 'over' and 'in'.",
+            "Input to 'list.loop' must be a dictionary with keys 'variable', 'over' and 'in'.",
             args.keypath,
         )
 
@@ -137,23 +149,43 @@ def loop(args: FunctionArgs) -> Configuration:
         args.input["over"], schema={"type": "list", "element_schema": {"type": "any"}}
     )
 
-    element_schema = args.schema["element_schema"]
+    # an "any" schema has no element_schema; resolve the elements under "any"
+    # too. Under any other non-list schema, the list this returns is reported as
+    # the wrong shape, as usual
+    element_schema = args.schema.get("element_schema", {"type": "any"})
 
     assert isinstance(over, list)
-    assert isinstance(args.input["variable"], str)
+
+    # the variable is a name, bound in the body; a bare assert would give no keypath
+    if not isinstance(args.input["variable"], str):
+        raise ResolutionError(
+            "The value of 'variable' in 'list.loop' must be a string.", args.keypath
+        )
+
+    # a name like true or self could never be referred to: ${ true } would be
+    # Jinja's literal, silently, not the variable
+    problem = jinja_reserved_name_problem(args.input["variable"])
+    if problem is not None:
+        raise ResolutionError(
+            f"Invalid 'variable' in 'list.loop': {problem}", args.keypath
+        )
 
     result = []
-    for element in over:
+    for i, element in enumerate(over):
         local_variables = {args.input["variable"]: element}
         result.append(
             args.resolve(
-                args.input["in"], local_variables=local_variables, schema=element_schema
+                args.input["in"],
+                local_variables=local_variables,
+                schema=element_schema,
+                # so that an error in the body says which element it was for
+                relative_keypath=(str(i),),
             )
         )
     return result
 
 
-@Function.new(resolve_input=False)
+@Function.new(resolve_input=False, resolve_output=False)
 def filter_(args: FunctionArgs) -> ConfigurationList:
     """Filters a list.
 
@@ -172,7 +204,7 @@ def filter_(args: FunctionArgs) -> ConfigurationList:
         or "condition" not in args.input
     ):
         raise ResolutionError(
-            "Input to 'filter' must be a dictionary with keys 'iterable', 'variable' and 'condition'.",
+            "Input to 'list.filter' must be a dictionary with keys 'iterable', 'variable' and 'condition'.",
             args.keypath,
         )
 
@@ -182,15 +214,33 @@ def filter_(args: FunctionArgs) -> ConfigurationList:
     )
 
     assert isinstance(iterable, list)
-    assert isinstance(args.input["variable"], str)
+
+    # the variable is a name, bound in the condition; a bare assert would give no
+    # keypath, as in list.loop
+    if not isinstance(args.input["variable"], str):
+        raise ResolutionError(
+            "The value of 'variable' in 'list.filter' must be a string.", args.keypath
+        )
+
+    # a name like true or self could never be referred to: ${ true } would be
+    # Jinja's literal, silently, not the variable
+    problem = jinja_reserved_name_problem(args.input["variable"])
+    if problem is not None:
+        raise ResolutionError(
+            f"Invalid 'variable' in 'list.filter': {problem}", args.keypath
+        )
 
     result = []
-    for element in iterable:
+    for i, element in enumerate(iterable):
         local_variables = {args.input["variable"]: element}
         if args.resolve(
             args.input["condition"],
             local_variables=local_variables,
             schema={"type": "boolean"},
+            # so that an error in the condition says which element it was for, as
+            # in list.loop. The index is the element's place in the iterable: the
+            # output has no place for an element whose condition failed
+            relative_keypath=(str(i),),
         ):
             result.append(element)
 

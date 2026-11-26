@@ -18,9 +18,14 @@ Default functions are organized into two groups:
   dictionary, and datetime operations. Stdlib functions use dotted names, e.g.,
   ``__list.loop__``, ``__dict.update__``, ``__datetime.parse__``.
 
+One stdlib function, ``python``, is not on by default, since it runs code written
+in the configuration. See :doc:`inline_python`.
+
 The default functions are available by default — :func:`smartconfig.resolve`
 uses :data:`smartconfig.DEFAULT_FUNCTIONS` as the default value for its
-``functions`` parameter. To disable functions, pass ``functions=None``.
+``functions`` parameter. Pass ``functions=None`` to make no functions available;
+a function call is then an error. (To turn off function-call detection entirely,
+see ``check_for_function_call`` in :doc:`custom_functions`.)
 
 The default functions are summarized in the tables below:
 
@@ -37,15 +42,15 @@ The default functions are summarized in the tables below:
    * - :ref:`__let__ <func-let>`
      - Define local variables and references
    * - :ref:`__raw__ <func-raw>`
-     - Prevent interpolation
+     - Keep a value as written, with nothing evaluated
    * - :ref:`__resolve__ <func-resolve>`
-     - Single-pass interpolation (override inherited mode)
+     - Single-pass interpolation (e.g., inside ``__fully_resolve__``)
    * - :ref:`__fully_resolve__ <func-fully-resolve>`
      - Repeated interpolation until stable
    * - :ref:`__splice__ <func-splice>`
      - Copy another part of the configuration
    * - :ref:`__template__ <func-template>`
-     - Define a reusable template
+     - Mark a value to be evaluated later (a template)
    * - :ref:`__use__ <func-use>`
      - Copy a template with optional overrides
 
@@ -136,6 +141,9 @@ Selects between two configurations based on a condition.
      - Yes
      - The configuration to use if the condition is false.
 
+Only the chosen branch is evaluated, so the other one may contain references
+that would fail, such as ``"${10 // n}"`` when ``n`` is zero.
+
 **Example**:
 
 .. testcode:: python
@@ -218,11 +226,15 @@ This produces:
 raw
 ~~~
 
-Prevents interpolation of ``${...}`` references, preserving them as literal text.
-Note that the raw wrapper is removed upon resolution — if you need a template
-that survives resolution boundaries, see :ref:`__template__ <func-template>`.
+Keeps its input as written: everything in it is data. ``${...}`` references are
+not interpolated, and function calls (including ``__template__`` and ``__use__``)
+are not evaluated, but kept as the dicts they are written as. The value is still
+converted to the field's schema. Note that the raw wrapper is removed upon
+resolution — if you need a template that survives resolution boundaries, see
+:ref:`__template__ <func-template>`.
 
-**Input**: Any configuration. The input is returned as-is without interpolation.
+**Input**: Any configuration. The input is returned as written, with nothing in it
+interpolated or evaluated.
 
 **Example**:
 
@@ -230,14 +242,16 @@ that survives resolution boundaries, see :ref:`__template__ <func-template>`.
 
     config = {
         "x": {"__raw__": "${y}"},
-        "y": 4
+        "y": 4,
+        "z": {"__raw__": {"__splice__": "y"}},
     }
 
     schema = {
         "type": "dict",
         "required_keys": {
             "x": {"type": "string"},
-            "y": {"type": "integer"}
+            "y": {"type": "integer"},
+            "z": {"type": "any"},
         }
     }
 
@@ -247,28 +261,41 @@ This produces:
 
 .. testoutput:: python
 
-    {'x': '${y}', 'y': 4}
+    {'x': '${y}', 'y': 4, 'z': {'__splice__': 'y'}}
+
+Since nothing under ``__raw__`` is evaluated, it can't give a template field its
+value: ``{"__raw__": {"__template__": ...}}`` there is a dict, not a template, and
+is an error.
 
 .. _func-resolve:
 
 resolve
 ~~~~~~~
 
-Explicitly resolves the input with a single pass of interpolation. This is the
-default behavior, but is useful when referring to a raw template — a reference
-like ``${template}`` is expanded once, but any ``${...}`` placeholders in the
-result are left as-is.
+Resolves the input with a single pass of interpolation. A single pass is already
+the default, so ``__resolve__`` only makes a difference inside
+:ref:`__fully_resolve__ <func-fully-resolve>`, where it switches part of the
+input back to a single pass. Inside ``__raw__`` it has no effect, since nothing
+there is evaluated.
 
 **Input**: Any configuration. The input is resolved with a single interpolation pass.
 
-**Example**:
+**Example**: below, ``template`` holds the string ``"hello ${name}"``. Inside
+``__fully_resolve__``, ``filled_in`` is interpolated until it stops changing, so
+``${name}`` is filled in too. ``as_written`` uses ``__resolve__``, so
+``${template}`` is expanded once and the ``${name}`` it contains is kept.
 
 .. testcode:: python
 
     config = {
         "name": "world",
         "template": {"__raw__": "hello ${name}"},
-        "result": {"__resolve__": "${template}"}
+        "result": {
+            "__fully_resolve__": {
+                "filled_in": "${template}",
+                "as_written": {"__resolve__": "${template}"},
+            }
+        },
     }
 
     schema = {
@@ -276,17 +303,17 @@ result are left as-is.
         "required_keys": {
             "name": {"type": "string"},
             "template": {"type": "string"},
-            "result": {"type": "string"}
-        }
+            "result": {"type": "dict", "extra_keys_schema": {"type": "string"}},
+        },
     }
 
-    print(smartconfig.resolve(config, schema))
+    print(smartconfig.resolve(config, schema)["result"])
 
 This produces:
 
 .. testoutput:: python
 
-    {'name': 'world', 'result': 'hello ${name}', 'template': 'hello ${name}'}
+    {'as_written': 'hello ${name}', 'filled_in': 'hello world'}
 
 .. _func-fully-resolve:
 
@@ -377,15 +404,25 @@ This produces:
 template
 ~~~~~~~~
 
-Defines a reusable template that survives resolution. Unlike ``__raw__``, which
-unwraps on resolution (producing plain data), ``__template__`` resolves to a
-dictionary ``{"__template__": <contents>}`` that preserves the wrapper. This
-means templates persist across resolution boundaries — if a resolved
-configuration is serialized and then resolved again, templates are still
-recognized. To instantiate a template, use :ref:`__use__ <func-use>`.
+Marks a value as a template: it is kept as written (``${...}`` references are
+not interpolated and function calls are not evaluated) and resolves to a
+:class:`smartconfig.types.Template`, which can be evaluated later with
+:meth:`Template.evaluate <smartconfig.types.Template.evaluate>`, or copied elsewhere in
+the configuration with :ref:`__use__ <func-use>`.
 
-**Input**: Any configuration. The input is wrapped in ``{"__template__": ...}``
-and ``${...}`` references are preserved as literal text.
+- On a field whose schema is a template schema, the ``Template`` gets that
+  schema's inner schema and parameters. The field's value must be a
+  ``__template__`` wrapper, or a function call that produces a template (such
+  as ``__use__``, or an ``__if__`` that chooses between two ``__template__``
+  values). See :ref:`template_fields_example`.
+- On a field of type ``"any"``, it is a template that can be copied elsewhere
+  with ``__use__``: the ``Template`` has schema ``{"type": "any"}`` and no
+  parameters.
+- On a field of any other type it is an error
+  (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`),
+  since that field is evaluated now. So is a wrapper inside a template.
+
+**Input**: Any configuration, kept as written.
 
 **Example**:
 
@@ -406,19 +443,18 @@ and ``${...}`` references are preserved as literal text.
 
     result = smartconfig.resolve(config, schema)
     print(result)
+    print(result["service_template"].source)
 
 This produces:
 
 .. testoutput:: python
 
     {'port': 8080,
-     'service_template': {'__template__': {'host': 'localhost', 'port': '${port}'}}}
+     'service_template': Template(at "service_template", parameters: none)}
+    {'host': 'localhost', 'port': '${port}'}
 
-The template wrapper is preserved, and the ``${port}`` reference is kept as
-literal text.
-
-Resolving the output a second time produces the same result — the template is
-idempotent:
+The ``${port}`` reference is kept as written. Resolving the output a second time
+produces the same result, since a ``Template`` passes through unchanged:
 
 .. testcode:: python
 
@@ -430,9 +466,51 @@ idempotent:
 use
 ~~~
 
-Copies and resolves a template from elsewhere in the configuration, with
-optional overrides. The target keypath must point to a ``__template__`` (or to
-something that resolves to a ``{"__template__": ...}`` dictionary).
+Copies a template from elsewhere, with optional overrides. The target must be a
+template: a value written with :ref:`__template__ <func-template>` (on a field
+of type ``"any"`` or on a template field), or a :class:`smartconfig.types.Template`
+passed in from outside.
+
+The target keypath is looked up exactly as a ``${...}`` reference would be:
+first in the local variables (from ``__let__``), then in the configuration,
+then in the global variables. So ``{"__use__": "a.b"}`` finds whatever
+``${ a.b }`` would, including a template in a global variable.
+
+**A copy is a paste.** ``__use__`` never evaluates the template. It copies the
+template's value as written, merges in the overrides (also as written), and puts
+the result where the ``__use__`` was, exactly as if you had typed it there.
+Only the value is copied: the template's own schema and parameters are not, so
+the copy can be pasted into a field of another type, or into a template field
+with other parameters.
+
+**Names in the copy refer to where it is pasted.** Since the copy behaves as if
+it had been written at the destination, its ``${...}`` references are resolved
+there. This is what lets one template be shared by many places, each filling it
+in with its own values.
+
+**The destination decides what happens next**, as it would for a value written
+there by hand:
+
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Destination
+     - What happens to the copy
+   * - An ordinary field (a string, a dict, ...)
+     - It is resolved now, under that field's schema: ``${...}`` is
+       interpolated and values are converted.
+   * - A template field
+     - It is kept as written, and becomes a :class:`smartconfig.types.Template` with
+       that field's inner schema and parameters, evaluated later. A ``__use__``
+       here takes the place of the ``__template__`` wrapper.
+   * - Inside a template's value
+     - It is kept as written, as part of the enclosing template's ``source``,
+       and resolved when that template is evaluated.
+
+On a template field, or inside a template, the copy is made when the
+configuration is resolved, so a template's ``source`` never depends on the rest
+of the configuration. The copied value is checked like any template value.
 
 **Input**: Either a string keypath (simple form) or a dictionary with the following keys:
 
@@ -477,18 +555,70 @@ of the destination:
 
 .. testoutput:: python
 
-    {'greeting_template': {'__template__': 'Hello, ${name}!'},
+    {'greeting_template': Template(at "greeting_template", parameters: none),
      'message': 'Hello, Alice!',
      'name': 'Alice'}
 
 Notice that the template itself remains wrapped (the ``${name}`` reference is
-preserved inside the ``__template__`` wrapper), but the copy produced by
+kept as written in the :class:`smartconfig.types.Template`), but the copy produced by
 ``__use__`` has ``${name}`` resolved to ``"Alice"``.
+
+**Example (a template from a global variable)**:
+
+A template can come from outside the configuration. Here, an application has
+resolved a shared configuration earlier and passes its templates in as the
+global variable ``vars``. The template refers to ``this.metadata.title``, which
+is resolved in the configuration where it is pasted:
+
+.. testcode:: python
+
+    shared = smartconfig.resolve(
+        {"heading": {"__template__": "Lecture: ${ this.metadata.title }"}},
+        {"type": "dict", "required_keys": {"heading": {"type": "any"}}},
+    )
+
+    lecture = {
+        "this": {
+            "metadata": {
+                "title": "Introduction",
+                "heading": {"__use__": "vars.heading"},
+            }
+        }
+    }
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "this": {
+                "type": "dict",
+                "required_keys": {
+                    "metadata": {
+                        "type": "dict",
+                        "required_keys": {
+                            "title": {"type": "string"},
+                            "heading": {"type": "string"},
+                        },
+                    }
+                },
+            }
+        },
+    }
+
+    print(smartconfig.resolve(lecture, schema, global_variables={"vars": shared}))
+
+.. testoutput:: python
+
+    {'this': {'metadata': {'heading': 'Lecture: Introduction',
+                           'title': 'Introduction'}}}
+
+The copy is resolved with the destination's options (functions, converters,
+and so on), not the ones the template was created with.
 
 **Example (with overrides)**:
 
-When the template resolves to a dictionary, ``__use__`` accepts an ``overrides``
-key that is deep-merged on top of the template contents before resolution. This
+When the template is written as a dictionary (not as a function call that makes
+one), ``__use__`` accepts an ``overrides`` key that is deep-merged on top of the
+template as written, before anything in it is evaluated. This
 lets you define shared defaults in one place and selectively override individual
 fields at each use site:
 
@@ -522,8 +652,52 @@ fields at each use site:
 
 .. testoutput:: python
 
-    {'defaults': {'__template__': {'host': 'localhost', 'port': 8080}},
+    {'defaults': Template(at "defaults", parameters: none),
      'server': {'host': 'localhost', 'port': 9090}}
+
+**Example (on a template field)**:
+
+On a template field the copy is kept as written, overrides included, and
+evaluated later with :meth:`Template.evaluate <smartconfig.types.Template.evaluate>`:
+
+.. testcode:: python
+
+    config = {
+        "templates": {
+            "page": {"__template__": {"title": "${ publication }", "points": "10"}}
+        },
+        "homework_page": {
+            "__use__": {
+                "template": "templates.page",
+                "overrides": {"points": "${ publication.points }"},
+            }
+        },
+    }
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "templates": {"type": "any"},
+            "homework_page": {
+                "type": "template",
+                "schema": {
+                    "type": "dict",
+                    "required_keys": {
+                        "title": {"type": "string"},
+                        "points": {"type": "integer"},
+                    },
+                },
+                "parameters": ["publication"],
+            },
+        },
+    }
+
+    page = smartconfig.resolve(config, schema)["homework_page"]
+    print(page.source)
+
+.. testoutput:: python
+
+    {'points': '${ publication.points }', 'title': '${ publication }'}
 
 
 List Operations
@@ -876,6 +1050,16 @@ This produces:
 Datetime Operations
 -------------------
 
+A reference date may be a string in ISO format (``"2021-10-05"`` or
+``"2021-10-05 23:59"``), a ``datetime.date`` or a ``datetime.datetime``. The
+result is a date when nothing gives it a time: a date offset by whole days or
+weeks, or the first weekday after a date, is a date, so ``"Due ${ due }"``
+reads ``"Due 2021-10-08"``. A datetime reference, an offset in hours, minutes or
+seconds, ``" at HH:MM"`` and ``datetime.at`` give a datetime. Like the
+``datetime`` converter, the functions never assume a time of midnight: to put a
+date-only result in a ``datetime`` field, give it a time, as in ``"3 days after
+2021-10-05 at 23:59"`` or with ``datetime.at``.
+
 .. _func-datetime-parse:
 
 datetime.parse
@@ -887,11 +1071,12 @@ Parses a natural language date/datetime string.
 
 - An ISO date or datetime: ``"2021-10-05"`` or ``"2021-10-05 23:59:10"``
 - An offset: ``"3 days after 2021-10-05"`` (multiple units can be comma-separated,
-  e.g., ``"1 week, 2 days after 2021-10-05"``)
+  e.g., ``"1 week, 2 days after 2021-10-05"``; each unit may appear only once)
 - A first-weekday: ``"first monday after 2021-09-14"`` (multiple day names can be
   separated by commas, e.g., ``"first monday, wednesday after 2021-09-14"``)
 
-Any form may end with ``" at HH:MM:SS"`` to override the time component.
+Any form may end with ``" at HH:MM"`` or ``" at HH:MM:SS"`` to override the time
+component; the hour may have one digit, as in ``" at 9:00"``.
 
 **Example**:
 
@@ -948,7 +1133,7 @@ Offsets a date or datetime by a given amount.
      - The reference date to offset forward from. Mutually exclusive with ``before``; exactly one must be provided.
    * - ``by``
      - Yes
-     - The offset amount. Either a string like ``"7 days"`` or ``"1 week, 2 days"``, or a dictionary like ``{"weeks": 1, "days": 2}``. Valid units are ``weeks``, ``days``, ``hours``, ``minutes``, and ``seconds``.
+     - The offset amount. Either a string like ``"7 days"`` or ``"1 week, 2 days"`` (each unit may appear only once, so ``"1 day, 2 days"`` is an error), or a dictionary like ``{"weeks": 1, "days": 2}``. Valid units are ``weeks``, ``days``, ``hours``, ``minutes``, and ``seconds``.
    * - ``skip``
      - No
      - A list of dates to skip over. If the result lands on a skipped date, it advances in the same direction until a non-skipped date is found.

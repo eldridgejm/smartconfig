@@ -13,7 +13,7 @@ from sphinxawesome_theme import ThemeOptions
 project = "smartconfig"
 copyright = "2025, Justin Eldridge"
 author = "Justin Eldridge"
-release = "0.4.0"
+release = "0.6.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -32,6 +32,13 @@ extensions = [
 ]
 
 autodoc_typehints = "signature"
+
+# Sphinx's defaults without IGNORE_EXCEPTION_DETAIL, so that a doctest checks an
+# exception's message too, not only its type: otherwise a message shown in the docs
+# can go stale without any test failing
+import doctest  # noqa: E402
+
+doctest_default_flags = doctest.ELLIPSIS | doctest.DONT_ACCEPT_TRUE_FOR_1
 
 autodoc_type_aliases = {
     "Schema": "smartconfig.types.Schema",
