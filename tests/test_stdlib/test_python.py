@@ -305,3 +305,45 @@ def test_body_that_yields_is_an_error():
     # then
     assert exc.value.keypath == ("foo",)
     assert "must not use 'yield'" in str(exc.value)
+
+
+def test_body_can_import_modules():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "float"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "foo": {"__python__": "import math\nreturn math.sqrt(16)\n"},
+    }
+
+    # when
+    result = resolve(cfg, schema, functions=FUNCTIONS)
+
+    # then
+    assert result == {"foo": 4.0}
+
+
+def test_body_reading_its_own_value_is_a_circular_reference():
+    # given
+    schema: Schema = {
+        "type": "dict",
+        "required_keys": {
+            "foo": {"type": "integer"},
+        },
+    }
+
+    cfg: ConfigurationDict = {
+        "foo": {"__python__": "return args.root['foo'] + 1"},
+    }
+
+    # when
+    with pytest.raises(exceptions.ResolutionError) as exc:
+        resolve(cfg, schema, functions=FUNCTIONS)
+
+    # then
+    assert exc.value.keypath == ("foo",)
+    assert "Circular reference" in str(exc.value)
