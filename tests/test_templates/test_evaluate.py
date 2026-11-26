@@ -67,7 +67,7 @@ def test_evaluate_calls_functions():
     assert template.evaluate({"flag": False}) == {"answer": "no"}
 
 
-def test_a_template_whose_value_is_a_function_call_can_use_its_variables():
+def test_a_template_whose_value_is_a_function_call_can_use_its_parameters():
     template = Template(
         {"__if__": {"condition": "${ flag }", "then": "yes", "else": "no"}},
         schema={"type": "string"},
@@ -99,10 +99,10 @@ def test_evaluating_twice_gives_independent_results():
     assert template.source == {"tags": ["${ a }"]}
 
 
-# variables ============================================================================
+# parameters ===========================================================================
 
 
-def test_missing_variable_is_an_error():
+def test_missing_parameter_is_an_error():
     template = Template(
         "${ a } ${ b }",
         schema={"type": "string"},
@@ -119,7 +119,7 @@ def test_missing_variable_is_an_error():
     )
 
 
-def test_extra_variable_is_an_error():
+def test_extra_parameter_is_an_error():
     template = Template(
         "${ a }",
         schema={"type": "string"},
@@ -136,7 +136,7 @@ def test_extra_variable_is_an_error():
     )
 
 
-def test_missing_and_extra_variables_are_reported_together():
+def test_missing_and_extra_parameters_are_reported_together():
     template = Template("${ a }", parameters=["a"])
 
     with raises(exceptions.ResolutionError) as exc:
@@ -154,6 +154,12 @@ def test_a_template_with_no_parameters_takes_none():
     assert template.evaluate() == "hi"
     with raises(exceptions.ResolutionError):
         template.evaluate({"a": 1})
+
+
+def test_parameters_can_be_passed_by_keyword():
+    template = Template("${ a }", schema={"type": "integer"}, parameters=["a"])
+
+    assert template.evaluate(parameters={"a": 1}) == 1
 
 
 # A template's top-level keys can be referenced by name, like its parameters, so a

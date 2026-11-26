@@ -577,7 +577,7 @@ error:
 
 To evaluate part of a value separately, make it a sibling template instead: a
 template field next to ``page`` (in the same dictionary) rather than inside it,
-listing all the variables it needs:
+listing all the parameters it needs:
 
 .. code:: python
 

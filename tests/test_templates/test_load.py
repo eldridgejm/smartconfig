@@ -13,7 +13,7 @@ def explode(args: FunctionArgs):
     raise AssertionError("explode was called")
 
 
-# a template field holding a string, with one variable
+# a template field holding a string, with one parameter
 STRING_TEMPLATE = {
     "type": "template",
     "schema": {"type": "string"},
@@ -256,7 +256,7 @@ def test_function_call_under_raw_as_the_value_of_a_template_field_is_not_evaluat
     assert exc.value.keypath == ("x",)
 
 
-def test_template_required_message_with_no_variables():
+def test_template_required_message_with_no_parameters():
     schema = {
         "type": "dict",
         "required_keys": {

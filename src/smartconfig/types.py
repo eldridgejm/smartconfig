@@ -585,7 +585,7 @@ class Template:
 
     # resolution -----------------------------------------------------------------------
 
-    def evaluate(self, variables: Mapping[str, Any] | None = None) -> Any:
+    def evaluate(self, parameters: Mapping[str, Any] | None = None) -> Any:
         """Evaluates the template.
 
         The source is resolved against the schema as by :func:`smartconfig.resolve`
@@ -594,7 +594,7 @@ class Template:
 
         Parameters
         ----------
-        variables : Mapping[str, Any] | None
+        parameters : Mapping[str, Any] | None
             The values of the template's parameters. Its keys must be exactly the
             names in :attr:`parameters`.
 
@@ -607,7 +607,7 @@ class Template:
         Raises
         ------
         ResolutionError
-            If a variable is missing, if a name that is not a parameter is
+            If a parameter is missing, if a name that is not a parameter is
             given, or if the template cannot be evaluated. The
             keypath is that of the template followed by the path inside it.
 
@@ -622,12 +622,14 @@ class Template:
         from ._resolve import _make_resolution_context
         from .exceptions import ResolutionError
 
-        if variables is None:
-            variables = {}
+        # named like the schema's "parameters" and Template.parameters (it was
+        # "variables" before 0.6.0)
+        if parameters is None:
+            parameters = {}
 
         # the keys must be exactly the parameters: no more and no fewer
-        missing = [n for n in self.parameters if n not in variables]
-        unexpected = [n for n in variables if n not in self.parameters]
+        missing = [n for n in self.parameters if n not in parameters]
+        unexpected = [n for n in parameters if n not in self.parameters]
         if missing or unexpected:
             problems = []
             if missing:
@@ -646,7 +648,7 @@ class Template:
         # the parameters are added to the globals, and win over them: whoever
         # calls resolve() may pass globals that the template's author never saw,
         # and the template should not break because one shares a parameter's name
-        global_variables = {**(options.pop("global_variables") or {}), **variables}
+        global_variables = {**(options.pop("global_variables") or {}), **parameters}
         context = _make_resolution_context(global_variables=global_variables, **options)
 
         # as in resolve(): a tree too deep to build or resolve is a ResolutionError
