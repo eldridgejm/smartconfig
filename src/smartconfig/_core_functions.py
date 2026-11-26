@@ -192,16 +192,18 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
             parent=args._function_call_node,
         )
 
-    # any other field: build a STANDARD tree from the (possibly overridden) value
-    # as written. The caller resolves this node, performing one pass of
-    # interpolation and type conversion.
+    # any other field: build a tree from the (possibly overridden) value as
+    # written, in the call's own mode, as __if__ and __let__ do, so that inside
+    # __fully_resolve__ it is interpolated until stable, like a "${...}" reference
+    # in the same place. (The mode is never RAW: inside __raw__, function calls
+    # aren't evaluated.) The caller resolves this node.
     node = make_node(
         spliced_data,
         args.schema,
         args.resolution_context,
         parent=args._function_call_node,
         keypath=args.keypath,
-        mode=ResolutionMode.STANDARD,
+        mode=args._function_call_node.mode,
     )
     return node
 

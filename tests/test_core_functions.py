@@ -1820,6 +1820,40 @@ def test_use_performs_only_one_resolve():
     }
 
 
+def test_use_inside_fully_resolve_interpolates_until_stable():
+    # given — the same setup as above, but the __use__ is inside __fully_resolve__,
+    # so "${x}" should be expanded too, as a "${template}" reference would be
+    cfg: ConfigurationDict = {
+        "x": "world",
+        "y": {"__raw__": "${x}"},
+        "template": {"__template__": "${y}"},
+        "result": {"__fully_resolve__": {"__use__": "template"}},
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert result["result"] == "world"
+
+
+def test_use_inside_resolve_inside_fully_resolve_does_a_single_pass():
+    # given — __resolve__ switches back to a single pass, and the __use__ inside it
+    # keeps that single pass
+    cfg: ConfigurationDict = {
+        "x": "world",
+        "y": {"__raw__": "${x}"},
+        "template": {"__template__": "${y}"},
+        "result": {"__fully_resolve__": {"__resolve__": {"__use__": "template"}}},
+    }
+
+    # when
+    result = resolve(cfg, {"type": "any"}, functions=CORE_FUNCTIONS)
+
+    # then
+    assert result["result"] == "${x}"
+
+
 def test_use_with_nested_keypath():
     # given
     schema: Schema = {
