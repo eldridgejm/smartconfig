@@ -765,6 +765,16 @@ class _UnresolvedList(_types.UnresolvedList):
     def __len__(self):
         return len(self.list_node.children)
 
+    # Sequence defines no __eq__, so == compared identity and l == [1, 2] was always
+    # False (as was a dict holding a list, since Mapping's == compares the values).
+    # Compare element by element like a list; an element that is a container is
+    # itself unresolved, so nesting works. Like a list, it equals only lists:
+    # anything else (a tuple) gets NotImplemented, so Python gives False
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, (list, _types.UnresolvedList)):
+            return NotImplemented
+        return len(self) == len(other) and list(self) == list(other)
+
     def resolve(self) -> _types.ConfigurationList:
         """Resolve all values recursively, returning a ConfigurationList."""
         return self.list_node.resolve()
