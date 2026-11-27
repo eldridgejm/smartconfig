@@ -1,6 +1,7 @@
 """Datetime-related functions: at, offset, first, and parse."""
 
 import datetime as datetimelib
+import enum
 import re
 from collections.abc import Callable
 
@@ -187,20 +188,20 @@ def _read_offset(value: Configuration, keypath: KeyPath) -> datetimelib.timedelt
     )
 
 
-# the names of the days, at their index in datetime.date.weekday()
-_WEEKDAYS = (
-    "MONDAY",
-    "TUESDAY",
-    "WEDNESDAY",
-    "THURSDAY",
-    "FRIDAY",
-    "SATURDAY",
-    "SUNDAY",
-)
+class _DaysOfTheWeek(enum.IntEnum):
+    """The days, numbered as by datetime.date.weekday()."""
+
+    MONDAY = 0
+    TUESDAY = 1
+    WEDNESDAY = 2
+    THURSDAY = 3
+    FRIDAY = 4
+    SATURDAY = 5
+    SUNDAY = 6
 
 
-def _get_day_of_the_week(s: Configuration, keypath: KeyPath) -> int:
-    """Convert a day name string to its weekday number, from 0 for Monday.
+def _get_day_of_the_week(s: Configuration, keypath: KeyPath) -> _DaysOfTheWeek:
+    """Convert a day name string to a ``_DaysOfTheWeek`` value.
 
     Parameters
     ----------
@@ -211,7 +212,7 @@ def _get_day_of_the_week(s: Configuration, keypath: KeyPath) -> int:
 
     Returns
     -------
-    int
+    _DaysOfTheWeek
 
     Raises
     ------
@@ -221,9 +222,9 @@ def _get_day_of_the_week(s: Configuration, keypath: KeyPath) -> int:
     Examples
     --------
     >>> _get_day_of_the_week("Monday", keypath=())
-    0
+    <_DaysOfTheWeek.MONDAY: 0>
     >>> _get_day_of_the_week("friday", keypath=())
-    4
+    <_DaysOfTheWeek.FRIDAY: 4>
 
     """
     if not isinstance(s, str):
@@ -231,13 +232,13 @@ def _get_day_of_the_week(s: Configuration, keypath: KeyPath) -> int:
             f"Expected a day name string, got {type(s).__name__}.", keypath
         )
     try:
-        return _WEEKDAYS.index(s.upper())
-    except ValueError:
+        return _DaysOfTheWeek[s.upper()]
+    except KeyError:
         raise ResolutionError(f"Invalid day of week: '{s}'.", keypath)
 
 
-def _parse_weekdays(raw: str, keypath: KeyPath) -> set[int]:
-    """Parse a string of weekday names into a set of weekday numbers.
+def _parse_weekdays(raw: str, keypath: KeyPath) -> set[_DaysOfTheWeek]:
+    """Parse a string of weekday names into a set of ``_DaysOfTheWeek`` values.
 
     Names may be separated by commas, spaces, or the word ``"or"``.
     All separators are normalized before splitting, so ``"monday, friday"``,
@@ -252,7 +253,7 @@ def _parse_weekdays(raw: str, keypath: KeyPath) -> set[int]:
 
     Returns
     -------
-    set of int
+    set of _DaysOfTheWeek
 
     Raises
     ------
@@ -262,7 +263,7 @@ def _parse_weekdays(raw: str, keypath: KeyPath) -> set[int]:
     Examples
     --------
     >>> sorted(_parse_weekdays("monday, friday", keypath=()))
-    [0, 4]
+    [<_DaysOfTheWeek.MONDAY: 0>, <_DaysOfTheWeek.FRIDAY: 4>]
 
     """
     normalized = raw.replace(",", " ").replace(" or ", " ")
@@ -439,9 +440,8 @@ def _offset_date(
     # OverflowError, which would say nothing about which offset it was
     day = datetimelib.timedelta(days=-1 if before else 1)
     try:
-        result = _skip_excluded(
-            _shift(reference, delta, before), skip_dates, lambda dt: dt + day, keypath
-        )
+        shifted = _shift(reference, delta, before)
+        result = _skip_excluded(shifted, skip_dates, lambda dt: dt + day, keypath)
     except OverflowError:
         direction = "before" if before else "after"
         raise ResolutionError(
@@ -454,7 +454,7 @@ def _offset_date(
 
 def _first_weekday(
     reference: _DateOrDatetime,
-    weekdays: set[int],
+    weekdays: set[_DaysOfTheWeek],
     before: bool,
     skip_dates: set[datetimelib.date],
     keypath: KeyPath,
@@ -487,11 +487,10 @@ def _first_weekday(
         return cursor
 
     try:
-        result = _skip_excluded(
-            next_weekday(reference), skip_dates, next_weekday, keypath
-        )
+        candidate = next_weekday(reference)
+        result = _skip_excluded(candidate, skip_dates, next_weekday, keypath)
     except OverflowError:
-        names = ", ".join(_WEEKDAYS[n].lower() for n in sorted(weekdays))
+        names = ", ".join(day.name.lower() for day in sorted(weekdays))
         direction = "before" if before else "after"
         raise ResolutionError(
             f"The first {names} {direction} {reference} is out of range.", keypath
@@ -539,8 +538,8 @@ def _check_input(
     return input_
 
 
-def _direction(input_: ConfigurationDict, function: str, keypath: KeyPath) -> str:
-    """Which of ``"before"`` and ``"after"`` the input to ``function`` contains.
+def _is_before(input_: ConfigurationDict, function: str, keypath: KeyPath) -> bool:
+    """Whether the input to ``function`` has ``"before"`` (rather than ``"after"``).
 
     Raises
     ------
@@ -563,7 +562,7 @@ def _direction(input_: ConfigurationDict, function: str, keypath: KeyPath) -> st
             keypath,
         )
 
-    return "before" if has_before else "after"
+    return has_before
 
 
 def at(args: FunctionArgs) -> datetimelib.datetime:
@@ -628,13 +627,14 @@ def offset(args: FunctionArgs) -> _DateOrDatetime:
     """
     function = "datetime.offset"
     input_ = _check_input(args, function, {"before", "after", "by", "skip"})
-    direction = _direction(input_, function, args.keypath)
+    before = _is_before(input_, function, args.keypath)
 
     if "by" not in input_:
         raise ResolutionError(f"Input to '{function}' must contain 'by'.", args.keypath)
 
     skip_dates = _read_skip_dates(input_.get("skip", []), args.keypath)
-    reference = _read_date_or_datetime(input_[direction], args.keypath)
+    reference_key = "before" if before else "after"
+    reference = _read_date_or_datetime(input_[reference_key], args.keypath)
     by = input_["by"]
     # convert the values of a dict of units, so that a value written as "${ n }",
     # which interpolates to a string, is accepted
@@ -644,7 +644,6 @@ def offset(args: FunctionArgs) -> _DateOrDatetime:
         }
     delta = _read_offset(by, args.keypath)
 
-    before = direction == "before"
     return _offset_date(reference, delta, before, skip_dates, args.keypath)
 
 
@@ -666,7 +665,7 @@ def first(args: FunctionArgs) -> _DateOrDatetime:
     function = "datetime.first"
     allowed = {"weekday", "before", "after", "skip"}
     input_ = _check_input(args, function, allowed, ("weekday",))
-    direction = _direction(input_, function, args.keypath)
+    before = _is_before(input_, function, args.keypath)
 
     raw_weekday = input_["weekday"]
     if isinstance(raw_weekday, str):
@@ -679,9 +678,9 @@ def first(args: FunctionArgs) -> _DateOrDatetime:
         )
 
     skip_dates = _read_skip_dates(input_.get("skip", []), args.keypath)
-    reference = _read_date_or_datetime(input_[direction], args.keypath)
+    reference_key = "before" if before else "after"
+    reference = _read_date_or_datetime(input_[reference_key], args.keypath)
 
-    before = direction == "before"
     return _first_weekday(reference, weekdays, before, skip_dates, args.keypath)
 
 
