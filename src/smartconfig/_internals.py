@@ -220,8 +220,8 @@ resolved to an ordinary value (an int, a string, a dict, etc.). Rather, the node
 resolves to a :class:`smartconfig.types.Template` holding the value as written.
 
 The resolver does not unwrap a template field's value itself. make_node() builds an
-ordinary _FunctionCallNode for it, whose function is given the template schema; the value of a template field must be a function call (or
-a Template passed in). The core functions decide what to do with that schema:
+ordinary _FunctionCallNode for it, whose function is given the template schema; the
+value of a template field must be a function call (or a Template passed in). The core functions decide what to do with that schema:
 ``__template__`` returns a _TemplateNode of its input, and ``__use__`` returns a
 _TemplateNode of the template it copies (see _core_functions.py). Any other function's
 result is built under the template schema too, so ``__if__`` choosing between two
@@ -704,9 +704,10 @@ def _has_item(container: typing.Any, key: typing.Any) -> bool:
     if isinstance(container, _UnresolvedFunctionCall):
         # a function call (at the root) may evaluate to a plain value, such as the
         # string an __if__ returns; a value has no keys, so nothing is found in it
-        if isinstance(container.function_node.evaluate(), (_ValueNode, _TemplateNode)):
+        node = container.function_node.evaluate()
+        if not isinstance(node, (_DictNode, _ListNode)):
             return False
-        container = container._evaluate_to_unresolved_container()
+        container = _view(node)
     if isinstance(container, _UnresolvedDict):
         children = container.dict_node.children
     elif isinstance(container, _UnresolvedList):
@@ -729,28 +730,12 @@ class _UnresolvedDict(_types.UnresolvedDict):
     def __getitem__(
         self, key
     ) -> _UnresolvedDict | _UnresolvedList | _types.Configuration:
-        """Access an element in the unresolved dictionary.
-
-        If the element is a _ValueNode, this resolves it. If the element is a _DictNode
-        or _ListNode, this returns another unresolved container. If the element is a
-        _FunctionCallNode, this evaluates the function and returns an unresolved
-        container if the result is a collection, or the resolved value otherwise.
+        """Access an element in the unresolved dictionary (see _view).
 
         If the key is not found, a KeyError is raised.
 
         """
-        child = self.dict_node.children[key]
-
-        if isinstance(child, _FunctionCallNode):
-            # evaluate the function to turn it into a Dict, List, or Value node
-            child = child.evaluate()
-
-        if isinstance(child, _DictNode):
-            return _UnresolvedDict(child)
-        elif isinstance(child, _ListNode):
-            return _UnresolvedList(child)
-        elif isinstance(child, (_ValueNode, _TemplateNode)):
-            return child.resolve()
+        return _view(self.dict_node.children[key])
 
     def __len__(self):
         return len(self.dict_node.children)
@@ -803,12 +788,7 @@ class _UnresolvedList(_types.UnresolvedList):
     ) -> list[_types.UnresolvedDict | _types.UnresolvedList | _types.Configuration]: ...
 
     def __getitem__(self, ix):
-        """Access an element in the unresolved list.
-
-        If the element is a _ValueNode, this resolves it. If the element is a _DictNode
-        or _ListNode, this returns another unresolved container. If the element is a
-        _FunctionCallNode, this evaluates the function and returns an unresolved
-        container if the result is a collection, or the resolved value otherwise.
+        """Access an element in the unresolved list (see _view).
 
         If the index is out of range, an IndexError is raised. A negative index
         counts from the end, and a slice gives a plain list of the elements.
@@ -826,18 +806,7 @@ class _UnresolvedList(_types.UnresolvedList):
         if ix not in range(len(self)):
             raise IndexError(ix)
 
-        child = self.list_node.children[ix]
-
-        if isinstance(child, _FunctionCallNode):
-            # evaluate the function to turn it into a Dict, List, or Value node
-            child = child.evaluate()
-
-        if isinstance(child, _DictNode):
-            return _UnresolvedDict(child)
-        elif isinstance(child, _ListNode):
-            return _UnresolvedList(child)
-        elif isinstance(child, (_ValueNode, _TemplateNode)):
-            return child.resolve()
+        return _view(self.list_node.children[ix])
 
     def __iter__(self):
         for i in range(len(self)):
@@ -879,18 +848,6 @@ class _UnresolvedFunctionCall(_types.UnresolvedFunctionCall):
     def __init__(self, function_node: _FunctionCallNode):
         self.function_node = function_node
 
-    def _evaluate_to_unresolved_container(
-        self,
-    ) -> _UnresolvedDict | _UnresolvedList:
-        """Evaluate the function call and return a unresolved container."""
-        node = self.function_node.evaluate()
-        assert not isinstance(node, (_ValueNode, _TemplateNode))
-        if isinstance(node, _DictNode):
-            return _UnresolvedDict(node)
-        else:
-            # must be a _ListNode
-            return _UnresolvedList(node)
-
     def __getitem__(
         self, key
     ) -> _UnresolvedDict | _UnresolvedList | _types.Configuration:
@@ -901,12 +858,13 @@ class _UnresolvedFunctionCall(_types.UnresolvedFunctionCall):
         collection. If the result is not a dictionary or list, a TypeError is raised.
 
         """
-        # raise the TypeError rather than reaching the assert in
-        # _evaluate_to_unresolved_container; Jinja reads it as an undefined name
+        # Jinja reads the TypeError as an undefined name
         node = self.function_node.evaluate()
-        if isinstance(node, (_ValueNode, _TemplateNode)):
-            raise TypeError("The function call evaluated to a value with no keys.")
-        return self._evaluate_to_unresolved_container()[key]
+        if isinstance(node, _DictNode):
+            return _UnresolvedDict(node)[key]
+        if isinstance(node, _ListNode):
+            return _UnresolvedList(node)[key]
+        raise TypeError("The function call evaluated to a value with no keys.")
 
     def get_keypath(self, keypath: _types.KeyPath | str) -> _types.Configuration:
         """Resolve the value at the given keypath."""
@@ -914,6 +872,25 @@ class _UnresolvedFunctionCall(_types.UnresolvedFunctionCall):
 
 
 # helpers ------------------------------------------------------------------------------
+
+
+def _view(
+    node: _ConcreteNode,
+) -> _UnresolvedDict | _UnresolvedList | _types.Configuration:
+    """A node's value as seen through an unresolved container.
+
+    A function call is evaluated first. A dict or list node is wrapped in another
+    unresolved container, so that its children are resolved only when accessed; a
+    value or template node is resolved.
+
+    """
+    if isinstance(node, _FunctionCallNode):
+        node = node.evaluate()
+    if isinstance(node, _DictNode):
+        return _UnresolvedDict(node)
+    if isinstance(node, _ListNode):
+        return _UnresolvedList(node)
+    return node.resolve()
 
 
 def _make_unresolved_container(

@@ -17,6 +17,7 @@ from ._internals import (
     _ConcreteNode,
     make_node,
     _make_unresolved_container,
+    _view,
     _expand_use,
     _is_in_progress,
 )
@@ -356,15 +357,9 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
                     "'__previous__' cannot be used on the first element of a list.",
                     args.keypath,
                 )
-            prev_node = parent.children[index - 1]
-            # a function call is evaluated first, so that prev is its result,
-            # not the call itself (which would leak into strings as an object)
-            if isinstance(prev_node, _FunctionCallNode):
-                prev_node = prev_node.evaluate()
-            if isinstance(prev_node, (_ValueNode, _TemplateNode)):
-                node.local_variables[name] = prev_node.resolve()
-            else:
-                node.local_variables[name] = _make_unresolved_container(prev_node)
+            # _view evaluates a function call, so that prev is its result, not
+            # the call itself (which would leak into strings as an object)
+            node.local_variables[name] = _view(parent.children[index - 1])
         else:
             # an unknown target (a misspelling of "__previous__", say) would
             # otherwise leave the name undefined, with no error saying why
