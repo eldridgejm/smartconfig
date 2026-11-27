@@ -1202,21 +1202,36 @@ class _DictNode(_Node):
     ):
         super().__init__(keypath, resolution_context, parent, local_variables)
         self.children: dict[str, _ConcreteNode] = {}
+        self._add_required_children(dct, schema, mode)
+        self._add_optional_children(dct, schema, mode)
+        self._add_extra_children(dct, schema, mode)
 
-        def add_child(
-            key: str,
-            value: _types.Configuration,
-            key_schema: _types.Schema | _types.DynamicSchema,
-        ) -> None:
-            self.children[key] = make_node(
-                value, key_schema, resolution_context, self, keypath + (key,), mode=mode
-            )
+    def _add_child(
+        self,
+        key: str,
+        value: _types.Configuration,
+        key_schema: _types.Schema | _types.DynamicSchema,
+        mode: ResolutionMode,
+    ) -> None:
+        """Build the child node at ``key``."""
+        self.children[key] = make_node(
+            value,
+            key_schema,
+            self.resolution_context,
+            parent=self,
+            keypath=self.keypath + (key,),
+            mode=mode,
+        )
 
-        required_keys = schema.get("required_keys", {})
-        for key, key_schema in required_keys.items():
+    def _add_required_children(
+        self, dct: _types.ConfigurationDict, schema: _types.Schema, mode: ResolutionMode
+    ) -> None:
+        """Build the children of the required keys, raising if one is missing."""
+        for key, key_schema in schema.get("required_keys", {}).items():
             if key not in dct:
                 raise ResolutionError(
-                    f'Dictionary is missing required key "{key}".', keypath + (key,)
+                    f'Dictionary is missing required key "{key}".',
+                    self.keypath + (key,),
                 )
 
             # make_node validates a dynamic schema's result with defaults allowed, as
@@ -1226,16 +1241,20 @@ class _DictNode(_Node):
                 key_schema = _call_dynamic_schema(
                     key_schema,
                     dct[key],
-                    keypath + (key,),
-                    resolution_context,
+                    self.keypath + (key,),
+                    self.resolution_context,
                     allow_default=False,
                 )
-            add_child(key, dct[key], key_schema)
+            self._add_child(key, dct[key], key_schema, mode)
 
-        optional_keys = schema.get("optional_keys", {})
-        for key, key_schema in optional_keys.items():
+    def _add_optional_children(
+        self, dct: _types.ConfigurationDict, schema: _types.Schema, mode: ResolutionMode
+    ) -> None:
+        """Build the children of the optional keys. A missing key gets its default if
+        it has one, and is left out otherwise."""
+        for key, key_schema in schema.get("optional_keys", {}).items():
             if key in dct:
-                add_child(key, dct[key], key_schema)
+                self._add_child(key, dct[key], key_schema, mode)
                 continue
 
             # the key is missing; resolve a dynamic schema before checking for a default
@@ -1243,8 +1262,8 @@ class _DictNode(_Node):
                 key_schema = _call_dynamic_schema(
                     key_schema,
                     None,
-                    keypath + (key,),
-                    resolution_context,
+                    self.keypath + (key,),
+                    self.resolution_context,
                     allow_default=True,
                 )
             if "default" not in key_schema:
@@ -1255,22 +1274,31 @@ class _DictNode(_Node):
                 # the default of a template field is the template's value as
                 # written, without a __template__ wrapper
                 self.children[key] = _TemplateNode(
-                    default, key_schema, keypath + (key,), resolution_context, self
+                    default,
+                    key_schema,
+                    self.keypath + (key,),
+                    self.resolution_context,
+                    parent=self,
                 )
             else:
-                add_child(key, default, key_schema)
+                self._add_child(key, default, key_schema, mode)
 
+    def _add_extra_children(
+        self, dct: _types.ConfigurationDict, schema: _types.Schema, mode: ResolutionMode
+    ) -> None:
+        """Build the children of the keys the schema doesn't name, raising if it has
+        no "extra_keys_schema" for them."""
+        named = {*schema.get("required_keys", {}), *schema.get("optional_keys", {})}
         # a list, not a set difference, so that extra keys keep their input order
-        extra_keys = [
-            key for key in dct if key not in required_keys and key not in optional_keys
-        ]
+        extra_keys = [key for key in dct if key not in named]
         if extra_keys and "extra_keys_schema" not in schema:
             key = extra_keys[0]
             raise ResolutionError(
-                f'Dictionary contains unexpected extra key "{key}".', keypath + (key,)
+                f'Dictionary contains unexpected extra key "{key}".',
+                self.keypath + (key,),
             )
         for key in extra_keys:
-            add_child(key, dct[key], schema["extra_keys_schema"])
+            self._add_child(key, dct[key], schema["extra_keys_schema"], mode)
 
     def resolve(self) -> _types.ConfigurationDict:
         """Recursively resolve the _DictNode into a ConfigurationDict."""
