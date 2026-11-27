@@ -1,7 +1,6 @@
 """Dictionary-related functions: update, update_shallow, and from_items."""
 
 from copy import deepcopy
-import typing
 
 from ..types import (
     Function,
@@ -11,17 +10,7 @@ from ..types import (
 )
 from ..exceptions import ResolutionError
 from .._utils import deep_update
-
-
-# helpers ==============================================================================
-
-
-def _all_elements_are_instances_of(container, type_):
-    """Check if all elements in the container are instances of the given type."""
-    return all(isinstance(element, type_) for element in container)
-
-
-# functions ============================================================================
+from ._args import list_of
 
 
 @Function.new(resolve_output=False)
@@ -31,27 +20,10 @@ def update_shallow(args: FunctionArgs) -> ConfigurationDict:
     ``args.input`` should be a list of dictionaries.
 
     """
-    if not isinstance(args.input, list) or not _all_elements_are_instances_of(
-        args.input, dict
-    ):
-        raise ResolutionError(
-            "Input to 'dict.update_shallow' must be a list of dictionaries.",
-            args.keypath,
-        )
-
-    if len(args.input) == 0:
-        raise ResolutionError(
-            "Input to 'dict.update_shallow' must be a non-empty list of dictionaries.",
-            args.keypath,
-        )
-
-    # true since we checked _all_elements_are_instances_of(args.input, dict) above
-    input = typing.cast(list[ConfigurationDict], args.input)
-
-    first = deepcopy(input[0])
-    for dct in input[1:]:
+    first, *rest = list_of(dict, "dictionaries", "dict.update_shallow", args)
+    first = deepcopy(first)
+    for dct in rest:
         first.update(dct)
-
     return first
 
 
@@ -62,23 +34,7 @@ def update(args: FunctionArgs) -> ConfigurationDict:
     ``args.input`` should be a list of dictionaries.
 
     """
-    if not isinstance(args.input, list) or not _all_elements_are_instances_of(
-        args.input, dict
-    ):
-        raise ResolutionError(
-            "Input to 'dict.update' must be a list of dictionaries.", args.keypath
-        )
-
-    if len(args.input) == 0:
-        raise ResolutionError(
-            "Input to 'dict.update' must be a non-empty list of dictionaries.",
-            args.keypath,
-        )
-
-    # true since we checked _all_elements_are_instances_of(args.input, dict) above
-    input = typing.cast(list[dict], args.input)
-
-    return deep_update(input)
+    return deep_update(list_of(dict, "dictionaries", "dict.update", args))
 
 
 @Function.new(resolve_input=False, resolve_output=False)

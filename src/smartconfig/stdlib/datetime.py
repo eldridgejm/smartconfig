@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 from ..types import Configuration, FunctionArgs, FunctionMapping, KeyPath
 from ..exceptions import ResolutionError
-from ._integers import to_integer
+from ._args import to_integer
 
 
 # helpers ==============================================================================

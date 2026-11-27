@@ -1,4 +1,6 @@
-"""Reading integer arguments of stdlib functions."""
+"""Reading the arguments of stdlib functions."""
+
+from typing import Any
 
 from .. import converters as _converters
 from ..exceptions import ConversionError, ResolutionError
@@ -30,3 +32,27 @@ def to_integer(
             f"{value!r}.",
             args.keypath,
         ) from None
+
+
+def list_of(type_: type, what: str, function: str, args: FunctionArgs) -> list[Any]:
+    """``args.input``, checked to be a non-empty list of ``type_`` instances.
+
+    ``what`` names the elements in the error message, such as ``"lists"``.
+
+    Raises
+    ------
+    ResolutionError
+        If the input is not a list of ``type_``, or is empty.
+
+    """
+    if not isinstance(args.input, list) or not all(
+        isinstance(element, type_) for element in args.input
+    ):
+        raise ResolutionError(
+            f"Input to '{function}' must be a list of {what}.", args.keypath
+        )
+    if not args.input:
+        raise ResolutionError(
+            f"Input to '{function}' must be a non-empty list of {what}.", args.keypath
+        )
+    return args.input

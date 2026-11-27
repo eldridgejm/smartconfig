@@ -1,7 +1,6 @@
 """List-related functions: concatenate, zip, range, loop, and filter."""
 
 import itertools
-import typing
 
 from ..types import (
     Function,
@@ -12,18 +11,7 @@ from ..types import (
 )
 from ..exceptions import ResolutionError
 from .._utils import jinja_reserved_name_problem
-from ._integers import to_integer
-
-
-# helpers ==============================================================================
-
-
-def _all_elements_are_instances_of(container, type_):
-    """Check if all elements in the container are instances of the given type."""
-    return all(isinstance(element, type_) for element in container)
-
-
-# functions ============================================================================
+from ._args import list_of, to_integer
 
 
 @Function.new(resolve_output=False)
@@ -33,23 +21,7 @@ def concatenate(args: FunctionArgs) -> ConfigurationList:
     ``args.input`` should be a list of lists.
 
     """
-    if not isinstance(args.input, list) or not _all_elements_are_instances_of(
-        args.input, list
-    ):
-        raise ResolutionError(
-            "Input to 'list.concatenate' must be a list of lists.", args.keypath
-        )
-
-    if len(args.input) == 0:
-        raise ResolutionError(
-            "Input to 'list.concatenate' must be a non-empty list of lists.",
-            args.keypath,
-        )
-
-    # true since we checked _all_elements_are_instances_of(args.input, list) above
-    input = typing.cast(list[list], args.input)
-
-    return list(itertools.chain(*input))
+    return list(itertools.chain(*list_of(list, "lists", "list.concatenate", args)))
 
 
 @Function.new(resolve_output=False)
@@ -59,19 +31,7 @@ def zip_(args: FunctionArgs) -> ConfigurationList:
     ``args.input`` should be a list of lists.
 
     """
-    if not isinstance(args.input, list) or not _all_elements_are_instances_of(
-        args.input, list
-    ):
-        raise ResolutionError(
-            "Input to 'list.zip' must be a list of lists.", args.keypath
-        )
-
-    if len(args.input) == 0:
-        raise ResolutionError(
-            "Input to 'list.zip' must be a non-empty list of lists.", args.keypath
-        )
-
-    return [list(entry) for entry in zip(*args.input)]
+    return [list(entry) for entry in zip(*list_of(list, "lists", "list.zip", args))]
 
 
 def range_(args: FunctionArgs) -> ConfigurationList:
