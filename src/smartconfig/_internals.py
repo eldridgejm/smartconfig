@@ -1712,7 +1712,7 @@ class _ValueNode(_Node):
 
         # Step 2: convert the value to the expected type. None is never converted:
         # make_node gives a None value the "any" type, which _convert passes through
-        return self._safely_evaluate(self._convert, value, self.type_)
+        return self._safely_evaluate(self._convert, value)
 
     def _make_custom_jinja_context(self) -> type[jinja2.runtime.Context]:
         """This creates a custom Jinja2 context for string interpolation.
@@ -1888,18 +1888,13 @@ class _ValueNode(_Node):
         else:
             return result
 
-    def _convert(
-        self, value: _types.ConfigurationValue, type_: str
-    ) -> _types.ConfigurationValue:
-        """convert the configuration value into its final type.
+    def _convert(self, value: _types.ConfigurationValue) -> _types.ConfigurationValue:
+        """Convert the configuration value into its final type, ``self.type_``.
 
         Parameters
         ----------
         value : ConfigurationValue
             The value to convert.
-
-        type_ : str
-            The expected type of the value. Should be one of the valid value types.
 
         Returns
         -------
@@ -1909,16 +1904,14 @@ class _ValueNode(_Node):
         """
         # "any" is a built-in type, like "dict": validate_schema accepts it whatever
         # the converters are, so it must not depend on one here either
-        if type_ == "any":
+        if self.type_ == "any":
             return value
 
-        converters = self.resolution_context.converters
-
         try:
-            converter = converters[type_]
+            converter = self.resolution_context.converters[self.type_]
         except KeyError:
             raise ResolutionError(
-                f'No converter provided for type: "{type_}".', self.keypath
+                f'No converter provided for type: "{self.type_}".', self.keypath
             )
 
         return converter(value)
