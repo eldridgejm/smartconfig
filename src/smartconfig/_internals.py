@@ -1635,19 +1635,13 @@ class _FunctionCallNode(_Node):
 
     @_cache_and_detect_cycles
     def evaluate(self) -> _DictNode | _ListNode | _ValueNode | _TemplateNode:
-        """Evaluate the function, returning a _DictNode, _ListNode, or _ValueNode.
+        """Evaluate the function, returning a dict, list, value or template node.
 
         This operates recursively, so that if the function returns a ConfigurationDict
         representing another function call, that child function call is also evaluated,
         and so on.
 
         """
-        # NOTE: Although the public interface says functions return Configuration,
-        # internal (core) functions are allowed to return node types directly
-        # (_DictNode, _ListNode, _ValueNode, _FunctionCallNode). This bypasses
-        # make_node and gives core functions precise control over how the result is
-        # built (e.g., choosing the resolution mode).
-
         # if the function wants its input to be resolved, we resolve it by creating
         # a node out of its input configuration and resolving it
         if self.function.resolve_input:
@@ -1688,11 +1682,10 @@ class _FunctionCallNode(_Node):
         except Exception as exc:
             raise _wrapped(exc, self.keypath) from exc
 
-        # see the comment at the top of this method: privately, functions are allowed to
-        # return node types directly, in which case we skip make_node and use the
-        # returned node as the result directly; publicly, functions should return
-        # Configuration, in which case we pass the output through make_node to
-        # construct the appropriate node type
+        # Although the public interface says functions return Configuration, core
+        # functions may return a node, which is used as it is. This bypasses
+        # make_node and gives them precise control over how the result is built
+        # (e.g., choosing the resolution mode)
         if isinstance(output, _Node):
             result = output
         else:
@@ -1712,11 +1705,9 @@ class _FunctionCallNode(_Node):
                 mode=output_mode,
             )
 
-        # the result may be a function call itself, in which case we need to evaluate it
+        # the result may be a function call itself, which is evaluated in turn
         if isinstance(result, _FunctionCallNode):
-            # this will evaluate the function call recursively
             result = result.evaluate()
-
         return result
 
     def resolve(self) -> _types.Configuration:
