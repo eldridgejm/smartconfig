@@ -277,9 +277,6 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
             args.keypath,
         )
 
-    has_variables = "variables" in args.input
-    has_references = "references" in args.input
-
     # a name like true or self could never be referred to: ${ true } would be
     # Jinja's literal, silently, not the variable
     for section in ("variables", "references"):
@@ -291,7 +288,7 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
                     f"Invalid name in '{section}' of 'let': {problem}", args.keypath
                 )
 
-    if not has_variables and not has_references:
+    if "variables" not in args.input and "references" not in args.input:
         raise ResolutionError(
             "Input to 'let' must contain 'variables' and/or 'references'.",
             args.keypath,
@@ -313,70 +310,69 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
     node = _node_in_place(args, args.input["in"], fcn.mode, local_variables)
 
     # Add references as local variables pointing to unresolved containers.
-    if has_references:
-        if not isinstance(args.input["references"], dict):
-            raise ResolutionError(
-                "The value of 'references' in 'let' must be a dictionary.",
-                args.keypath,
-            )
-        for name, target in args.input["references"].items():
-            if target == "__this__":
-                if isinstance(node, (_ValueNode, _TemplateNode)):
-                    raise ResolutionError(
-                        "'__this__' cannot be used when 'in' is a value or a template.",
-                        args.keypath,
-                    )
-                node.local_variables[name] = _make_unresolved_container(node)
-            elif target == "__previous__":
-                # the result of a call wrapping this one at the same keypath (an
-                # __if__ or another __let__, say) becomes the list element, so the
-                # element is the outermost of these calls
-                element = fcn
-                parent = fcn.parent
-                while (
-                    isinstance(parent, _FunctionCallNode)
-                    and parent.keypath == fcn.keypath
-                ):
-                    element = parent
-                    parent = parent.parent
-
-                # if a call is still above us, this __let__ is in that call's input,
-                # like the body of list.loop. That input is not a list, so there is
-                # no previous element
-                if isinstance(parent, _FunctionCallNode):
-                    raise ResolutionError(
-                        "'__previous__' cannot be used in the input of a function "
-                        "call, such as the body of list.loop.",
-                        args.keypath,
-                    )
-                if not isinstance(parent, _ListNode):
-                    raise ResolutionError(
-                        "'__previous__' can only be used inside a list.",
-                        args.keypath,
-                    )
-                index = parent.children.index(element)
-                if index == 0:
-                    raise ResolutionError(
-                        "'__previous__' cannot be used on the first element of a list.",
-                        args.keypath,
-                    )
-                prev_node = parent.children[index - 1]
-                # a function call is evaluated first, so that prev is its result,
-                # not the call itself (which would leak into strings as an object)
-                if isinstance(prev_node, _FunctionCallNode):
-                    prev_node = prev_node.evaluate()
-                if isinstance(prev_node, (_ValueNode, _TemplateNode)):
-                    node.local_variables[name] = prev_node.resolve()
-                else:
-                    node.local_variables[name] = _make_unresolved_container(prev_node)
-            else:
-                # an unknown target (a misspelling of "__previous__", say) would
-                # otherwise leave the name undefined, with no error saying why
+    references = args.input.get("references", {})
+    if not isinstance(references, dict):
+        raise ResolutionError(
+            "The value of 'references' in 'let' must be a dictionary.",
+            args.keypath,
+        )
+    for name, target in references.items():
+        if target == "__this__":
+            if isinstance(node, (_ValueNode, _TemplateNode)):
                 raise ResolutionError(
-                    f"Unknown reference target {target!r} for '{name}' in 'let'. "
-                    "The targets are '__this__' and '__previous__'.",
+                    "'__this__' cannot be used when 'in' is a value or a template.",
                     args.keypath,
                 )
+            node.local_variables[name] = _make_unresolved_container(node)
+        elif target == "__previous__":
+            # the result of a call wrapping this one at the same keypath (an
+            # __if__ or another __let__, say) becomes the list element, so the
+            # element is the outermost of these calls
+            element = fcn
+            parent = fcn.parent
+            while (
+                isinstance(parent, _FunctionCallNode) and parent.keypath == fcn.keypath
+            ):
+                element = parent
+                parent = parent.parent
+
+            # if a call is still above us, this __let__ is in that call's input,
+            # like the body of list.loop. That input is not a list, so there is
+            # no previous element
+            if isinstance(parent, _FunctionCallNode):
+                raise ResolutionError(
+                    "'__previous__' cannot be used in the input of a function "
+                    "call, such as the body of list.loop.",
+                    args.keypath,
+                )
+            if not isinstance(parent, _ListNode):
+                raise ResolutionError(
+                    "'__previous__' can only be used inside a list.",
+                    args.keypath,
+                )
+            index = parent.children.index(element)
+            if index == 0:
+                raise ResolutionError(
+                    "'__previous__' cannot be used on the first element of a list.",
+                    args.keypath,
+                )
+            prev_node = parent.children[index - 1]
+            # a function call is evaluated first, so that prev is its result,
+            # not the call itself (which would leak into strings as an object)
+            if isinstance(prev_node, _FunctionCallNode):
+                prev_node = prev_node.evaluate()
+            if isinstance(prev_node, (_ValueNode, _TemplateNode)):
+                node.local_variables[name] = prev_node.resolve()
+            else:
+                node.local_variables[name] = _make_unresolved_container(prev_node)
+        else:
+            # an unknown target (a misspelling of "__previous__", say) would
+            # otherwise leave the name undefined, with no error saying why
+            raise ResolutionError(
+                f"Unknown reference target {target!r} for '{name}' in 'let'. "
+                "The targets are '__this__' and '__previous__'.",
+                args.keypath,
+            )
 
     return node
 
