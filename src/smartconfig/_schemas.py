@@ -18,13 +18,16 @@ _DEFAULT_VALUE_TYPES = frozenset(
 
 
 def _check_keys(
-    provided: Set[str],
-    required: Set[str],
-    optional: Set[str],
+    schema: _types.Schema,
     keypath: _types.KeyPath,
     allow_default: bool,
+    required: Set[str] = frozenset(),
+    optional: Set[str] = frozenset(),
 ):
-    """Checks that there are no missing or extra keys in the provided set.
+    """Checks that a schema has no missing or extra keys.
+
+    Every schema requires "type" and may have "nullable", and "default" where
+    ``allow_default`` is true; ``required`` and ``optional`` are the other keys.
 
     Raises
     ------
@@ -32,12 +35,13 @@ def _check_keys(
         If the schema is missing required keys or has unexpected keys.
 
     """
-    allowed = set(required | optional)
+    required = {"type", *required}
+    allowed = required | optional | {"nullable"}
     if allow_default:
         allowed.add("default")
 
-    extra = set(provided - allowed)
-    missing = set(required - provided)
+    extra = set(schema.keys() - allowed)
+    missing = set(required - schema.keys())
 
     if extra:
         exemplar = extra.pop()
@@ -46,185 +50,6 @@ def _check_keys(
     if missing:
         exemplar = missing.pop()
         raise _exceptions.InvalidSchemaError("Missing key.", keypath + (exemplar,))
-
-
-# dict, list, and value schema validators ==============================================
-
-
-def _validate_any_schema(
-    any_schema: _types.Schema,
-    keypath: _types.KeyPath,
-    allow_default: bool,
-    allow_dynamic: bool,
-    value_types: Set[str],
-):
-    """Validates an "any" schema.
-
-    An any schema has the following form:
-
-        <ANY_SCHEMA> = {
-            "type": "any",
-            ["nullable": (True | False)]
-        }
-
-    """
-    _check_keys(
-        any_schema.keys(),
-        required={"type"},
-        optional={"nullable"},
-        keypath=keypath,
-        allow_default=allow_default,
-    )
-
-
-def _validate_dict_schema(
-    dict_schema: _types.Schema,
-    keypath: _types.KeyPath,
-    allow_default: bool,
-    allow_dynamic: bool,
-    value_types: Set[str],
-):
-    """Validates a dict schema.
-
-    A dict schema has the following form:
-
-        <DICT_SCHEMA> = {
-            "type": "dict",
-            ["required_keys": {<KEY_NAME>: <SCHEMA>, ...}],
-            ["optional_keys": {<KEY_NAME>: (<SCHEMA> | <SCHEMA_WITH_DEFAULT>), ...}],
-            ["extra_keys_schema": <SCHEMA>],
-            ["nullable": (True | False)],
-        }
-
-    """
-    _check_keys(
-        dict_schema.keys(),
-        required={"type"},
-        optional={"required_keys", "optional_keys", "extra_keys_schema", "nullable"},
-        keypath=keypath,
-        allow_default=allow_default,
-    )
-
-    # required_keys and optional_keys map key names to schemas. Check that before
-    # reading them below, where a list would raise a bare AttributeError. A key
-    # must be a string, since configuration keys are, or no key could match it
-    for section in ("required_keys", "optional_keys"):
-        keys_schemas = dict_schema.get(section, {})
-        if not isinstance(keys_schemas, Mapping):
-            raise _exceptions.InvalidSchemaError(
-                "Must be a mapping from key names to schemas.", keypath + (section,)
-            )
-        for key in keys_schemas:
-            if not isinstance(key, str):
-                raise _exceptions.InvalidSchemaError(
-                    "A key name must be a string.", keypath + (section, str(key))
-                )
-
-    # a key that is both required and optional is ambiguous: it is unclear
-    # whether it may be missing, and which schema applies to it
-    for key in dict_schema.get("optional_keys", {}):
-        if key in dict_schema.get("required_keys", {}):
-            raise _exceptions.InvalidSchemaError(
-                "Key is both required and optional.",
-                keypath + ("optional_keys", key),
-            )
-
-    # recursively check the children corresponding to the required keys
-    for key, key_schema in dict_schema.get("required_keys", {}).items():
-        validate_schema(
-            key_schema,
-            keypath + ("required_keys", key),
-            allow_dynamic=allow_dynamic,
-            value_types=value_types,
-        )
-
-    # recursively check the children corresponding to the optional keys, allowing
-    # defaults to be specified
-    for key, key_schema in dict_schema.get("optional_keys", {}).items():
-        validate_schema(
-            key_schema,
-            keypath + ("optional_keys", key),
-            allow_default=True,
-            allow_dynamic=allow_dynamic,
-            value_types=value_types,
-        )
-
-    # if the schema provides an "extra_keys_schema", check that it is a valid schema
-    if "extra_keys_schema" in dict_schema:
-        validate_schema(
-            dict_schema["extra_keys_schema"],
-            keypath + ("extra_keys_schema",),
-            allow_dynamic=allow_dynamic,
-            value_types=value_types,
-        )
-
-
-def _validate_list_schema(
-    list_schema, keypath, allow_default, allow_dynamic: bool, value_types: Set[str]
-):
-    """Validates a list schema.
-
-    A list schema has the following form:
-
-        <LIST_SCHEMA> = {
-            "type": "list",
-            "element_schema": <SCHEMA>,
-            ["nullable": (True | False)]
-        }
-
-    """
-    _check_keys(
-        list_schema.keys(),
-        required={"type", "element_schema"},
-        optional={"nullable"},
-        keypath=keypath,
-        allow_default=allow_default,
-    )
-
-    # recursively check the children. The list itself may have a default (under
-    # optional_keys), but its elements may not: an element can't be missing, so a
-    # default there would be silently ignored
-    validate_schema(
-        list_schema["element_schema"],
-        keypath + ("element_schema",),
-        allow_default=False,
-        allow_dynamic=allow_dynamic,
-        value_types=value_types,
-    )
-
-
-def _validate_value_schema(
-    value_schema, keypath, allow_default, allow_dynamic: bool, value_types: Set[str]
-):
-    """Validates a value schema.
-
-    A value schema has the following form:
-
-        VALUE_SCHEMA = {
-            "type": <a name in value_types>,
-            ["nullable": (True | False)]
-        }
-
-    """
-    _check_keys(
-        value_schema.keys(),
-        required={"type"},
-        optional={"nullable"},
-        keypath=keypath,
-        allow_default=allow_default,
-    )
-
-    # list the valid types, since a type can be invalid because no converter for
-    # it was given, not only because it is misspelled
-    if value_schema["type"] not in value_types:
-        structural = ["any", "dict", "list", "template"]
-        others = sorted(set(value_types) - set(structural))
-        valid = ", ".join(structural + others)
-        raise _exceptions.InvalidSchemaError(
-            f"Invalid type: {value_schema['type']}. Valid types: {valid}. A type other "
-            "than any, dict, list or template must be the name of a converter.",
-            keypath + ("type",),
-        )
 
 
 def _validate_names(names: object, keypath: _types.KeyPath):
@@ -255,12 +80,102 @@ def _validate_names(names: object, keypath: _types.KeyPath):
             raise _exceptions.InvalidSchemaError(problem, keypath + (str(i),))
 
 
-def _validate_template_schema(
-    template_schema: _types.Schema,
+# validators for each type of schema ===================================================
+
+# validates a child schema, given its keys under the current one (see validate_schema)
+type _ValidateChild = Callable[..., None]
+
+
+def _validate_dict_schema(
+    schema: _types.Schema,
     keypath: _types.KeyPath,
     allow_default: bool,
-    allow_dynamic: bool,
-    value_types: Set[str],
+    validate_child: _ValidateChild,
+):
+    """Validates a dict schema.
+
+    A dict schema has the following form:
+
+        <DICT_SCHEMA> = {
+            "type": "dict",
+            ["required_keys": {<KEY_NAME>: <SCHEMA>, ...}],
+            ["optional_keys": {<KEY_NAME>: (<SCHEMA> | <SCHEMA_WITH_DEFAULT>), ...}],
+            ["extra_keys_schema": <SCHEMA>],
+            ["nullable": (True | False)],
+        }
+
+    """
+    _check_keys(
+        schema,
+        keypath,
+        allow_default,
+        optional={"required_keys", "optional_keys", "extra_keys_schema"},
+    )
+
+    # required_keys and optional_keys map key names to schemas. Check that before
+    # reading them below, where a list would raise a bare AttributeError. A key
+    # must be a string, since configuration keys are, or no key could match it
+    for section in ("required_keys", "optional_keys"):
+        keys_schemas = schema.get(section, {})
+        if not isinstance(keys_schemas, Mapping):
+            raise _exceptions.InvalidSchemaError(
+                "Must be a mapping from key names to schemas.", keypath + (section,)
+            )
+        for key in keys_schemas:
+            if not isinstance(key, str):
+                raise _exceptions.InvalidSchemaError(
+                    "A key name must be a string.", keypath + (section, str(key))
+                )
+
+    # a key that is both required and optional is ambiguous: it is unclear
+    # whether it may be missing, and which schema applies to it
+    for key in schema.get("optional_keys", {}):
+        if key in schema.get("required_keys", {}):
+            raise _exceptions.InvalidSchemaError(
+                "Key is both required and optional.", keypath + ("optional_keys", key)
+            )
+
+    for key, key_schema in schema.get("required_keys", {}).items():
+        validate_child(key_schema, "required_keys", key)
+
+    # an optional key may have a default
+    for key, key_schema in schema.get("optional_keys", {}).items():
+        validate_child(key_schema, "optional_keys", key, allow_default=True)
+
+    if "extra_keys_schema" in schema:
+        validate_child(schema["extra_keys_schema"], "extra_keys_schema")
+
+
+def _validate_list_schema(
+    schema: _types.Schema,
+    keypath: _types.KeyPath,
+    allow_default: bool,
+    validate_child: _ValidateChild,
+):
+    """Validates a list schema.
+
+    A list schema has the following form:
+
+        <LIST_SCHEMA> = {
+            "type": "list",
+            "element_schema": <SCHEMA>,
+            ["nullable": (True | False)]
+        }
+
+    """
+    _check_keys(schema, keypath, allow_default, required={"element_schema"})
+
+    # The list itself may have a default (under optional_keys), but its elements
+    # may not: an element can't be missing, so a default there would be silently
+    # ignored
+    validate_child(schema["element_schema"], "element_schema")
+
+
+def _validate_template_schema(
+    schema: _types.Schema,
+    keypath: _types.KeyPath,
+    allow_default: bool,
+    validate_child: _ValidateChild,
 ):
     """Validates a template schema.
 
@@ -273,33 +188,20 @@ def _validate_template_schema(
             ["nullable": (True | False)]
         }
 
-    The inner schema is validated recursively; it may not have a default at its
-    top level (the default of a template field belongs on the template schema).
-
     """
-    _check_keys(
-        template_schema.keys(),
-        required={"type", "schema", "parameters"},
-        optional={"nullable"},
-        keypath=keypath,
-        allow_default=allow_default,
-    )
+    _check_keys(schema, keypath, allow_default, required={"schema", "parameters"})
+    _validate_names(schema["parameters"], keypath + ("parameters",))
 
-    _validate_names(template_schema["parameters"], keypath + ("parameters",))
-
-    validate_schema(
-        template_schema["schema"],
-        keypath + ("schema",),
-        allow_default=False,
-        allow_dynamic=allow_dynamic,
-        value_types=value_types,
-    )
+    # the inner schema may not have a default at its top level: the default of a
+    # template field belongs on the template schema
+    inner = schema["schema"]
+    validate_child(inner, "schema")
 
     # A template's top-level keys can be referenced by name, like its parameters,
     # so a parameter named like a key that the inner schema declares would be
     # ambiguous. Catch it here, where it is visible from the schema alone.
-    declared = {key for _, key in _declared_keys(template_schema["schema"])}
-    for i, name in enumerate(template_schema["parameters"]):
+    declared = {key for _, key in _declared_keys(inner)}
+    for i, name in enumerate(schema["parameters"]):
         if name in declared:
             raise _exceptions.InvalidSchemaError(
                 f'The parameter "{name}" has the same name as a key of the '
@@ -313,9 +215,9 @@ def _validate_template_schema(
     # parameter or a top-level key of it with the same name would be ambiguous.
     # Each template checks the templates inside it, at any depth, so every pair of
     # enclosing and enclosed templates is checked
-    outer = set(template_schema["parameters"])
+    outer = set(schema["parameters"])
     for inner_keypath, inner_template in _templates_inside(
-        template_schema["schema"], keypath + ("schema",)
+        inner, keypath + ("schema",)
     ):
         for i, name in enumerate(inner_template["parameters"]):
             if name in outer:
@@ -374,6 +276,37 @@ def _declared_keys(
     for section in ("required_keys", "optional_keys"):
         for key in schema.get(section, {}):
             yield section, key
+
+
+def _validate_value_schema(
+    schema: _types.Schema,
+    keypath: _types.KeyPath,
+    allow_default: bool,
+    value_types: Set[str],
+):
+    """Validates a value schema.
+
+    A value schema has the following form:
+
+        <VALUE_SCHEMA> = {
+            "type": <a name in value_types>,
+            ["nullable": (True | False)]
+        }
+
+    """
+    _check_keys(schema, keypath, allow_default)
+
+    # list the valid types, since a type can be invalid because no converter for it
+    # was given, not only because it is misspelled
+    if schema["type"] not in value_types:
+        structural = ["any", "dict", "list", "template"]
+        others = sorted(set(value_types) - set(structural))
+        valid = ", ".join(structural + others)
+        raise _exceptions.InvalidSchemaError(
+            f"Invalid type: {schema['type']}. Valid types: {valid}. A type other "
+            "than any, dict, list or template must be the name of a converter.",
+            keypath + ("type",),
+        )
 
 
 # implementation =======================================================================
@@ -456,15 +389,24 @@ def validate_schema(
             "Must be True or False.", keypath + ("nullable",)
         )
 
-    args = (schema, keypath, allow_default, allow_dynamic, value_types)
+    def validate_child(child, *keys: str, allow_default: bool = False):
+        """Validate the schema ``child`` at ``keys`` under this one."""
+        validate_schema(
+            child,
+            keypath + keys,
+            allow_default=allow_default,
+            allow_dynamic=allow_dynamic,
+            value_types=value_types,
+        )
 
     if schema["type"] == "any":
-        _validate_any_schema(*args)
+        # {"type": "any", ["nullable": bool]}
+        _check_keys(schema, keypath, allow_default)
     elif schema["type"] == "dict":
-        _validate_dict_schema(*args)
+        _validate_dict_schema(schema, keypath, allow_default, validate_child)
     elif schema["type"] == "list":
-        _validate_list_schema(*args)
+        _validate_list_schema(schema, keypath, allow_default, validate_child)
     elif schema["type"] == "template":
-        _validate_template_schema(*args)
+        _validate_template_schema(schema, keypath, allow_default, validate_child)
     else:
-        _validate_value_schema(*args)
+        _validate_value_schema(schema, keypath, allow_default, value_types)
