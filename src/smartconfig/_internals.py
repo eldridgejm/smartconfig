@@ -240,7 +240,7 @@ Resolving it:
        at any depth;
 
     Steps 1 and 2 are the only places where the resolver must recognize a core
-    function by identity (_is_use_function, _is_template_function): a template's
+    function by identity (in _TemplateNode._expand_uses and _check): a template's
     value is not evaluated, so no function in it runs that could act for itself;
     3. returns a Template that remembers the resolution options and the parameters.
 
@@ -1817,28 +1817,6 @@ def check_keys_are_not_parameters(
             )
 
 
-def _is_template_function(function: _types.Function) -> bool:
-    """Whether ``function`` is the core ``template`` function, whatever its name."""
-    # imported here: _core_functions imports this module
-    from ._core_functions import _template
-
-    return function is _template
-
-
-def _is_use_function(function: _types.Function) -> bool:
-    """Whether ``function`` is the core ``use`` function, whatever its name."""
-    from ._core_functions import _use
-
-    return function is _use
-
-
-def _is_raw_function(function: _types.Function) -> bool:
-    """Whether ``function`` is the core ``raw`` function, whatever its name."""
-    from ._core_functions import _raw
-
-    return function is _raw
-
-
 def _look_up_keypath(node: _ConcreteNode, keypath: str) -> Any:
     """The value at a dotted keypath, found as ``${...}`` would find it from ``node``.
 
@@ -2121,6 +2099,9 @@ class _TemplateNode(_Node):
         is added to ``expanded``.
 
         """
+        # imported here: _core_functions imports this module
+        from ._core_functions import _raw, _use
+
         if isinstance(value, list):
             return [
                 self._expand_uses(item, keypath + (str(i),), expanded)
@@ -2137,11 +2118,11 @@ class _TemplateNode(_Node):
         except ValueError:
             # an invalid call is reported when the tree is built
             call = None
-        if call is not None and _is_use_function(call[0]):
+        if call is not None and call[0] is _use:
             # a __use__ call: replace it with the value it stands for
             expanded.add(keypath)
             return _expand_use(call[1], self, keypath)
-        if call is not None and _is_raw_function(call[0]):
+        if call is not None and call[0] is _raw:
             # everything under __raw__ is data, so a __use__ in it is kept as written
             return value
 
@@ -2168,6 +2149,9 @@ class _TemplateNode(_Node):
             (nor ``any``). Its ``enclosing`` is this template's keypath.
 
         """
+        # imported here: _core_functions imports this module
+        from ._core_functions import _template
+
         if isinstance(node, _DictNode):
             for child in node.children.values():
                 self._check(child)
@@ -2176,9 +2160,7 @@ class _TemplateNode(_Node):
                 self._check(child)
         elif isinstance(node, _TemplateNode):
             node.resolve()
-        elif isinstance(node, _FunctionCallNode) and _is_template_function(
-            node.function
-        ):
+        elif isinstance(node, _FunctionCallNode) and node.function is _template:
             try:
                 node.resolve()
             except UnexpectedTemplateError as exc:
