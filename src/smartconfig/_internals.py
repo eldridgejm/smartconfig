@@ -237,10 +237,9 @@ Resolving it:
        the document, then the global variables), so it is done here rather than
        when the node is built, since looking in the document needs the whole tree;
     2. builds a node tree of the value against the inner schema, which checks its
-       structure, and walks that tree without resolving it (_TemplateNode._check),
-       rejecting template fields and ``__template__`` wrappers (templates do not
-       nest). The tree is marked with the template's keypath, so a template field in
-       it raises when resolved.
+       structure, and walks that tree without resolving it (_TemplateNode._check).
+       A template inside it is resolved, so its value is checked in the same way,
+       at any depth;
 
     Steps 1 and 2 are the only places where the resolver must recognize a core
     function by identity (_is_use_function, _is_template_function): a template's
@@ -250,9 +249,18 @@ Resolving it:
 A ``__template__`` wrapper on a field of type ``any`` also gives a _TemplateNode (with
 an ``any`` inner schema and no parameters); see ``_template()`` in _core_functions.py.
 Template.evaluate() (in types.py) builds and resolves a new tree from the
-template's source, with the given names as the global variables. It marks the root
-with the template's keypath, so that a template field produced while evaluating (by a
-function call, say) is rejected too.
+template's source, with the given parameters in the resolution context's
+``template_parameters``. Names are looked up there after the document and before the
+global variables.
+
+Templates nest. A template field inside a template's value is resolved while the
+outer template is evaluated, so its _TemplateNode has the outer evaluation's context,
+and the Template it makes carries the context's ``template_parameters`` as its
+``outer_parameters``. When the inner template is evaluated, they are put in its
+context with its own parameters. Nothing in the tree records which templates are
+around a node: the values travel in the context. When the configuration is resolved,
+step 2 puts the template's parameter names (with ``None`` values) in the context of
+the tree it checks, so that an inner template can be checked against them.
 
 """
 

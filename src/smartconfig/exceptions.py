@@ -59,8 +59,9 @@ class UnexpectedTemplateError(ResolutionError):
     Attributes
     ----------
     enclosing : KeyPath | None
-        The keypath of the template that contains the wrapper, or ``None`` if the
-        wrapper is not inside a template.
+        The keypath of the innermost template that contains the wrapper, if it was
+        found when the configuration was resolved; ``None`` if the wrapper is not
+        inside a template, or was found while a template was evaluated.
 
     """
 
@@ -83,8 +84,8 @@ class UndefinedNameError(ResolutionError):
         The undefined name.
     available : tuple[str, ...]
         The names that were available, in lookup order: local variables, the keys
-        of the root, then the global variables (not counting Jinja's own names,
-        like ``range``).
+        of the root, the parameters of the templates being evaluated, then the
+        global variables (not counting Jinja's own names, like ``range``).
 
     """
 

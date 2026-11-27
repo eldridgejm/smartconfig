@@ -90,8 +90,9 @@ a function's parameters, each call to
 these, no more and no fewer. A parameter may not have the same name as one of
 the template's top-level keys: both can be referenced by name, so ``${ name }``
 would be ambiguous. Nested keys are not affected. The inner schema may not have
-a top-level default; put the default on the template schema. (See
-:ref:`template_fields_example`.)
+a top-level default; put the default on the template schema. The inner schema
+may contain template schemas: a template inside a template sees the parameters
+of the templates around it. (See :ref:`template_fields_example`.)
 
 Schemas can be validated using the :func:`smartconfig.validate_schema`
 function.
@@ -560,50 +561,134 @@ Output:
     ('page', 'title')
     '\'publcation\' is undefined. Did you mean "publication"?'
 
-**Templates do not nest.** A template's value can't contain a template field:
-the template already defers everything in it. Doing so raises
-:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`.
-For example, a ``footer`` template field inside the ``page`` template is an
-error:
+.. _nested_templates:
 
-.. code:: python
+**Templates inside templates.** A template's value can contain template fields.
+For example, a course schedule might have one entry per lecture, and inside each
+lecture one link per video. The lecture is a template with parameter
+``publication``, and its ``videos`` field is a template with parameter
+``link``, inside it:
 
-    "page": {
-        "type": "template",
-        "schema": {
-            "type": "dict",
-            "required_keys": {
-                "title": {"type": "string"},
-                "footer": {"type": "template", ...},  # error: nested template
-            },
+.. testcode::
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "lecture": {
+                "type": "template",
+                "parameters": ["publication"],
+                "schema": {
+                    "type": "dict",
+                    "required_keys": {
+                        "title": {"type": "string"},
+                        "videos": {
+                            "type": "template",
+                            "parameters": ["link"],
+                            "schema": {
+                                "type": "dict",
+                                "required_keys": {
+                                    "text": {"type": "string"},
+                                    "url": {"type": "string"},
+                                },
+                            },
+                        },
+                    },
+                },
+            }
         },
-        ...
     }
 
-To evaluate part of a value separately, make it a sibling template instead: a
-template field next to ``page`` (in the same dictionary) rather than inside it,
-listing all the parameters it needs:
+    config = {
+        "lecture": {
+            "__template__": {
+                "title": "Lecture ${ publication.number }: ${ publication.topic }",
+                "videos": {
+                    "__template__": {
+                        "text": "${ link.title } (lecture ${ publication.number })",
+                        "url": "${ link.url }",
+                    }
+                },
+            }
+        }
+    }
 
-.. code:: python
+    result = smartconfig.resolve(config, schema)
 
-    "page": {
-        "type": "template",
-        "schema": {
-            "type": "dict",
-            "required_keys": {"title": {"type": "string"}},
-        },
-        "parameters": ["publication", "course"],
-    },
-    "footer": {
-        "type": "template",
-        "schema": {"type": "string"},
-        "parameters": ["publication"],
-    },
+Evaluating the outer template keeps the inner one's value as written and puts a
+``Template`` in its place. The inner template sees the parameters of the
+template around it, with the values of the evaluation that made it, so
+``publication`` is not passed again:
+
+.. testcode::
+
+    publication = {
+        "number": 4,
+        "topic": "Hashing",
+        "videos": [
+            {"title": "Part 1", "url": "https://example.com/4-1"},
+            {"title": "Part 2", "url": "https://example.com/4-2"},
+        ],
+    }
+
+    lecture = result["lecture"].evaluate({"publication": publication})
+    print(lecture["title"])
+    print(lecture["videos"])
+    print(lecture["videos"].outer_parameters["publication"]["number"])
+
+    for link in publication["videos"]:
+        print(lecture["videos"].evaluate({"link": link}))
+
+Output:
+
+.. testoutput::
+
+    'Lecture 4: Hashing'
+    Template(at "lecture.videos", parameters: link; outer: publication)
+    4
+    {'text': 'Part 1 (lecture 4)', 'url': 'https://example.com/4-1'}
+    {'text': 'Part 2 (lecture 4)', 'url': 'https://example.com/4-2'}
+
+Templates nest to any depth, and the same rules hold at each level:
+
+- The inner field's value is written with its own ``__template__``, as at the
+  top level. A missing wrapper is a
+  :class:`exceptions.TemplateRequiredError <smartconfig.exceptions.TemplateRequiredError>`,
+  found when the configuration is resolved. When the configuration is resolved,
+  the inner value's structure is checked against its schema, like the outer
+  one's.
+- The inner template's
+  :attr:`~smartconfig.types.Template.parameters` are only the ones its schema
+  declares, and :meth:`~smartconfig.types.Template.evaluate` takes exactly those.
+  The values it sees from the templates around it are its
+  :attr:`~smartconfig.types.Template.outer_parameters`. A parameter wins over
+  a global variable of the same name here too.
+- The inner template sees the parameters of the templates around it, and
+  nothing else of theirs. It is evaluated on its own, so the outer template's
+  keys (``title`` above) are not names in it.
+- A parameter of the inner template, or a top-level key of its value, named
+  like a parameter of a template around it would be ambiguous, so it is an
+  error: an
+  :class:`exceptions.InvalidSchemaError <smartconfig.exceptions.InvalidSchemaError>`
+  where the schema shows it, and otherwise a
+  :class:`exceptions.ResolutionError <smartconfig.exceptions.ResolutionError>`
+  when the configuration is resolved.
+- A template whose inner schema is itself a template schema evaluates to a
+  ``Template``: ``{"__template__": {"__template__": ...}}``.
+- A ``__use__`` inside an inner template's value is expanded when the
+  configuration is resolved, like any ``__use__`` inside a template. A
+  ``__use__`` written as the whole value of an inner template field is replaced
+  by the value it copies, which leaves the field without a wrapper; write it as
+  ``{"__template__": {"__use__": ...}}`` instead. A template inside another
+  doesn't exist until the outer one is evaluated, so it can't be the target of a
+  ``__use__``.
+- An inner ``Template`` passed into :func:`smartconfig.resolve` keeps its outer
+  parameters.
 
 **Other details.**
 
 - A ``__template__`` wrapper on a field of type ``"any"`` also resolves to a
-  ``Template``, with schema ``{"type": "any"}`` and no parameters. On a
+  ``Template``, with schema ``{"type": "any"}`` and no parameters (inside a
+  template, it sees the outer parameters too). On a
   field of any other type it is an error
   (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`).
 - A dynamic schema inside a template is called twice: once when the
