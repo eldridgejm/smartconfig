@@ -2353,10 +2353,9 @@ class _TemplateNode(_Node):
     ----------
     value : Configuration
         The template's value as written (without the ``__template__`` wrapper).
-    template_schema : Schema
-        The template schema (``{"type": "template", ...}``).
     inner_schema : Schema | DynamicSchema
-        The schema of the template's value once evaluated.
+        The schema of the template's value once evaluated: the ``"schema"`` of the
+        template schema (``{"type": "template", ...}``) it is built with.
     parameters : tuple[str, ...]
         The template field's parameters: the names given each time it is evaluated.
     outer_parameters : dict[str, Any]
@@ -2385,7 +2384,6 @@ class _TemplateNode(_Node):
         super().__init__(parent, local_variables)
         self.value = value
         self.outer_parameters = dict(outer_parameters or {})
-        self.template_schema = template_schema
         # every template schema was validated (by resolve(), Template, or when a
         # dynamic schema returned it), so it has both keys
         self.inner_schema = template_schema["schema"]
