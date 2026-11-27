@@ -109,3 +109,58 @@ def test_deepcopy_shares_schema():
     c = copy.deepcopy(t)
 
     assert c.schema is t.schema
+
+
+# outer parameters =====================================================================
+
+
+def test_outer_parameters_default_to_empty():
+    assert Template("a").outer_parameters == {}
+
+
+def test_outer_parameters_are_a_read_only_copy_of_what_was_passed():
+    values = {"publication": {"number": 3}}
+    t = Template("a", outer_parameters=values)
+
+    values["other"] = {}
+
+    assert t.outer_parameters == {"publication": {"number": 3}}
+    with raises(TypeError):
+        t.outer_parameters["x"] = 1  # type: ignore[index]
+
+
+def test_a_parameter_named_like_an_outer_parameter_is_an_error():
+    with raises(ValueError) as exc:
+        Template("a", parameters=["a", "b"], outer_parameters={"b": 1})
+
+    assert str(exc.value) == (
+        'Invalid parameter: "b" is also an outer parameter, so ${ b } would be '
+        "ambiguous. Use another name."
+    )
+
+
+def test_templates_with_different_outer_parameters_are_not_equal():
+    assert Template("a", outer_parameters={"x": 1}) != Template(
+        "a", outer_parameters={"x": 2}
+    )
+    assert Template("a", outer_parameters={"x": 1}) == Template(
+        "a", outer_parameters={"x": 1}
+    )
+
+
+def test_deepcopy_shares_the_outer_values():
+    publication = {"number": 3}
+    t = Template("a", outer_parameters={"publication": publication})
+
+    c = copy.deepcopy(t)
+
+    assert c == t
+    assert c.outer_parameters["publication"] is publication
+
+
+def test_repr_names_the_outer_parameters():
+    t = Template(
+        "a", parameters=["link"], keypath=["x", "y"], outer_parameters={"p": 1}
+    )
+
+    assert repr(t) == 'Template(at "x.y", parameters: link; outer: p)'

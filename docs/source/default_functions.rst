@@ -420,7 +420,9 @@ the configuration with :ref:`__use__ <func-use>`.
   parameters.
 - On a field of any other type it is an error
   (:class:`exceptions.UnexpectedTemplateError <smartconfig.exceptions.UnexpectedTemplateError>`),
-  since that field is evaluated now. So is a wrapper inside a template.
+  since that field is evaluated now, inside a template or not. Inside a
+  template, a wrapper on a template field makes a template inside the template
+  (see :ref:`templates inside templates <nested_templates>`).
 
 **Input**: Any configuration, kept as written.
 
@@ -506,7 +508,10 @@ there by hand:
        here takes the place of the ``__template__`` wrapper.
    * - Inside a template's value
      - It is kept as written, as part of the enclosing template's ``source``,
-       and resolved when that template is evaluated.
+       and resolved when that template is evaluated. As the whole value of a
+       template field inside a template, it would leave the field without its
+       wrapper: write ``{"__template__": {"__use__": ...}}`` there (see
+       :ref:`templates inside templates <nested_templates>`).
 
 On a template field, or inside a template, the copy is made when the
 configuration is resolved, so a template's ``source`` never depends on the rest

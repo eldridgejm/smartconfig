@@ -1,6 +1,5 @@
 """Tests of the load-time structure check of a template's value."""
 
-import pytest
 from pytest import raises
 
 from smartconfig import DEFAULT_FUNCTIONS, exceptions, resolve
@@ -160,33 +159,6 @@ def test_structure_inside_a_function_call_input_is_not_checked():
 # wrappers inside a template ===========================================================
 
 
-@pytest.mark.parametrize(
-    "inner, value, keypath",
-    [
-        (PAGE, {"title": {"__template__": "a"}}, ("x", "title")),
-        ({"type": "any"}, {"a": [{"__template__": "b"}]}, ("x", "a", "0")),
-    ],
-    ids=["dict-value", "under-any"],
-)
-def test_wrapper_inside_a_template_is_unexpected(inner, value, keypath):
-    schema = {
-        "type": "dict",
-        "required_keys": {"x": {"type": "template", "schema": inner, "parameters": []}},
-    }
-    cfg: ConfigurationDict = {"x": {"__template__": value}}
-
-    with raises(exceptions.UnexpectedTemplateError) as exc:
-        resolve(cfg, schema)
-
-    assert isinstance(exc.value, exceptions.ResolutionError)
-    assert exc.value.keypath == keypath
-    assert exc.value.enclosing == ("x",)
-    assert exc.value.reason == (
-        'A template can\'t contain another __template__: the template at "x" '
-        "already defers everything in it. Remove the wrapper."
-    )
-
-
 def test_wrapper_under_raw_inside_a_template_is_kept_as_data():
     # everything under __raw__ is data, so the wrapper isn't a nested template
     schema = {
@@ -201,87 +173,3 @@ def test_wrapper_under_raw_inside_a_template_is_kept_as_data():
     result = resolve(cfg, schema)
 
     assert result["x"].evaluate({}) == {"a": {"__template__": "b"}}
-
-
-# nested template fields ===============================================================
-
-
-def test_a_template_field_inside_a_template_is_an_error():
-    # a "page" whose "body" would itself be a template, with variable "section"
-    page = {
-        "type": "dict",
-        "required_keys": {
-            "title": {"type": "string"},
-            "body": {
-                "type": "template",
-                "schema": {"type": "string"},
-                "parameters": ["section"],
-            },
-        },
-    }
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "x": {"type": "template", "schema": page, "parameters": ["page"]}
-        },
-    }
-    value: ConfigurationDict = {"title": "a", "body": {"__template__": "b"}}
-    cfg: ConfigurationDict = {"x": {"__template__": value}}
-
-    with raises(exceptions.UnexpectedTemplateError) as exc:
-        resolve(cfg, schema)
-
-    assert exc.value.keypath == ("x", "body")
-    assert exc.value.enclosing == ("x",)
-    assert exc.value.reason == (
-        'A template can\'t contain a template field: the template at "x" already '
-        "defers everything in it. Make the field a sibling of the template instead."
-    )
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        {"__use__": "fragments.body"},
-        "a plain value",
-        {
-            "__if__": {
-                "condition": True,
-                "then": {"__template__": "b"},
-                "else": {"__template__": "c"},
-            }
-        },
-    ],
-    ids=["use", "plain", "if"],
-)
-def test_a_template_field_inside_a_template_is_an_error_whatever_its_value(body):
-    # a template field's value can be any function call that makes a template; inside
-    # a template it is rejected at load, without the call being evaluated
-    page = {
-        "type": "dict",
-        "required_keys": {
-            "title": {"type": "string"},
-            "body": {
-                "type": "template",
-                "schema": {"type": "string"},
-                "parameters": [],
-            },
-        },
-    }
-    schema = {
-        "type": "dict",
-        "required_keys": {
-            "fragments": {"type": "any"},
-            "x": {"type": "template", "schema": page, "parameters": []},
-        },
-    }
-    cfg: ConfigurationDict = {
-        "fragments": {"body": {"__template__": "b"}},
-        "x": {"__template__": {"title": "a", "body": body}},
-    }
-
-    with raises(exceptions.UnexpectedTemplateError) as exc:
-        resolve(cfg, schema)
-
-    assert exc.value.keypath == ("x", "body")
-    assert exc.value.enclosing == ("x",)

@@ -240,65 +240,6 @@ def test_a_template_remembers_the_options_of_the_resolve_that_made_it():
     assert result == {"a": 10, "b": 80, "c": "HI"}
 
 
-# nested templates =====================================================================
-
-
-def test_a_template_field_produced_while_evaluating_a_template_is_an_error():
-    # the __if__ hides the template field from the check made at load
-    inner = {
-        "type": "dict",
-        "required_keys": {
-            "body": {
-                "type": "template",
-                "schema": {"type": "string"},
-                "parameters": ["section"],
-            }
-        },
-    }
-    template = Template(
-        {
-            "__if__": {
-                "condition": "${ flag }",
-                "then": {"body": {"__template__": "a"}},
-                "else": {"body": {"__template__": "b"}},
-            }
-        },
-        schema=inner,
-        parameters=["flag"],
-        keypath=["x"],
-    )
-
-    with raises(exceptions.UnexpectedTemplateError) as exc:
-        template.evaluate({"flag": True})
-
-    assert exc.value.enclosing == ("x",)
-
-
-def test_a_template_object_inside_a_template_source_is_an_error():
-    # a Template can be put in a source only from Python, not from a config file
-    inner = Template("${ a }", parameters=["a"], keypath=["y"])
-    template = Template(
-        {"k": inner},
-        schema={
-            "type": "dict",
-            "required_keys": {
-                "k": {
-                    "type": "template",
-                    "schema": {"type": "string"},
-                    "parameters": ["a"],
-                }
-            },
-        },
-        keypath=["x"],
-    )
-
-    with raises(exceptions.UnexpectedTemplateError) as exc:
-        template.evaluate()
-
-    assert exc.value.keypath == ("x", "k")
-    assert exc.value.enclosing == ("x",)
-
-
 # errors ===============================================================================
 
 
@@ -343,9 +284,8 @@ def test_a_function_call_producing_the_wrong_shape_is_an_error():
     assert exc.value.reason == 'Expected a dict, but got the string "s".'
 
 
-def test_a_template_field_in_the_source_is_a_nesting_error_when_evaluated():
-    # a Template made in Python is not checked at load; evaluating it reports the
-    # nested template field, not a missing __template__ wrapper
+def test_a_template_field_in_the_source_without_a_wrapper_is_an_error_when_evaluated():
+    # a Template made in Python is not checked at load
     template = Template(
         {"body": "plain"},
         schema={
@@ -361,11 +301,10 @@ def test_a_template_field_in_the_source_is_a_nesting_error_when_evaluated():
         keypath=["x"],
     )
 
-    with raises(exceptions.UnexpectedTemplateError) as exc:
+    with raises(exceptions.TemplateRequiredError) as exc:
         template.evaluate()
 
     assert exc.value.keypath == ("x", "body")
-    assert exc.value.enclosing == ("x",)
 
 
 # global variables =====================================================================

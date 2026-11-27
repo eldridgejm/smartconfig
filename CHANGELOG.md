@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.6.1
+
+### Templates inside templates
+
+A template's value can contain template fields. This was an error in 0.6.0 ("Templates don't nest"); it is now allowed:
+
+```python
+inner = {"type": "template", "schema": {"type": "string"}, "parameters": ["link"]}
+schema = {
+    "type": "dict",
+    "required_keys": {
+        "lecture": {
+            "type": "template",
+            "schema": {"type": "dict", "required_keys": {"video": inner}},
+            "parameters": ["publication"],
+        }
+    },
+}
+config = {
+    "lecture": {
+        "__template__": {
+            "video": {"__template__": "${ link.title } (lecture ${ publication.number })"}
+        }
+    }
+}
+lecture = resolve(config, schema)["lecture"].evaluate({"publication": {"number": 4}})
+lecture["video"].evaluate({"link": {"title": "Part 1"}})  # "Part 1 (lecture 4)"
+```
+
+- The inner field's value is written with its own `__template__`. Evaluating the outer template keeps it as written and gives a `Template` in its place.
+- The inner template sees the parameters of the templates around it, with the values of the evaluation that made it, as `Template.outer_parameters` (new, read-only). It sees nothing else of theirs: their keys are not names in it. Its own `parameters` are only the ones its schema declares, and `evaluate` takes exactly those.
+- Templates nest to any depth. When the configuration is resolved, each inner value's structure is checked against its schema, and `__use__` inside it is expanded.
+- A parameter of an inner template, or a top-level key of its value, named like a parameter of a template around it is an error: an `InvalidSchemaError` from `validate_schema` where the schema shows it, and a `ResolutionError` otherwise.
+- A `__use__` written as the whole value of an inner template field leaves the field without its wrapper, and is an error. Write `{"__template__": {"__use__": ...}}`. A template inside another can't be the target of a `__use__`.
+- An inner `Template` passed into `resolve()` keeps its outer parameters.
+- A `__template__` wrapper on an `any` field inside a template gives a `Template` too (it was an `UnexpectedTemplateError`).
+- A template schema whose inner schema is a template schema is allowed (it was an `InvalidSchemaError`); the template evaluates to a `Template`.
+
+API:
+
+- `Template` takes a keyword-only `outer_parameters`, and its `repr` names them (`Template(at "lecture.video", parameters: link; outer: publication)`). A parameter named like an outer parameter is a `ValueError`.
+- `ResolutionContext` has a `template_parameters` field: the parameters of the templates being evaluated, looked up after the document and before the global variables. `UndefinedNameError.available` lists them.
+- `UnexpectedTemplateError` is now raised only for a `__template__` wrapper on a field that is neither a template nor `any`. Its `enclosing` is the innermost template around the wrapper.
+
 ## 0.6.0
 
 This release has many breaking changes; they are collected under "Breaking changes" below. Prototypes are removed, and template fields and an opt-in inline Python function are new.
@@ -28,7 +72,7 @@ When the configuration is resolved:
 - A template field's value must be wrapped in `__template__`; it resolves to a `Template` holding the value as written.
 - The value's structure is checked against the template's schema (dicts, lists, required keys), but `${ ... }` strings are not evaluated.
 - `__use__` on a template field, or anywhere inside a template's value, is expanded now. Its target must be a template.
-- Templates don't nest: a template field inside a template's value is an error, and so is a template schema whose inner schema is a template.
+- Templates don't nest: a template field inside a template's value is an error, and so is a template schema whose inner schema is a template. (Allowed from 0.6.1.)
 
 When the program calls `Template.evaluate(parameters)`:
 
