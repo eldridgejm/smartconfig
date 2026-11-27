@@ -737,49 +737,6 @@ def first(args: FunctionArgs) -> _DateOrDatetime:
 # parse --------------------------------------------------------------------------------
 
 
-class _ParseError(Exception):
-    """Raised when a parse attempt fails because the string does not match.
-
-    Used for control flow: parsers are tried one after another until one
-    succeeds.
-
-    """
-
-
-def _try_parse_first_weekday(s: str, keypath: KeyPath) -> _DateOrDatetime:
-    """Try to parse ``s`` as ``"first <weekdays> after|before <reference>"``."""
-    match = re.match(r"^first\s+(.+?)\s+(after|before)\s+(.+)$", s, flags=re.IGNORECASE)
-    if not match:
-        raise _ParseError
-
-    weekday_raw, direction, reference_raw = match.groups()
-    weekdays = _parse_weekdays(weekday_raw, keypath)
-    reference = _read_date_or_datetime(reference_raw.strip(), keypath)
-    before = direction.lower() == "before"
-    return _first_weekday(reference, weekdays, before, set(), keypath)
-
-
-def _try_read_offset(s: str, keypath: KeyPath) -> _DateOrDatetime:
-    """Try to parse ``s`` as ``"<offset> after|before <reference>"``."""
-    match = re.match(r"^(.+?)\s+(after|before)\s+(.+)$", s, flags=re.IGNORECASE)
-    if not match:
-        raise _ParseError
-
-    offset_raw, direction, reference_raw = match.groups()
-    delta = _read_offset(offset_raw.strip(), keypath)
-    reference = _read_date_or_datetime(reference_raw.strip(), keypath)
-    before = direction.lower() == "before"
-    return _offset_date(reference, delta, before, set(), keypath)
-
-
-def _try_parse_iso(s: str, keypath: KeyPath) -> _DateOrDatetime:
-    """Try to parse ``s`` as a plain ISO date or datetime."""
-    try:
-        return _read_date_or_datetime(s.strip(), keypath)
-    except ResolutionError:
-        raise _ParseError
-
-
 def parse(args: FunctionArgs) -> _DateOrDatetime:
     """Parse a natural language date/datetime string.
 
@@ -803,15 +760,34 @@ def parse(args: FunctionArgs) -> _DateOrDatetime:
 
     s, time_override = _parse_and_remove_time(args.input, args.keypath)
 
-    parsers = [_try_parse_first_weekday, _try_read_offset, _try_parse_iso]
-    for try_parse in parsers:
-        try:
-            result = try_parse(s, args.keypath)
-            break
-        except _ParseError:
-            continue
+    # "first <weekdays> after|before <reference>"
+    first_match = re.match(
+        r"^first\s+(.+?)\s+(after|before)\s+(.+)$", s, flags=re.IGNORECASE
+    )
+    # "<offset> after|before <reference>"
+    offset_match = re.match(r"^(.+?)\s+(after|before)\s+(.+)$", s, flags=re.IGNORECASE)
+
+    result: _DateOrDatetime
+    if first_match:
+        weekday_raw, direction, reference_raw = first_match.groups()
+        weekdays = _parse_weekdays(weekday_raw, args.keypath)
+        reference = _read_date_or_datetime(reference_raw.strip(), args.keypath)
+        before = direction.lower() == "before"
+        result = _first_weekday(reference, weekdays, before, set(), args.keypath)
+    elif offset_match:
+        offset_raw, direction, reference_raw = offset_match.groups()
+        delta = _read_offset(offset_raw.strip(), args.keypath)
+        reference = _read_date_or_datetime(reference_raw.strip(), args.keypath)
+        before = direction.lower() == "before"
+        result = _offset_date(reference, delta, before, set(), args.keypath)
     else:
-        raise ResolutionError(f"Cannot parse date: '{args.input}'.", args.keypath)
+        # a plain ISO date or datetime
+        try:
+            result = _read_date_or_datetime(s.strip(), args.keypath)
+        except ResolutionError:
+            raise ResolutionError(
+                f"Cannot parse date: '{args.input}'.", args.keypath
+            ) from None
 
     if time_override is not None:
         # through _combine, so that the date's time zone is kept
