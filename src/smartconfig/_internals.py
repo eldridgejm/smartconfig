@@ -450,7 +450,7 @@ class StrictUndefined(jinja2.StrictUndefined):
         # by an integer index, which would get Jinja's message naming the
         # internal container class
         if isinstance(obj, _UnresolvedList):
-            keypath = getattr(obj.list_node, "keypath", ())
+            keypath = obj.list_node.keypath
             where = ".".join(str(k) for k in keypath) or "The list"
             element = f'"{name}"' if isinstance(name, str) else str(name)
             return f'"{where}" has no element {element}.'
@@ -466,14 +466,14 @@ class StrictUndefined(jinja2.StrictUndefined):
             return f'The configuration is a single value, so it has no key "{name}".'
 
         if isinstance(obj, _UnresolvedDict):
-            keypath = getattr(obj.dict_node, "keypath", ())
+            keypath = obj.dict_node.keypath
             where = ".".join(str(k) for k in keypath)
             message = (
                 f'"{where}" has no key "{name}".'
                 if where
                 else f'The configuration has no key "{name}".'
             )
-            keys = [str(k) for k in getattr(obj.dict_node, "children", {})]
+            keys = [str(k) for k in obj.dict_node.children]
             return message + (_did_you_mean(name, keys) or "")
 
         if isinstance(obj, typing.Mapping):
@@ -638,15 +638,15 @@ def _refuse_uninsertable(value: typing.Any) -> typing.Any:
             f'"{where}" is a template, which {cant}. Use it with __use__ instead.'
         )
     if isinstance(value, _UnresolvedDict):
-        where = ".".join(str(k) for k in getattr(value.dict_node, "keypath", ()))
-        keys = [str(k) for k in getattr(value.dict_node, "children", {})]
+        where = ".".join(str(k) for k in value.dict_node.keypath)
+        keys = [str(k) for k in value.dict_node.children]
         example = f", as in {_key_reference(where, keys[0])}," if keys else ""
         raise _Uninsertable(
             f'"{where}" is a dict, which {cant}. Use one of its keys{example} or copy '
             f"the whole value with __splice__."
         )
     if isinstance(value, _UnresolvedList):
-        where = ".".join(str(k) for k in getattr(value.list_node, "keypath", ()))
+        where = ".".join(str(k) for k in value.list_node.keypath)
         raise _Uninsertable(
             f'"{where}" is a list, which {cant}. Use one of its elements, as in '
             f"${{ {where}[0] }}, or copy the whole value with __splice__."
@@ -841,8 +841,6 @@ class _UnresolvedList(_types.UnresolvedList):
             return _UnresolvedList(child)
         elif isinstance(child, (_ValueNode, _TemplateNode)):
             return child.resolve()
-        else:
-            raise TypeError(f"Unexpected node type: {type(child)}")  # pragma: no cover
 
     def __iter__(self):
         for i in range(len(self)):
@@ -929,9 +927,8 @@ def _make_unresolved_container(
         return _UnresolvedDict(node)
     elif isinstance(node, _ListNode):
         return _UnresolvedList(node)
-    elif isinstance(node, _FunctionCallNode):
+    else:
         return _UnresolvedFunctionCall(node)
-    raise TypeError(f"Cannot create unresolved container for {type(node).__name__}.")
 
 
 def _get_node_at_keypath(
