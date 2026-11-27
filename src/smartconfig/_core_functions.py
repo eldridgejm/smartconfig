@@ -23,21 +23,6 @@ from ._internals import (
 )
 
 
-def _template_in_place(
-    args: _types.FunctionArgs,
-    value: _types.Configuration,
-    template_schema: _types.Schema,
-) -> _TemplateNode:
-    """``value`` as a template node in place of the call ``args`` was given to."""
-    return _TemplateNode(
-        value,
-        template_schema,
-        args.keypath,
-        args.resolution_context,
-        parent=args._function_call_node,
-    )
-
-
 @_types.Function.new(resolve_input=False)
 def _splice(args: _types.FunctionArgs) -> _ConcreteNode:
     """Copy a subtree from elsewhere in the configuration.
@@ -149,7 +134,7 @@ def _template(args: _types.FunctionArgs) -> _ConcreteNode:
             None,
         )
 
-    return _template_in_place(args, args.input, template_schema)
+    return args._function_call_node.template_in_place(args.input, template_schema)
 
 
 @_types.Function.new(resolve_input=False)
@@ -175,7 +160,7 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
 
     if args.schema.get("type") == "template":
         # a template field: keep the copy as written
-        return _template_in_place(args, spliced_data, args.schema)
+        return args._function_call_node.template_in_place(spliced_data, args.schema)
 
     # any other field: build a tree from the (possibly overridden) value as
     # written, in the call's own mode, as __if__ and __let__ do, so that inside

@@ -1661,6 +1661,22 @@ class _FunctionCallNode(_Node):
             mode=mode,
         )
 
+    def template_in_place(
+        self, value: _types.Configuration, template_schema: _types.Schema
+    ) -> _TemplateNode:
+        """``value`` as a template node in place of this call, with the call as its
+        parent. ``__template__`` and ``__use__`` build their result this way. Unlike
+        node_in_place, it doesn't go through make_node, which expects a template
+        field's value to be a function call or a Template, not the value of the
+        template as written."""
+        return _TemplateNode(
+            value,
+            template_schema,
+            self.keypath,
+            self.resolution_context,
+            parent=self,
+        )
+
     def _resolver(
         self,
         configuration: _types.Configuration,
@@ -1928,7 +1944,8 @@ def _expand_use(
 
         # a template written as a function call is a dict too, but merging into it
         # would add keys to the call, not to the dict it makes. An invalid call
-        # (ValueError) is call-shaped as well, so it is rejected the same way
+        # (ValueError) is call-shaped as well, so it is rejected the same way (unlike
+        # in _valid_function_call)
         context = node.resolution_context
         try:
             is_call = (
@@ -1952,7 +1969,14 @@ def _expand_use(
 def _valid_function_call(
     cfg: _types.ConfigurationDict, context: _types.ResolutionContext
 ) -> tuple[_types.Function, _types.Configuration] | None:
-    """The function and input of ``cfg`` if it is a valid function call, else None."""
+    """The function and input of ``cfg`` if it is a valid function call, else None.
+
+    An invalid call (``check_for_function_call`` raises ValueError) counts as no call
+    here, for callers that only need to recognize a call: it is reported where the
+    tree is built. make_node, which builds the tree, raises a ResolutionError for it
+    instead, and _expand_use treats it as a call, since it is call-shaped.
+
+    """
     try:
         return context.check_for_function_call(cfg, context.functions)
     except ValueError:
@@ -2276,6 +2300,7 @@ def make_node(
                 cfg, resolution_context.functions
             )
         except ValueError as exc:
+            # reported here, where the tree is built (see _valid_function_call)
             raise ResolutionError(f"Invalid function call: {exc}", keypath)
         if call is not None:
             function, input = call
