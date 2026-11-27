@@ -82,10 +82,6 @@ def range_(args: FunctionArgs) -> ConfigurationList:
             args.keypath,
         )
 
-    start = args.input.get("start", 0)
-    stop = args.input["stop"]
-    step = args.input.get("step", 1)
-
     if set(args.input.keys()) - {"start", "stop", "step"}:
         raise ResolutionError(
             "Input to 'list.range' must be a dictionary with keys 'start', 'stop' and 'step'.",
@@ -94,9 +90,9 @@ def range_(args: FunctionArgs) -> ConfigurationList:
 
     # convert rather than check the type, so that a value written as "${ n }",
     # which interpolates to a string, is accepted
-    start = to_integer(start, "start", "list.range", args)
-    stop = to_integer(stop, "stop", "list.range", args)
-    step = to_integer(step, "step", "list.range", args)
+    start = to_integer(args.input.get("start", 0), "start", "list.range", args)
+    stop = to_integer(args.input["stop"], "stop", "list.range", args)
+    step = to_integer(args.input.get("step", 1), "step", "list.range", args)
 
     # range() raises a bare ValueError for a step of 0, with no keypath
     if step == 0:
