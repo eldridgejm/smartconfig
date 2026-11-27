@@ -5,7 +5,7 @@ done by resolve().
 
 """
 
-from collections.abc import Callable, Mapping, Set
+from collections.abc import Callable, Iterator, Mapping, Set
 from . import exceptions as _exceptions, types as _types
 from ._utils import jinja_reserved_name_problem
 
@@ -295,25 +295,10 @@ def _validate_template_schema(
         value_types=value_types,
     )
 
-    # a template's value can't be a template field (templates don't nest), so an
-    # inner schema that is itself a template schema can never be satisfied. The
-    # error at resolve time would advise making the field a sibling of the
-    # template, which isn't possible here, so the schema is rejected instead
-    inner_schema = template_schema["schema"]
-    if isinstance(inner_schema, Mapping) and inner_schema.get("type") == "template":
-        raise _exceptions.InvalidSchemaError(
-            "The schema of a template can't itself be a template schema: templates "
-            "don't nest. Use the inner template schema in place of the outer one.",
-            keypath + ("schema",),
-        )
-
     # A template's top-level keys can be referenced by name, like its parameters,
     # so a parameter named like a key that the inner schema declares would be
     # ambiguous. Catch it here, where it is visible from the schema alone.
-    inner = template_schema["schema"]
-    declared: set[str] = set()
-    if isinstance(inner, Mapping) and inner["type"] == "dict":
-        declared = {*inner.get("required_keys", {}), *inner.get("optional_keys", {})}
+    declared = {key for _, key in _declared_keys(template_schema["schema"])}
     for i, name in enumerate(template_schema["parameters"]):
         if name in declared:
             raise _exceptions.InvalidSchemaError(
@@ -323,6 +308,72 @@ def _validate_template_schema(
                 "parameter or the key.",
                 keypath + ("parameters", str(i)),
             )
+
+    # A template inside this one sees this template's parameters by name, so a
+    # parameter or a top-level key of it with the same name would be ambiguous.
+    # Each template checks the templates inside it, at any depth, so every pair of
+    # enclosing and enclosed templates is checked
+    outer = set(template_schema["parameters"])
+    for inner_keypath, inner_template in _templates_inside(
+        template_schema["schema"], keypath + ("schema",)
+    ):
+        for i, name in enumerate(inner_template["parameters"]):
+            if name in outer:
+                raise _exceptions.InvalidSchemaError(
+                    f'The parameter "{name}" is also a parameter of a template '
+                    "around this one. A template inside a template sees the "
+                    "parameters of the templates around it, so the name would be "
+                    "ambiguous. Rename one of them.",
+                    inner_keypath + ("parameters", str(i)),
+                )
+        for section, key in _declared_keys(inner_template["schema"]):
+            if key in outer:
+                raise _exceptions.InvalidSchemaError(
+                    f'The key "{key}" has the same name as a parameter of a template '
+                    "around this one. A template's keys can be referenced by name, "
+                    "like the parameters it sees, so the name would be ambiguous. "
+                    "Rename the key or the parameter.",
+                    inner_keypath + ("schema", section, key),
+                )
+
+
+def _templates_inside(
+    schema: _types.Schema | _types.DynamicSchema, keypath: _types.KeyPath
+) -> Iterator[tuple[_types.KeyPath, _types.Schema]]:
+    """The template schemas inside a valid schema, at any depth, with their keypaths.
+
+    Dynamic schemas are not called, so the templates behind them are not found;
+    they are checked when the configuration is resolved.
+
+    """
+    if callable(schema):
+        return
+    if schema["type"] == "dict":
+        for section in ("required_keys", "optional_keys"):
+            for key, key_schema in schema.get(section, {}).items():
+                yield from _templates_inside(key_schema, keypath + (section, key))
+        if "extra_keys_schema" in schema:
+            yield from _templates_inside(
+                schema["extra_keys_schema"], keypath + ("extra_keys_schema",)
+            )
+    elif schema["type"] == "list":
+        yield from _templates_inside(
+            schema["element_schema"], keypath + ("element_schema",)
+        )
+    elif schema["type"] == "template":
+        yield keypath, schema
+        yield from _templates_inside(schema["schema"], keypath + ("schema",))
+
+
+def _declared_keys(
+    schema: _types.Schema | _types.DynamicSchema,
+) -> Iterator[tuple[str, str]]:
+    """The (section, key) of each top-level key that a dict schema declares."""
+    if callable(schema) or schema["type"] != "dict":
+        return
+    for section in ("required_keys", "optional_keys"):
+        for key in schema.get(section, {}):
+            yield section, key
 
 
 # implementation =======================================================================

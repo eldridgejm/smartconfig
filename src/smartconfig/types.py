@@ -17,6 +17,7 @@ import collections.abc
 import copy
 import dataclasses
 import datetime
+from types import MappingProxyType
 
 from ._utils import jinja_reserved_name_problem
 
@@ -449,6 +450,11 @@ class ResolutionContext:
         call, it returns a 2-tuple of the function and the input to the function. If
         not, it returns None. If it is an invalid function call, it should raise
         a ValueError.
+    template_parameters : Mapping[str, Any]
+        The values of the parameters of the templates being evaluated: those of
+        the template whose evaluation made this context, and the outer parameters
+        it carries. They are looked up after the document and before the global
+        variables. Empty outside of a template's evaluation.
 
     """
 
@@ -458,6 +464,9 @@ class ResolutionContext:
     filters: Mapping[str, Callable]
     inject_root_as: str | None
     check_for_function_call: FunctionCallChecker
+    # kept apart from global_variables, so that a template made while evaluating
+    # another can carry these values (as its outer_parameters) and not the globals
+    template_parameters: Mapping[str, Any] = dataclasses.field(default_factory=dict)
 
 
 # templates ============================================================================
@@ -517,6 +526,11 @@ class Template:
     check_for_function_call : :class:`types.FunctionCallChecker` | None
         As in :func:`smartconfig.resolve`. Defaults to that of
         :func:`smartconfig.resolve`.
+    outer_parameters : Mapping[str, Any] | None
+        The values of the parameters of the templates around this one, for a
+        template inside a template. They are names in the template, as its own
+        parameters are, but are not given to :meth:`evaluate`. Defaults to
+        ``None``, meaning none.
 
     Attributes
     ----------
@@ -528,6 +542,10 @@ class Template:
         The names that must be given, no more and no fewer, when evaluating.
     keypath : :class:`types.KeyPath`
         Where the template was written.
+    outer_parameters : Mapping[str, Any]
+        Read-only. The values of the parameters of the templates around this one,
+        from the evaluation that made it. Empty for a template that is not inside
+        another.
 
     Raises
     ------
@@ -535,7 +553,8 @@ class Template:
         If ``parameters`` is a string rather than a list of names.
     ValueError
         If a parameter has a name that Jinja reserves, such as ``true`` or
-        ``self``, since ``${...}`` could never refer to it.
+        ``self``, since ``${...}`` could never refer to it, or the name of an
+        outer parameter.
 
     """
 
@@ -554,6 +573,7 @@ class Template:
         global_variables: Mapping[str, Any] | None = None,
         inject_root_as: str | None = None,
         check_for_function_call: FunctionCallChecker | None = _DEFAULT,
+        outer_parameters: Mapping[str, Any] | None = None,
     ):
         self.source = copy.deepcopy(source)
         self.schema = schema
@@ -573,6 +593,17 @@ class Template:
                 raise ValueError(f"Invalid parameter: {problem}")
         self.keypath: KeyPath = tuple(keypath)
 
+        # an outer parameter is a name in the template too, so a parameter of the
+        # same name would make ${ name } ambiguous. The values are not copied: they
+        # are the program's, like the values given to evaluate()
+        self._outer_parameters = dict(outer_parameters or {})
+        for name in self.parameters:
+            if name in self._outer_parameters:
+                raise ValueError(
+                    f'Invalid parameter: "{name}" is also an outer parameter, so '
+                    f"${{ {name} }} would be ambiguous. Use another name."
+                )
+
         # the options used by .evaluate(); shared (not copied) by __deepcopy__
         self._options: dict[str, Any] = {
             "converters": converters,
@@ -582,6 +613,12 @@ class Template:
             "inject_root_as": inject_root_as,
             "check_for_function_call": check_for_function_call,
         }
+
+    @property
+    def outer_parameters(self) -> Mapping[str, Any]:
+        """The values of the parameters of the templates around this one."""
+        # read-only, so that the values can't be changed after the template is made
+        return MappingProxyType(self._outer_parameters)
 
     # resolution -----------------------------------------------------------------------
 
@@ -616,7 +653,7 @@ class Template:
         from ._internals import (
             _FunctionCallNode,
             check_keys_are_not_parameters,
-            make_template_tree,
+            make_node,
             reporting_recursion_errors,
         )
         from ._resolve import _make_resolution_context
@@ -645,22 +682,25 @@ class Template:
         # options left at _DEFAULT take resolve()'s defaults
         options = {k: v for k, v in self._options.items() if v is not _DEFAULT}
 
-        # the parameters are added to the globals, and win over them: whoever
-        # calls resolve() may pass globals that the template's author never saw,
-        # and the template should not break because one shares a parameter's name
-        global_variables = {**(options.pop("global_variables") or {}), **parameters}
-        context = _make_resolution_context(global_variables=global_variables, **options)
+        # the parameters, with the outer ones, are kept apart from the globals and
+        # win over them: whoever calls resolve() may pass globals that the
+        # template's author never saw, and the template should not break because
+        # one shares a parameter's name. Kept apart so that a template inside this
+        # one carries the parameters and not the globals
+        context = _make_resolution_context(**options)
+        context.template_parameters = {**self._outer_parameters, **parameters}
 
         # as in resolve(): a tree too deep to build or resolve is a ResolutionError
         with reporting_recursion_errors():
-            # a template field in the tree would be a template inside this one
-            root = make_template_tree(self.source, self.schema, context, self.keypath)
+            root = make_node(self.source, self.schema, context, keypath=self.keypath)
 
             # Keys named like parameters are also checked when a template field is
             # resolved, but a function call's keys are only known once it is
             # evaluated, and a Template can be made directly, without resolve().
             keyed = root.evaluate() if isinstance(root, _FunctionCallNode) else root
-            check_keys_are_not_parameters(keyed, self.parameters)
+            check_keys_are_not_parameters(
+                keyed, self.parameters, self._outer_parameters
+            )
 
             return root.resolve()
 
@@ -674,6 +714,8 @@ class Template:
         new.parameters = self.parameters
         new.keypath = self.keypath
         new._options = self._options
+        # the values are the program's, like those given to evaluate()
+        new._outer_parameters = self._outer_parameters
         return new
 
     def __eq__(self, other: object) -> bool:
@@ -684,9 +726,14 @@ class Template:
             and self.schema == other.schema
             and self.parameters == other.parameters
             and self.keypath == other.keypath
+            and self._outer_parameters == other._outer_parameters
         )
 
     def __repr__(self) -> str:
         keypath = ".".join(self.keypath)
         names = ", ".join(self.parameters) or "none"
-        return f'Template(at "{keypath}", parameters: {names})'
+        # the outer parameters are named, not shown: their values can be large
+        outer = ""
+        if self._outer_parameters:
+            outer = "; outer: " + ", ".join(self._outer_parameters)
+        return f'Template(at "{keypath}", parameters: {names}{outer})'

@@ -11,12 +11,12 @@ from smartconfig.types import ConfigurationDict, Template
 
 # an activity made once per publication, with links made once per video. "links"
 # is a template inside the "activity" template
-LINK = {
+LINK: dict[str, Any] = {
     "type": "dict",
     "required_keys": {"text": {"type": "string"}, "url": {"type": "string"}},
 }
 
-ACTIVITY = {
+ACTIVITY: dict[str, Any] = {
     "type": "dict",
     "required_keys": {
         "title": {"type": "string"},
@@ -24,7 +24,7 @@ ACTIVITY = {
     },
 }
 
-SCHEMA = {
+SCHEMA: dict[str, Any] = {
     "type": "dict",
     "required_keys": {
         "activity": {
@@ -384,6 +384,18 @@ def test_a_wrapper_on_a_field_inside_a_template_that_is_not_a_template_is_an_err
         "This field is not a template: it is evaluated now. "
         "Remove the __template__ wrapper."
     )
+
+
+def test_a_wrapper_on_a_field_that_is_not_a_template_names_the_innermost_template():
+    cfg = copy.deepcopy(CONFIG)
+    inner = cfg["activity"]["__template__"]["for_each_link"]["__template__"]
+    inner["url"] = {"__template__": "a"}
+
+    with raises(exceptions.UnexpectedTemplateError) as exc:
+        resolve(cfg, SCHEMA)
+
+    assert exc.value.keypath == ("activity", "for_each_link", "url")
+    assert exc.value.enclosing == ("activity", "for_each_link")
 
 
 def test_a_use_inside_an_inner_template_is_expanded_when_resolved():

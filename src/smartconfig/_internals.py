@@ -268,6 +268,7 @@ from typing import (
 import abc
 import contextlib
 import copy
+import dataclasses
 import difflib
 import enum
 import functools
@@ -1052,6 +1053,17 @@ def _set_result(method: Callable[[], object], result: object) -> None:
     node._cache[method.__name__] = result
 
 
+def _names_after_the_document(context: _types.ResolutionContext) -> dict[str, Any]:
+    """The names looked up after the document: the globals and template parameters.
+
+    The parameters of the templates being evaluated win over the globals: whoever
+    calls resolve() may pass globals that a template's author never saw, and the
+    template should not break because one shares a parameter's name.
+
+    """
+    return {**context.global_variables, **context.template_parameters}
+
+
 class _Node(abc.ABC):
     """Abstract base class for all nodes in a configuration tree.
 
@@ -1063,18 +1075,8 @@ class _Node(abc.ABC):
     local_variables : Mapping[str, Configuration | UnresolvedDict | UnresolvedList | UnresolvedFunctionCall] | None
         A dictionary of local variables that can be accessed during string
         interpolation. If None, this is made an empty dictionary.
-    template_keypath : KeyPath | None
-        Used to detect a template inside a template, which is not allowed. It is set
-        on the root of a tree built from a template's value (by
-        :meth:`Template.evaluate`, and by _TemplateNode.resolve to check the
-        structure), and it is the keypath of that template. A _TemplateNode checks
-        its root's ``template_keypath`` when it is resolved: if it is set, the node
-        is a template inside a template, and the error message uses the keypath to
-        name the enclosing template. ``None`` on any other root.
 
     """
-
-    template_keypath: _types.KeyPath | None = None
 
     # set by each kind of node; used in error messages
     keypath: _types.KeyPath
@@ -1152,7 +1154,9 @@ class _Node(abc.ABC):
         """Look up a name as seen from this node.
 
         The name is looked up in the local variables of this node and its ancestors,
-        then in the root of the tree, then in the global variables.
+        then in the root of the tree, then in ``global_variables`` (which holds the
+        parameters of the templates being evaluated too; see
+        _names_after_the_document).
 
         Raises
         ------
@@ -1828,7 +1832,7 @@ class _ValueNode(_Node):
         # tree, and finally in the global variables. See the
         # _make_custom_jinja_context() method for more information.
         environment.context_class = self._make_custom_jinja_context(
-            self.resolution_context.global_variables,
+            _names_after_the_document(self.resolution_context),
             inject_root_as=self.resolution_context.inject_root_as,
         )
 
@@ -2132,21 +2136,6 @@ class _FunctionCallNode(_Node):
 # _TemplateNode ------------------------------------------------------------------------
 
 
-def _nested_template_field_error(
-    keypath: _types.KeyPath, enclosing: _types.KeyPath
-) -> UnexpectedTemplateError:
-    """The error for a template field at ``keypath`` inside the template at
-    ``enclosing``."""
-    where = ".".join(enclosing)
-    return UnexpectedTemplateError(
-        f'A template can\'t contain a template field: the template at "{where}" '
-        "already defers everything in it. Make the field a sibling of the template "
-        "instead.",
-        keypath,
-        enclosing,
-    )
-
-
 @contextlib.contextmanager
 def reporting_recursion_errors() -> typing.Iterator[None]:
     """Report a RecursionError raised inside the block as a ResolutionError.
@@ -2171,42 +2160,15 @@ def reporting_recursion_errors() -> typing.Iterator[None]:
         ) from exc
 
 
-def make_template_tree(
-    value: _types.Configuration,
-    schema: _types.Schema | _types.DynamicSchema,
-    resolution_context: _types.ResolutionContext,
-    keypath: _types.KeyPath,
-) -> _ConcreteNode:
-    """Build the node tree of a template's value, marked as a template's tree.
-
-    The root's ``template_keypath`` is set to ``keypath``, so that a template field
-    in the tree raises when it is resolved (templates do not nest).
-
-    Raises
-    ------
-    UnexpectedTemplateError
-        If the tree has a template field whose value is not a template. The
-        template's own field was accepted before its value was built, so the field
-        is a template inside this one, and that is the error reported (rather than
-        asking for a ``__template__`` wrapper, which would be an error too).
-
-    """
-    try:
-        tree = make_node(value, schema, resolution_context, keypath=keypath)
-    except TemplateRequiredError as exc:
-        raise _nested_template_field_error(exc.keypath, keypath) from None
-    tree.template_keypath = keypath
-    return tree
-
-
 def check_keys_are_not_parameters(
-    tree: _ConcreteNode, parameters: Iterable[str]
+    tree: _ConcreteNode, parameters: Iterable[str], outer_parameters: Iterable[str]
 ) -> None:
     """Raise if a top-level key of a template's tree is named like a parameter.
 
-    A template's top-level keys can be referenced by name, like its parameters, so
-    ``${ name }`` would be ambiguous if both a key and a parameter were called
-    ``name``. Nested keys are not names, so they are not checked.
+    A template's top-level keys can be referenced by name, like its parameters and
+    its outer parameters (those of the templates around it), so ``${ name }``
+    would be ambiguous if both a key and a parameter were called ``name``. Nested
+    keys are not names, so they are not checked.
 
     Raises
     ------
@@ -2223,6 +2185,14 @@ def check_keys_are_not_parameters(
                 "parameters. A template's keys can be referenced by name, like its "
                 "parameters, so the name is ambiguous. Rename the key or the "
                 "parameter.",
+                child.keypath,
+            )
+        if key in outer_parameters:
+            raise ResolutionError(
+                f'"{key}" is both a key of this template and a parameter of a '
+                "template around it. A template's keys can be referenced by name, "
+                "like the parameters it sees, so the name is ambiguous. Rename the "
+                "key or the parameter.",
                 child.keypath,
             )
 
@@ -2290,7 +2260,7 @@ def _look_up_keypath(node: _ConcreteNode, keypath: str) -> Any:
 
     context = node.resolution_context
     root_container = node._root_container()
-    global_variables = dict(context.global_variables)
+    global_variables = _names_after_the_document(context)
     if context.inject_root_as is not None:
         global_variables[context.inject_root_as] = root_container
 
@@ -2426,6 +2396,10 @@ class _TemplateNode(_Node):
         The schema of the template's value once evaluated.
     parameters : tuple[str, ...]
         The template field's parameters: the names given each time it is evaluated.
+    outer_parameters : dict[str, Any]
+        The outer parameters of a Template passed in, which it keeps when it is
+        rebuilt here. The outer parameters of the evaluation the node is resolved
+        in (if any) are added to them.
     keypath : KeyPath
         The keypath to this node in the configuration tree.
     resolution_context : ResolutionContext
@@ -2443,9 +2417,11 @@ class _TemplateNode(_Node):
         resolution_context: _types.ResolutionContext,
         parent: _ConcreteNode | None = None,
         local_variables: Mapping[str, _types.Configuration] | None = None,
+        outer_parameters: Mapping[str, Any] | None = None,
     ):
         super().__init__(parent, local_variables)
         self.value = value
+        self.outer_parameters = dict(outer_parameters or {})
         self.template_schema = template_schema
         self.inner_schema, self.parameters = _template_schema_parts(
             template_schema, keypath
@@ -2466,54 +2442,85 @@ class _TemplateNode(_Node):
         node = cls(
             template.source, template_schema, keypath, resolution_context, parent
         )
-        _set_result(node._build_template, template)
+        _set_result(node.resolve, template)
         return node
 
+    @_cache_and_detect_cycles
     def resolve(self) -> Template:
-        """Build (once) and return the Template for this field.
+        """Expand, check and build (once) the Template for this field.
 
         Raises
         ------
-        UnexpectedTemplateError
-            If the node is in a tree built from a template's value: templates do
-            not nest. Checked first, so that an existing Template is rejected too.
+        ResolutionError
+            If a parameter is named like a parameter of a template around this
+            one, if the value's structure doesn't match the inner schema, or if a
+            template inside it fails these checks.
 
         """
-        # templates do not nest. If the root of this node's tree has a
-        # template_keypath, the tree was built from a template's value, so this
-        # node is a template inside that template
-        enclosing = self.root.template_keypath
-        if enclosing is not None:
-            raise _nested_template_field_error(self.keypath, enclosing)
+        context = self.resolution_context
 
-        return self._build_template()
+        # the names this template sees from the templates around it: the
+        # parameters of the evaluation it is made in, and those that a Template
+        # passed in carries already
+        outer = dict(context.template_parameters)
+        for name, value in self.outer_parameters.items():
+            if name in outer:
+                raise ResolutionError(
+                    f'"{name}" is a parameter of a template around this one, and '
+                    "this template already carries a value for it. Rename one of "
+                    "them.",
+                    self.keypath,
+                )
+            outer[name] = value
 
-    @_cache_and_detect_cycles
-    def _build_template(self) -> Template:
-        """Expand, check and build the Template.
+        # an outer parameter is a name in this template too, so a parameter of the
+        # same name would make ${ name } ambiguous
+        for name in self.parameters:
+            if name in outer:
+                raise ResolutionError(
+                    f'"{name}" is a parameter of this template and of a template '
+                    "around it. A template inside a template sees the parameters of "
+                    "the templates around it, so the name is ambiguous. Rename one "
+                    "of them.",
+                    self.keypath,
+                )
 
-        Separate from resolve(), which checks for nesting each time, even when the
-        Template was built already or given by from_template.
-
-        """
         # replace every __use__ in the value with the value it stands for, so
         # that the template's source does not depend on the rest of the document
-        self.value = self._expand_uses(self.value, self.keypath)
+        expanded: set[_types.KeyPath] = set()
+        self.value = self._expand_uses(self.value, self.keypath, expanded)
 
         # check the structure of the value as written: building the tree raises
-        # structure errors; it is walked but never resolved. Like the tree that
-        # Template.evaluate builds, it is marked as a template's tree, so a template
-        # field in it is an error when resolved
-        tree = make_template_tree(
-            self.value, self.inner_schema, self.resolution_context, self.keypath
-        )
-        self._check(tree)
+        # structure errors; it is walked but never resolved, except for the
+        # templates inside it, which are checked in turn. This template's
+        # parameters are names in the tree, as when it is evaluated, so that a
+        # template inside it is checked against them. Their values aren't known
+        # yet, so they are None; the Templates made in the tree are discarded
+        names = {**outer, **dict.fromkeys(self.parameters)}
+        tree_context = dataclasses.replace(context, template_parameters=names)
+        try:
+            tree = make_node(
+                self.value, self.inner_schema, tree_context, keypath=self.keypath
+            )
+            self._check(tree)
+        except TemplateRequiredError as exc:
+            # a __use__ that was the whole value of a template field inside this
+            # template was replaced by the value it copies, without a wrapper. Say
+            # so, rather than asking for a wrapper that the user did write
+            if exc.keypath not in expanded:
+                raise
+            raise TemplateRequiredError(
+                "This field is a template inside a template, so a __use__ here is "
+                "replaced by the value it copies, which leaves the field without "
+                'its wrapper. Write it as {"__template__": {"__use__": ...}}.',
+                exc.keypath,
+                exc.parameters,
+            ) from None
 
         # report a key named like a parameter now, when the configuration is
         # resolved, rather than only when the program evaluates the template
-        check_keys_are_not_parameters(tree, self.parameters)
+        check_keys_are_not_parameters(tree, self.parameters, outer)
 
-        context = self.resolution_context
         return Template(
             self.value,
             self.inner_schema,
@@ -2525,22 +2532,27 @@ class _TemplateNode(_Node):
             global_variables=context.global_variables,
             inject_root_as=context.inject_root_as,
             check_for_function_call=context.check_for_function_call,
+            outer_parameters=outer,
         )
 
     def _expand_uses(
-        self, value: _types.Configuration, keypath: _types.KeyPath
+        self,
+        value: _types.Configuration,
+        keypath: _types.KeyPath,
+        expanded: set[_types.KeyPath],
     ) -> _types.Configuration:
         """The value with each ``__use__`` replaced by the value it stands for.
 
         Every dict and list is visited, including the inputs of other function
         calls, except the input of ``__raw__``, which is kept as written. The
         target template's own ``__use__`` calls were already expanded
-        when that template was resolved.
+        when that template was resolved. The keypath of each ``__use__`` replaced
+        is added to ``expanded``.
 
         """
         if isinstance(value, list):
             return [
-                self._expand_uses(item, keypath + (str(i),))
+                self._expand_uses(item, keypath + (str(i),), expanded)
                 for i, item in enumerate(value)
             ]
         if not isinstance(value, dict):
@@ -2556,6 +2568,7 @@ class _TemplateNode(_Node):
             call = None
         if call is not None and _is_use_function(call[0]):
             # a __use__ call: replace it with the value it stands for
+            expanded.add(keypath)
             return _expand_use(call[1], self, keypath)
         if call is not None and _is_raw_function(call[0]):
             # everything under __raw__ is data, so a __use__ in it is kept as written
@@ -2563,15 +2576,25 @@ class _TemplateNode(_Node):
 
         # an ordinary dict, or a call to a function other than __use__ (whose input
         # is a dict too): expand the __use__ calls inside each value
-        return {k: self._expand_uses(v, keypath + (k,)) for k, v in value.items()}
+        return {
+            k: self._expand_uses(v, keypath + (k,), expanded) for k, v in value.items()
+        }
 
     def _check(self, node: _ConcreteNode) -> None:
-        """Raise if a tree built from this template's value contains a template.
+        """Check the templates inside a tree built from this template's value.
 
-        Templates do not nest. This walks the tree without resolving it, and raises
-        an UnexpectedTemplateError at the first template field or ``__template__``
-        wrapper it finds. Function calls are not evaluated, and their inputs are not
-        walked.
+        The tree is walked without resolving it. Each template in it is resolved,
+        which checks its value in turn: one written with ``__template__`` (whose
+        function only wraps its input, so it is safe to call now), a default, or a
+        Template passed in. Other function calls are not evaluated, and their
+        inputs are not walked, so a template one makes is checked when this
+        template is evaluated.
+
+        Raises
+        ------
+        UnexpectedTemplateError
+            If a ``__template__`` wrapper is on a field that is not a template
+            (nor ``any``). Its ``enclosing`` is this template's keypath.
 
         """
         if isinstance(node, _DictNode):
@@ -2580,24 +2603,21 @@ class _TemplateNode(_Node):
         elif isinstance(node, _ListNode):
             for child in node.children:
                 self._check(child)
-        elif isinstance(node, _TemplateNode) or (
-            isinstance(node, _FunctionCallNode)
-            and node.schema.get("type") == "template"
-        ):
-            # a template field. Its value is a Template passed in, or a function call
-            # that would make one when evaluated (a __template__, a __use__, ...)
-            raise _nested_template_field_error(node.keypath, self.keypath)
+        elif isinstance(node, _TemplateNode):
+            node.resolve()
         elif isinstance(node, _FunctionCallNode) and _is_template_function(
             node.function
         ):
-            # a __template__ wrapper on a field of type "any"
-            where = ".".join(self.keypath)
-            raise UnexpectedTemplateError(
-                f'A template can\'t contain another __template__: the template at "{where}" '
-                "already defers everything in it. Remove the wrapper.",
-                node.keypath,
-                self.keypath,
-            )
+            try:
+                node.resolve()
+            except UnexpectedTemplateError as exc:
+                # the wrapper is on a field that is evaluated now. The error from a
+                # template further in already names the template it is in
+                if exc.enclosing is not None:
+                    raise
+                raise UnexpectedTemplateError(
+                    exc.reason, exc.keypath, self.keypath
+                ) from None
 
 
 def _make_template_node(
@@ -2643,7 +2663,8 @@ def _make_template_node(
             )
         # a Template made elsewhere (by a __template__ on an "any" field that a
         # function returned, say): like a __use__ copy, its value is kept as written
-        # under this field's schema and parameters
+        # under this field's schema and parameters. It keeps the values it carries
+        # from the templates around it, which its source may use
         return _TemplateNode(
             cfg.source,
             schema,
@@ -2651,6 +2672,7 @@ def _make_template_node(
             resolution_context,
             parent=parent,
             local_variables=local_variables,
+            outer_parameters=cfg.outer_parameters,
         )
 
     # under __raw__ (RAW mode) everything is data, as in make_node, so a dict is
