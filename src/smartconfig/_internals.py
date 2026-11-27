@@ -905,46 +905,6 @@ def _make_unresolved_container(
         return _UnresolvedFunctionCall(node)
 
 
-def _get_node_at_keypath(
-    node: _DictNode | _ListNode,
-    keypath: _types.KeyPath | str,
-    cast_key: Callable[[str], Any],
-) -> _ConcreteNode:
-    """Navigate the node tree and return the node at the given keypath.
-
-    Walks the internal node tree and returns the raw ``_Node`` without resolving it.
-    ``_FunctionCallNode`` instances encountered along the path are evaluated so that
-    their children can be traversed.
-
-    If there is no node at the keypath, a KeyError is raised.
-
-    """
-    if isinstance(keypath, str):
-        keypath = tuple(keypath.split("."))
-
-    head_key, *rest = keypath
-
-    # A list index that is out of range or not an integer raises IndexError or
-    # ValueError here. Raise KeyError instead, which is what callers such as
-    # __splice__ catch to report that the keypath does not exist.
-    try:
-        child: _ConcreteNode = node.children[cast_key(head_key)]
-    except (IndexError, ValueError):
-        raise KeyError(head_key) from None
-
-    # if the child is a function call, evaluate it to get the underlying node
-    if isinstance(child, _FunctionCallNode):
-        child = child.evaluate()
-
-    if not rest:
-        return child
-
-    if not isinstance(child, (_DictNode, _ListNode)):
-        raise KeyError(head_key)
-
-    return child.get_keypath(tuple(rest))
-
-
 # node types ===========================================================================
 #
 # A configuration tree is the internal representation of a configuration. The
@@ -1106,6 +1066,38 @@ class _Node(abc.ABC):
     @abc.abstractmethod
     def resolve(self) -> _types.Configuration:
         """Recursively resolve the node into a configuration."""
+
+    def get_keypath(self, keypath: _types.KeyPath | str) -> _ConcreteNode:
+        """Return the node at the given keypath, without resolving it.
+
+        Function calls along the path, and at its end, are evaluated, so that their
+        children can be traversed. If there is no node at the keypath, a KeyError is
+        raised.
+
+        """
+        if isinstance(keypath, str):
+            keypath = tuple(keypath.split("."))
+
+        node = typing.cast(_ConcreteNode, self)
+        for key in keypath:
+            if isinstance(node, _FunctionCallNode):
+                node = node.evaluate()
+            # A list index that is out of range or not an integer raises IndexError or
+            # ValueError. Raise KeyError instead, which is what callers such as
+            # __splice__ catch to report that the keypath does not exist.
+            try:
+                if isinstance(node, _DictNode):
+                    node = node.children[str(key)]
+                elif isinstance(node, _ListNode):
+                    node = node.children[int(key)]
+                else:
+                    raise KeyError(key)
+            except (IndexError, ValueError):
+                raise KeyError(key) from None
+
+        if isinstance(node, _FunctionCallNode):
+            node = node.evaluate()
+        return node
 
     # name lookup ----------------------------------------------------------------------
     #
@@ -1301,10 +1293,6 @@ class _DictNode(_Node):
         """Recursively resolve the _DictNode into a ConfigurationDict."""
         return {key: child_node.resolve() for key, child_node in self.children.items()}
 
-    def get_keypath(self, keypath: _types.KeyPath | str) -> _ConcreteNode:
-        """Return the node at the given keypath."""
-        return _get_node_at_keypath(self, keypath, str)
-
 
 # _ListNode ----------------------------------------------------------------------------
 
@@ -1345,10 +1333,6 @@ class _ListNode(_Node):
     def resolve(self) -> _types.ConfigurationList:
         """Recursively resolve the _ListNode into a ConfigurationList."""
         return [child_node.resolve() for child_node in self.children]
-
-    def get_keypath(self, keypath: _types.KeyPath | str) -> _ConcreteNode:
-        """Return the node at the given keypath."""
-        return _get_node_at_keypath(self, keypath, int)
 
 
 # _ValueNode ---------------------------------------------------------------------------
@@ -1779,13 +1763,6 @@ class _FunctionCallNode(_Node):
 
         """
         return self.evaluate().resolve()
-
-    def get_keypath(self, keypath: _types.KeyPath | str) -> _ConcreteNode:
-        """Evaluate the function, then return the node at the given keypath."""
-        node = self.evaluate()
-        if isinstance(node, (_DictNode, _ListNode)):
-            return node.get_keypath(keypath)
-        raise KeyError(keypath)
 
 
 # _TemplateNode ------------------------------------------------------------------------
