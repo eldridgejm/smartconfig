@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.1
+
+### The Prototype functions move to `smartconfig.prototypes`
+
+`schema`, `template`, `schema_of` and `instantiate` are now in the new `smartconfig.prototypes` module, and are no longer at the top level. Their names read as the general schema and template tools there, and `smartconfig.template` was easily confused with the `__template__` function and `smartconfig.types.Template`. `smartconfig.Prototype` stays at the top level (and is also `smartconfig.prototypes.Prototype`).
+
+```python
+import smartconfig
+from smartconfig.prototypes import schema, template, schema_of, instantiate
+
+class Config(smartconfig.Prototype):
+    calendar: Annotated[dict[str, Any] | None, schema(CALENDAR_SCHEMA)] = None
+```
+
+Code written for 0.7.0 changes `smartconfig.schema(...)` to `smartconfig.prototypes.schema(...)`, and likewise for the other three.
+
 ## 0.7.0
 
 ### Prototypes are back, as dataclasses

@@ -7,7 +7,8 @@ from typing import Annotated, Any
 import pytest
 
 import smartconfig
-from smartconfig import Prototype, instantiate
+from smartconfig import Prototype
+from smartconfig.prototypes import instantiate
 
 
 class Address(Prototype):
@@ -95,7 +96,9 @@ def test_list_and_dict_of_prototypes_become_instances():
 def test_annotated_schema_field_is_kept_as_is():
     # given: a dict that looks like an Address stays a dict
     class Raw(Prototype):
-        address: Annotated[dict[str, Any], smartconfig.schema({"type": "any"})]
+        address: Annotated[
+            dict[str, Any], smartconfig.prototypes.schema({"type": "any"})
+        ]
 
     # when
     raw = instantiate(Raw, {"address": {"street": "s"}})
@@ -128,7 +131,7 @@ def test_extra_keys_go_into_extra_keys():
 
 def test_extra_keys_with_schema_are_kept_as_is():
     # given
-    class Book(Prototype, extra_keys=smartconfig.schema({"type": "any"})):
+    class Book(Prototype, extra_keys=smartconfig.prototypes.schema({"type": "any"})):
         title: str
 
     # when
@@ -164,7 +167,12 @@ def test_annotated_with_other_metadata_holding_a_prototype_is_built():
         options: Annotated[Options, "other metadata"] = field(default_factory=Options)
 
     # then
-    assert smartconfig.schema_of(Settings)["optional_keys"]["options"]["default"] == {}
+    assert (
+        smartconfig.prototypes.schema_of(Settings)["optional_keys"]["options"][
+            "default"
+        ]
+        == {}
+    )
     assert instantiate(Settings, {"options": {"verbose": True}}) == Settings(
         options=Options(verbose=True)
     )

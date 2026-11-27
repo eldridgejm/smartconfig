@@ -19,7 +19,7 @@ import typing
 from . import converters as _converters, types as _types
 from ._core_functions import CORE_FUNCTIONS
 from ._internals import make_node, reporting_recursion_errors
-from ._prototypes import Prototype, _is_prototype, instantiate, schema_of
+from .prototypes import Prototype, _is_prototype, instantiate, schema_of
 from ._schemas import validate_schema
 from ._utils import jinja_reserved_name_problem
 from . import stdlib as _stdlib
@@ -351,8 +351,8 @@ def resolve(
         with the configuration and the keypath and should return a
         :class:`types.Schema`.
         If a :class:`Prototype` subclass is provided, the configuration is resolved
-        against its schema (:func:`schema_of`), and the result is an instance of
-        it (:func:`instantiate`).
+        against its schema (:func:`smartconfig.prototypes.schema_of`), and the
+        result is an instance of it (:func:`smartconfig.prototypes.instantiate`).
     converters : Mapping[str, Callable]
         A dictionary mapping value types to converter functions. The converter functions
         should take the raw value (after interpolation) and convert it to the specified

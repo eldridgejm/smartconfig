@@ -12,7 +12,8 @@ from dataclasses import field
 from typing import Annotated, Any
 
 import smartconfig
-from smartconfig import Prototype, schema_of
+from smartconfig import Prototype
+from smartconfig.prototypes import schema_of
 from smartconfig.types import ConfigurationDict, ConfigurationList, Schema, Template
 
 # automata/config.py ===================================================================
@@ -195,9 +196,9 @@ class Config(Prototype):
     extensions: list[Any] = field(default_factory=list)
     materials: dict[str, Any] = field(default_factory=dict)
     publish: dict[str, Any] = field(default_factory=dict)
-    calendar: Annotated[dict[str, Any] | None, smartconfig.schema(CALENDAR_SCHEMA)] = (
-        None
-    )
+    calendar: Annotated[
+        dict[str, Any] | None, smartconfig.prototypes.schema(CALENDAR_SCHEMA)
+    ] = None
     build: BuildConfig = field(default_factory=BuildConfig)
     ignore: list[str] = field(default_factory=list)
 
@@ -366,7 +367,7 @@ def test_people_list_resolves_to_groups_of_people():
 
     # when
     resolved = smartconfig.resolve(cfg, people_schema)
-    groups = [smartconfig.instantiate(Group, group) for group in resolved]
+    groups = [smartconfig.prototypes.instantiate(Group, group) for group in resolved]
 
     # then
     assert groups == [Group(group="Instructors", members=[Person(name="Justin")])]
@@ -438,7 +439,7 @@ class ActivityCollectionConfig(Prototype):
     collection: str
     for_each_publication: Annotated[
         Template,
-        smartconfig.template(
+        smartconfig.prototypes.template(
             ACTIVITY_SCHEMA, parameters=["publication", *RENDER_CONTEXT_NAMES]
         ),
     ]
@@ -463,7 +464,7 @@ class Schedule(Prototype):
     announcements: list[Announcement] = field(default_factory=list)
     # a template field whose default is the template as written (an empty list)
     extra_primary_activities: Annotated[
-        Template, smartconfig.schema(EXTRA_ACTIVITIES_SCHEMA)
+        Template, smartconfig.prototypes.schema(EXTRA_ACTIVITIES_SCHEMA)
     ]
 
 

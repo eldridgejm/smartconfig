@@ -26,9 +26,10 @@ class Course(Prototype):
 class Config(Prototype, extra_keys=str):
     course: Course
     calendar: Annotated[
-        dict[str, Any] | None, smartconfig.schema({"type": "any", "default": None})
+        dict[str, Any] | None,
+        smartconfig.prototypes.schema({"type": "any", "default": None}),
     ]
-    title: Annotated[Template, smartconfig.template({"type": "string"})]
+    title: Annotated[Template, smartconfig.prototypes.template({"type": "string"})]
 
 
 CFG: ConfigurationDict = {
@@ -65,7 +66,7 @@ def test_init_is_typed():
 
 def test_instantiate_returns_the_prototype_type():
     # when
-    course = smartconfig.instantiate(
+    course = smartconfig.prototypes.instantiate(
         Course, {"name": "n", "start": datetime.date(2026, 1, 1)}
     )
 

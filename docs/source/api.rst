@@ -6,8 +6,9 @@ Core API
 
 The core functionality of `smartconfig` is exposed through two main functions:
 :func:`resolve` for resolving configurations and :func:`validate_schema` for
-checking the validity of schemas. :class:`Prototype` and the functions after it
-describe a configuration as a class instead of a schema (see :ref:`prototypes`).
+checking the validity of schemas. :class:`Prototype` and the functions in
+:mod:`smartconfig.prototypes` describe a configuration as a class instead of a
+schema (see :ref:`prototypes`).
 
 .. function:: resolve(...) -> Configuration or Prototype
 
@@ -24,8 +25,9 @@ describe a configuration as a class instead of a schema (see :ref:`prototypes`).
         configuration, a :class:`types.DynamicSchema` (a callable that
         returns a schema based on the configuration and keypath), or a
         :class:`Prototype` subclass. A prototype is resolved against its schema
-        (:func:`schema_of`), so errors are those of the schema dictionary, and
-        the result is built with :func:`instantiate`.
+        (:func:`smartconfig.prototypes.schema_of`), so errors are those of the
+        schema dictionary, and the result is built with
+        :func:`smartconfig.prototypes.instantiate`.
         See: :ref:`schemas` and :ref:`prototypes`.
     converters : Mapping[str, Callable]
         A dictionary mapping value types (as strings) to converter functions.
@@ -110,7 +112,12 @@ describe a configuration as a class instead of a schema (see :ref:`prototypes`).
 Prototypes
 ----------
 
+:class:`Prototype` is available at the top level, as ``smartconfig.Prototype``.
+The functions that go with it are in the :mod:`smartconfig.prototypes` module.
+
 .. autoclass:: Prototype
+
+.. module:: smartconfig.prototypes
 
 .. autofunction:: schema
 
@@ -119,6 +126,8 @@ Prototypes
 .. autofunction:: schema_of
 
 .. autofunction:: instantiate
+
+.. currentmodule:: smartconfig
 
 Constants
 ---------
