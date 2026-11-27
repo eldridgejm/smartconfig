@@ -23,35 +23,12 @@ from ._internals import (
 )
 
 
-def _node_in_place(
-    args: _types.FunctionArgs,
-    cfg: _types.Configuration,
-    mode: ResolutionMode,
-    local_variables: dict | None = None,
-) -> _ConcreteNode:
-    """``cfg`` as a node in place of the call that ``args`` was given to.
-
-    The node has the call's schema and keypath, and the call as its parent.
-    smartconfig resolves the node that a function returns.
-
-    """
-    return make_node(
-        cfg,
-        args.schema,
-        args.resolution_context,
-        parent=args._function_call_node,
-        keypath=args.keypath,
-        local_variables=local_variables,
-        mode=mode,
-    )
-
-
 def _template_in_place(
     args: _types.FunctionArgs,
     value: _types.Configuration,
     template_schema: _types.Schema,
 ) -> _TemplateNode:
-    """A template of ``value`` in place of the call, as :func:`_node_in_place`."""
+    """``value`` as a template node in place of the call ``args`` was given to."""
     return _TemplateNode(
         value,
         template_schema,
@@ -96,7 +73,9 @@ def _splice(args: _types.FunctionArgs) -> _ConcreteNode:
     # in RAW mode because the data is already resolved: resolving it again would
     # interpolate a __raw__ value like "${b}" or evaluate a dict like
     # {"__splice__": "c"} that __raw__ produced.
-    return _node_in_place(args, source_node.resolve(), ResolutionMode.RAW)
+    return args._function_call_node.node_in_place(
+        source_node.resolve(), ResolutionMode.RAW
+    )
 
 
 @_types.Function.new(resolve_input=False)
@@ -126,7 +105,7 @@ def _resolve(args: _types.FunctionArgs) -> _ConcreteNode:
     is evaluated.
 
     """
-    return _node_in_place(args, args.input, ResolutionMode.STANDARD)
+    return args._function_call_node.node_in_place(args.input, ResolutionMode.STANDARD)
 
 
 @_types.Function.new(resolve_input=False)
@@ -137,7 +116,7 @@ def _fully_resolve(args: _types.FunctionArgs) -> _ConcreteNode:
     repeatedly until the string no longer changes.
 
     """
-    return _node_in_place(args, args.input, ResolutionMode.FULL)
+    return args._function_call_node.node_in_place(args.input, ResolutionMode.FULL)
 
 
 @_types.Function.new(resolve_input=False)
@@ -203,7 +182,8 @@ def _use(args: _types.FunctionArgs) -> _ConcreteNode:
     # __fully_resolve__ it is interpolated until stable, like a "${...}" reference
     # in the same place. (The mode is never RAW: inside __raw__, function calls
     # aren't evaluated.)
-    return _node_in_place(args, spliced_data, args._function_call_node.mode)
+    fcn = args._function_call_node
+    return fcn.node_in_place(spliced_data, fcn.mode)
 
 
 # resolve_input=False: otherwise the whole input, both branches included, would be
@@ -246,7 +226,8 @@ def _if(args: _types.FunctionArgs) -> _ConcreteNode:
     # we wanted was the raw string "${b}". On the other hand, if we return a node
     # it is also resolved by smartconfig, but since we didn't resolve it here, it
     # is only resolved once in total.
-    return _node_in_place(args, branch, args._function_call_node.mode)
+    fcn = args._function_call_node
+    return fcn.node_in_place(branch, fcn.mode)
 
 
 @_types.Function.new(resolve_input=False)
@@ -311,7 +292,9 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
 
     # Build the "in" node without resolving it.
     fcn = args._function_call_node
-    node = _node_in_place(args, args.input["in"], fcn.mode, local_variables)
+    node = fcn.node_in_place(
+        args.input["in"], fcn.mode, local_variables=local_variables
+    )
 
     # Add references as local variables pointing to unresolved containers.
     references = args.input.get("references", {})

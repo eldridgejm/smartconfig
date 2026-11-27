@@ -1607,6 +1607,32 @@ class _FunctionCallNode(_Node):
         self.input = input
         self.mode = mode
 
+    def node_in_place(
+        self,
+        cfg: _types.Configuration,
+        mode: ResolutionMode,
+        schema: _types.Schema | None = None,
+        local_variables: Mapping[str, _types.Configuration] | None = None,
+        relative_keypath: _types.KeyPath = (),
+    ) -> _ConcreteNode:
+        """``cfg`` as a node in place of this call, with the call as its parent.
+
+        The node has the call's schema unless ``schema`` is given, and the call's
+        keypath followed by ``relative_keypath`` (which places it under the call, for
+        error messages). The input, the output and the result of a core function
+        are all built this way.
+
+        """
+        return make_node(
+            cfg,
+            self.schema if schema is None else schema,
+            self.resolution_context,
+            parent=self,
+            keypath=self.keypath + tuple(relative_keypath),
+            local_variables=local_variables,
+            mode=mode,
+        )
+
     def _resolver(
         self,
         configuration: _types.Configuration,
@@ -1620,15 +1646,8 @@ class _FunctionCallNode(_Node):
         It satisfies the _types.Resolver protocol.
 
         """
-        node = make_node(
-            configuration,
-            self.schema if schema is None else schema,
-            self.resolution_context,
-            parent=self,
-            # relative_keypath places it under the call, for error messages
-            keypath=self.keypath + tuple(relative_keypath),
-            local_variables=local_variables,
-            mode=self.mode,
+        node = self.node_in_place(
+            configuration, self.mode, schema, local_variables, relative_keypath
         )
         return node.resolve()
 
@@ -1644,15 +1663,7 @@ class _FunctionCallNode(_Node):
         # if the function wants its input to be resolved, we resolve it by creating
         # a node out of its input configuration and resolving it
         if self.function.resolve_input:
-            input_node = make_node(
-                self.input,
-                {"type": "any"},
-                self.resolution_context,
-                parent=self,
-                keypath=self.keypath,
-                mode=self.mode,
-            )
-            input = input_node.resolve()
+            input = self.node_in_place(self.input, self.mode, {"type": "any"}).resolve()
         else:
             input = self.input
 
@@ -1695,14 +1706,7 @@ class _FunctionCallNode(_Node):
                 output_mode = self.mode
             else:
                 output_mode = ResolutionMode.RAW
-            result = make_node(
-                output,
-                self.schema,
-                self.resolution_context,
-                parent=self,
-                keypath=self.keypath,
-                mode=output_mode,
-            )
+            result = self.node_in_place(output, output_mode)
 
         # the result may be a function call itself, which is evaluated in turn
         if isinstance(result, _FunctionCallNode):
