@@ -930,6 +930,19 @@ type _ConcreteNode = (
     _DictNode | _ListNode | _ValueNode | _FunctionCallNode | _TemplateNode
 )
 
+# the value of a local variable: a container is left unresolved
+type _LocalValue = (
+    _types.Configuration
+    | _types.UnresolvedDict
+    | _types.UnresolvedList
+    | _types.UnresolvedFunctionCall
+)
+
+# the root of a tree, as names are looked up in it (see _Node._root_container)
+type _RootContainer = (
+    _UnresolvedDict | _UnresolvedList | _UnresolvedFunctionCall | dict[str, Any]
+)
+
 
 # computing a node's result once ----------------------------------------------------
 
@@ -1015,9 +1028,9 @@ class _Node(abc.ABC):
     parent : _ConcreteNode | None
         The parent of this node. Can be `None`, in which case this is the root of the
         tree.
-    local_variables : Mapping[str, Configuration | UnresolvedDict | UnresolvedList | UnresolvedFunctionCall] | None
+    local_variables : dict[str, _LocalValue]
         A dictionary of local variables that can be accessed during string
-        interpolation. If None, this is made an empty dictionary.
+        interpolation in this node's subtree.
 
     """
 
@@ -1035,31 +1048,18 @@ class _Node(abc.ABC):
         # the results of the node's _cache_and_detect_cycles methods, by method name
         self._cache: dict[str, Any] = {}
 
-        if local_variables is None:
-            self.local_variables: dict[
-                str,
-                _types.Configuration
-                | _types.UnresolvedDict
-                | _types.UnresolvedList
-                | _types.UnresolvedFunctionCall,
-            ] = {}
-        else:
-            self.local_variables = dict(local_variables)
+        self.local_variables: dict[str, _LocalValue] = dict(local_variables or {})
 
         # cache the root of the tree
         self._root: _ConcreteNode | None = None
 
     @property
     def root(self) -> _ConcreteNode:
-        """The root of the configuration tree."""
-        assert isinstance(
-            self, (_DictNode, _ListNode, _ValueNode, _FunctionCallNode, _TemplateNode)
-        )
+        """The root of the configuration tree (found once, then cached)."""
         if self._root is None:
             if self.parent is None:
-                self._root = self
+                self._root = typing.cast(_ConcreteNode, self)
             else:
-                # recurse up the tree
                 self._root = self.parent.root
         return self._root
 
@@ -1104,9 +1104,7 @@ class _Node(abc.ABC):
     # ${...} references (see _ValueNode._make_custom_jinja_context) and __use__
     # targets (see _look_up_keypath) find names the same way, using these methods.
 
-    def _root_container(
-        self,
-    ) -> _UnresolvedDict | _UnresolvedList | _UnresolvedFunctionCall | dict[str, Any]:
+    def _root_container(self) -> _RootContainer:
         """The root of the tree as an unresolved container, for looking up names.
 
         If the root is a value or template node, the tree is a single isolated node.
@@ -1121,10 +1119,7 @@ class _Node(abc.ABC):
     def _look_up_name(
         self,
         key: str,
-        root_container: _UnresolvedDict
-        | _UnresolvedList
-        | _UnresolvedFunctionCall
-        | dict[str, Any],
+        root_container: _RootContainer,
         global_variables: Mapping[str, Any],
     ) -> Any:
         """Look up a name as seen from this node.
@@ -1157,14 +1152,7 @@ class _Node(abc.ABC):
 
         return global_variables[key]
 
-    def get_local_variable(
-        self, key: str
-    ) -> (
-        _types.Configuration
-        | _types.UnresolvedDict
-        | _types.UnresolvedList
-        | _types.UnresolvedFunctionCall
-    ):
+    def get_local_variable(self, key: str) -> _LocalValue:
         """Retrieves the local variable from the node or its ancestors.
 
         If the local variable is not found, a KeyError is raised. The first node to have
