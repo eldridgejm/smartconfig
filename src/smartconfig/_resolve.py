@@ -17,7 +17,11 @@ import typing
 
 from . import converters as _converters, types as _types
 from ._core_functions import CORE_FUNCTIONS
-from ._internals import make_node, reporting_recursion_errors
+from ._internals import (
+    _valid_function_call,
+    make_node,
+    reporting_recursion_errors,
+)
 from .prototypes import Prototype, _is_prototype, instantiate, schema_of
 from ._schemas import validate_schema
 from ._utils import jinja_reserved_name_problem
@@ -112,8 +116,9 @@ def _preserve_types(
     """
     if isinstance(resolved, dict):
         # a function call is a dict in the input, but its result has nothing to do
-        # with that dict, so there is no container to preserve
-        if not isinstance(original, dict) or _is_function_call(original, context):
+        # with that dict, so there is no container to preserve. (An invalid call
+        # would already have failed to resolve.)
+        if not isinstance(original, dict) or _valid_function_call(original, context):
             return resolved
         for key, value in resolved.items():
             # keys only in resolved (filled in by defaults) get original.get(key)
@@ -132,17 +137,6 @@ def _preserve_types(
 
     # a leaf (a number, string, date, Template, ...) has no type to preserve
     return resolved
-
-
-def _is_function_call(
-    cfg: _types.ConfigurationDict, context: _types.ResolutionContext
-) -> bool:
-    """Whether ``cfg`` is a function call, by the same check that resolve() uses."""
-    try:
-        return context.check_for_function_call(cfg, context.functions) is not None
-    except ValueError:
-        # an invalid function call would already have failed to resolve
-        return False
 
 
 def _flatten_functions(

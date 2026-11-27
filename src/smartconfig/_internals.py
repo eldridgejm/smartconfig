@@ -1918,6 +1918,16 @@ def _expand_use(
     return value
 
 
+def _valid_function_call(
+    cfg: _types.ConfigurationDict, context: _types.ResolutionContext
+) -> tuple[_types.Function, _types.Configuration] | None:
+    """The function and input of ``cfg`` if it is a valid function call, else None."""
+    try:
+        return context.check_for_function_call(cfg, context.functions)
+    except ValueError:
+        return None
+
+
 class _TemplateNode(_Node):
     """Represents a template field in the configuration tree.
 
@@ -2074,12 +2084,8 @@ class _TemplateNode(_Node):
 
         # at this point, value is a dict. It is either a function call (a __use__ or
         # some other function) or an ordinary dict configuration
-        context = self.resolution_context
-        try:
-            call = context.check_for_function_call(value, context.functions)
-        except ValueError:
-            # an invalid call is reported when the tree is built
-            call = None
+        # (an invalid call is reported when the tree is built)
+        call = _valid_function_call(value, self.resolution_context)
         if call is not None and call[0] is _use:
             # a __use__ call: replace it with the value it stands for
             expanded.add(keypath)
