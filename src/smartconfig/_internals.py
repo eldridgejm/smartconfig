@@ -1306,8 +1306,8 @@ class _ListNode(_Node):
                 value,
                 schema["element_schema"],
                 resolution_context,
-                self,
-                keypath + (str(i),),
+                parent=self,
+                keypath=keypath + (str(i),),
                 mode=mode,
             )
             for i, value in enumerate(lst)
@@ -2215,7 +2215,13 @@ def make_node(
         # nullable; other types accept it only if they are nullable
         if schema.get("nullable", schema.get("type") == "any"):
             return _ValueNode(
-                None, "any", keypath, resolution_context, parent, local_variables, mode
+                None,
+                "any",
+                keypath,
+                resolution_context,
+                parent=parent,
+                local_variables=local_variables,
+                mode=mode,
             )
         else:
             raise ResolutionError("Unexpectedly null.", keypath)
@@ -2248,12 +2254,12 @@ def make_node(
             return _FunctionCallNode(
                 keypath,
                 resolution_context,
-                function,
-                input,
-                schema,
-                parent,
-                local_variables,
-                mode,
+                function=function,
+                input=input,
+                schema=schema,
+                parent=parent,
+                local_variables=local_variables,
+                mode=mode,
             )
 
     # any other value of a template field must be an existing Template
@@ -2275,8 +2281,8 @@ def make_node(
             schema,
             keypath,
             resolution_context,
-            parent,
-            local_variables,
+            parent=parent,
+            local_variables=local_variables,
             outer_parameters=cfg.outer_parameters,
         )
         if (cfg.schema, cfg.parameters, cfg.keypath) == (
@@ -2297,16 +2303,34 @@ def make_node(
         if is_any:
             schema = {"type": "dict", "extra_keys_schema": {"type": "any"}}
         return _DictNode(
-            cfg, schema, keypath, resolution_context, parent, local_variables, mode
+            cfg,
+            schema,
+            keypath,
+            resolution_context,
+            parent=parent,
+            local_variables=local_variables,
+            mode=mode,
         )
     if isinstance(cfg, list):
         if is_any:
             schema = {"type": "list", "element_schema": {"type": "any"}}
         return _ListNode(
-            cfg, schema, keypath, resolution_context, parent, local_variables, mode
+            cfg,
+            schema,
+            keypath,
+            resolution_context,
+            parent=parent,
+            local_variables=local_variables,
+            mode=mode,
         )
     return _ValueNode(
-        cfg, schema["type"], keypath, resolution_context, parent, local_variables, mode
+        cfg,
+        schema["type"],
+        keypath,
+        resolution_context,
+        parent=parent,
+        local_variables=local_variables,
+        mode=mode,
     )
 
 
