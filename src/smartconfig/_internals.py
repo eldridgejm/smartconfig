@@ -162,9 +162,8 @@ With schema:
 When resolve() is called on this configuration, the following major steps occur:
 
     1. resolve() calls make_node() to create the root node, which in this case is a
-       _DictNode. make_node() delegates the creation of this node to
-       _DictNode.from_configuration(). This class method also creates the children of
-       the node, calling make_node() on each child. The process continues recursively,
+       _DictNode. The _DictNode's constructor also creates the children of the node,
+       calling make_node() on each child. The process continues recursively,
        and at the end the root node will contain two children: a _ValueNode representing
        the "${bar.baz + 1}" string and a _DictNode representing the "bar" dictionary.
        This _DictNode has one child: a _ValueNode representing the number 42.
@@ -271,7 +270,6 @@ from typing import (
     Callable,
     Iterable,
     Mapping,
-    TypedDict,
 )
 import abc
 import contextlib
@@ -1074,6 +1072,10 @@ class _Node(abc.ABC):
 
     Attributes
     ----------
+    keypath : KeyPath
+        The keypath to this node in the configuration tree; used in error messages.
+    resolution_context : ResolutionContext
+        The resolution context (converters, functions, variables, filters, etc.).
     parent : _ConcreteNode | None
         The parent of this node. Can be `None`, in which case this is the root of the
         tree.
@@ -1083,14 +1085,15 @@ class _Node(abc.ABC):
 
     """
 
-    # set by each kind of node; used in error messages
-    keypath: _types.KeyPath
-
     def __init__(
         self,
+        keypath: _types.KeyPath,
+        resolution_context: _types.ResolutionContext,
         parent: _ConcreteNode | None = None,
         local_variables: Mapping[str, _types.Configuration] | None = None,
     ):
+        self.keypath = keypath
+        self.resolution_context = resolution_context
         self.parent = parent
 
         # the results of the node's _cache_and_detect_cycles methods, by method name
@@ -1220,80 +1223,71 @@ class _Node(abc.ABC):
 # _DictNode ----------------------------------------------------------------------------
 
 
-def _populate_required_children(
-    existing_children: dict[str, _ConcreteNode],
-    dct: _types.ConfigurationDict,
-    dict_schema: _types.Schema,
-    resolution_context: _types.ResolutionContext,
-    parent: _ConcreteNode,
-    keypath: _types.KeyPath,
-    mode: ResolutionMode = ResolutionMode.STANDARD,
-) -> None:
-    """Validates/populates required children of a _DictNode from a ConfigurationDict.
+class _DictNode(_Node):
+    """Represents an internal dictionary node in a configuration tree.
 
-    This uses the schema to determine which keys are required and then creates the child
-    nodes for those keys. If a required key is missing, a ResolutionError is raised.
+    Building the node builds its children, and checks the dictionary against the
+    schema while doing so: a required key must be present, a missing optional key
+    gets its default (if it has one), and an extra key is allowed only if the schema
+    has an "extra_keys_schema". This is done here rather than in .resolve() because
+    building the children already needs to know which keys are missing.
 
-    Modifications are made to the node's .children dictionary in place.
+    Attributes
+    ----------
+    children : dict[str, _ConcreteNode]
+        A dictionary of child nodes.
 
     """
-    required_keys = dict_schema.get("required_keys", {})
 
-    for key, key_schema in required_keys.items():
-        if key not in dct:
-            raise ResolutionError(
-                f'Dictionary is missing required key "{key}".', (keypath + (key,))
+    def __init__(
+        self,
+        dct: _types.ConfigurationDict,
+        schema: _types.Schema,
+        keypath: _types.KeyPath,
+        resolution_context: _types.ResolutionContext,
+        parent: _ConcreteNode | None = None,
+        local_variables: Mapping[str, _types.Configuration] | None = None,
+        mode: ResolutionMode = ResolutionMode.STANDARD,
+    ):
+        super().__init__(keypath, resolution_context, parent, local_variables)
+        self.children: dict[str, _ConcreteNode] = {}
+
+        def add_child(
+            key: str,
+            value: _types.Configuration,
+            key_schema: _types.Schema | _types.DynamicSchema,
+        ) -> None:
+            self.children[key] = make_node(
+                value, key_schema, resolution_context, self, keypath + (key,), mode=mode
             )
 
-        # make_node validates a dynamic schema's result with defaults allowed, as
-        # for an optional key. A required key is never missing, so a default for
-        # it is a mistake, and is rejected here as it would be in a static schema
-        if callable(key_schema):
-            key_schema = _call_dynamic_schema(
-                key_schema,
-                dct[key],
-                keypath + (key,),
-                resolution_context,
-                allow_default=False,
-            )
+        required_keys = schema.get("required_keys", {})
+        for key, key_schema in required_keys.items():
+            if key not in dct:
+                raise ResolutionError(
+                    f'Dictionary is missing required key "{key}".', keypath + (key,)
+                )
 
-        existing_children[key] = make_node(
-            dct[key],
-            key_schema,
-            resolution_context,
-            parent,
-            keypath + (key,),
-            mode=mode,
-        )
+            # make_node validates a dynamic schema's result with defaults allowed, as
+            # for an optional key. A required key is never missing, so a default for
+            # it is a mistake, and is rejected here as it would be in a static schema
+            if callable(key_schema):
+                key_schema = _call_dynamic_schema(
+                    key_schema,
+                    dct[key],
+                    keypath + (key,),
+                    resolution_context,
+                    allow_default=False,
+                )
+            add_child(key, dct[key], key_schema)
 
+        optional_keys = schema.get("optional_keys", {})
+        for key, key_schema in optional_keys.items():
+            if key in dct:
+                add_child(key, dct[key], key_schema)
+                continue
 
-def _populate_optional_children(
-    existing_children: dict[str, _ConcreteNode],
-    dct: _types.ConfigurationDict,
-    dict_schema: _types.Schema,
-    resolution_context: _types.ResolutionContext,
-    parent: _ConcreteNode,
-    keypath: _types.KeyPath,
-    mode: ResolutionMode = ResolutionMode.STANDARD,
-) -> None:
-    """Validates/populates optional children of a _DictNode from a ConfigurationDict.
-
-    This uses the schema to determine which keys are optional and then creates the child
-    nodes for those keys. If an optional key is missing and a default is provided, the
-    default is used. If an optional key is missing and no default is provided, the key
-    is simply not added to the children.
-
-    Modifications are made to the .children dictionary in place.
-
-    """
-    optional_keys = dict_schema.get("optional_keys", {})
-
-    for key, key_schema in optional_keys.items():
-        if key in dct:
-            # key is not missing
-            value = dct[key]
-        else:
-            # key is missing; resolve dynamic schema before checking for default
+            # the key is missing; resolve a dynamic schema before checking for a default
             if callable(key_schema):
                 key_schema = _call_dynamic_schema(
                     key_schema,
@@ -1302,188 +1296,30 @@ def _populate_optional_children(
                     resolution_context,
                     allow_default=True,
                 )
-            if "default" in key_schema:
-                # default was provided
-                value = key_schema["default"]
-            else:
-                # no default was provided
+            if "default" not in key_schema:
                 continue
 
-            if key_schema.get("type") == "template" and value is not None:
+            default = key_schema["default"]
+            if key_schema.get("type") == "template" and default is not None:
                 # the default of a template field is the template's value as
                 # written, without a __template__ wrapper
-                existing_children[key] = _TemplateNode(
-                    value,
-                    key_schema,
-                    keypath + (key,),
-                    resolution_context,
-                    parent=parent,
+                self.children[key] = _TemplateNode(
+                    default, key_schema, keypath + (key,), resolution_context, self
                 )
-                continue
+            else:
+                add_child(key, default, key_schema)
 
-        existing_children[key] = make_node(
-            value,
-            key_schema,
-            resolution_context,
-            parent,
-            keypath + (key,),
-            mode=mode,
-        )
-
-
-def _populate_extra_children(
-    children: dict[str, _ConcreteNode],
-    dct: _types.ConfigurationDict,
-    dict_schema: _types.Schema,
-    resolution_context: _types.ResolutionContext,
-    parent: _ConcreteNode,
-    keypath: _types.KeyPath,
-    mode: ResolutionMode = ResolutionMode.STANDARD,
-) -> None:
-    """Validates/populates extra children of a _DictNode from a ConfigurationDict.
-
-    This uses the schema to determine how to handle extra keys in the configuration
-    dictionary. If extra keys are not allowed, a ResolutionError is raised. If extra
-    keys are allowed, the schema for the extra keys is used to create the child nodes.
-
-    Modifications are made to the .children dictionary in place.
-
-    """
-    required_keys = dict_schema.get("required_keys", {})
-
-    optional_keys = dict_schema.get("optional_keys", {})
-    expected_keys = set(required_keys) | set(optional_keys)
-    # a list, not a set difference, so that extra keys keep their input order
-    extra_keys = [key for key in dct if key not in expected_keys]
-
-    if extra_keys and "extra_keys_schema" not in dict_schema:
-        key = extra_keys[0]
-        raise ResolutionError(
-            f'Dictionary contains unexpected extra key "{key}".', keypath + (key,)
-        )
-
-    for key in extra_keys:
-        children[key] = make_node(
-            dct[key],
-            dict_schema["extra_keys_schema"],
-            resolution_context,
-            parent,
-            keypath + (key,),
-            mode=mode,
-        )
-
-
-class _DictNode(_Node):
-    """Represents an internal dictionary node in a configuration tree.
-
-    Attributes
-    ----------
-    resolution_context : _types.ResolutionContext
-        The resolution context (converters, functions, variables, filters, etc.).
-    children : dict[str, _ConcreteNode]
-        A dictionary of child nodes.
-    parent : _ConcreteNode | None
-        The parent of this node. Can be `None`, in which case this is the root of the
-        tree.
-    local_variables : Mapping[str, Configuration | UnresolvedDict | UnresolvedList | UnresolvedFunctionCall] | None
-        A dictionary of local variables that can be accessed during string
-        interpolation.
-
-    """
-
-    def __init__(
-        self,
-        resolution_context: _types.ResolutionContext,
-        parent: _ConcreteNode | None = None,
-        local_variables: Mapping[str, _types.Configuration] | None = None,
-    ):
-        super().__init__(parent, local_variables)
-        self.resolution_context = resolution_context
-        # set by from_configuration
-        self.children: dict[str, _ConcreteNode] = {}
-        # set by from_configuration; used in error messages
-        self.keypath: _types.KeyPath = ()
-
-    @classmethod
-    def from_configuration(
-        cls,
-        dct: _types.ConfigurationDict,
-        schema: _types.Schema,
-        keypath: _types.KeyPath,
-        resolution_context: _types.ResolutionContext,
-        parent: _ConcreteNode | None = None,
-        local_variables: Mapping[str, _types.Configuration] | None = None,
-        mode: ResolutionMode = ResolutionMode.STANDARD,
-    ) -> _DictNode:
-        """Construct a _DictNode from a configuration dictionary and its schema.
-
-        Parameters
-        ----------
-        dct : ConfigurationDict
-            The configuration dictionary.
-        schema : Schema
-            The schema to enforce on the configuration dictionary.
-        keypath : _types.KeyPath
-            The keypath to this node in the configuration tree.
-        resolution_context : ResolutionContext
-            The resolution context (converters, functions, variables, filters, etc.).
-        parent : _ConcreteNode | None
-            The parent of this node. Can be `None`.
-        local_variables : Mapping[str, Configuration] | None
-            Local variables available during string interpolation within this
-            node's subtree. Defaults to `None`.
-        mode : ResolutionMode
-            The resolution mode to use for children of this node.
-
-        """
-        node = cls(resolution_context, parent=parent, local_variables=local_variables)
-        node.keypath = keypath
-
-        if schema["type"] == "any":
-            schema = {
-                "type": "dict",
-                "extra_keys_schema": {"type": "any", "nullable": True},
-            }
-
-        children: dict[str, _ConcreteNode] = {}
-
-        # these private functions are used to populate the children of the node. they
-        # also enforce the schema by checking that all required keys are present and
-        # that no extra keys are present. It is most natural to do this validation here
-        # and not in .resolve() because the process of populating children already
-        # requires us to check if children are missing; for example, to fill in default
-        # values.
-
-        _populate_required_children(
-            children,
-            dct,
-            schema,
-            resolution_context,
-            node,
-            keypath,
-            mode=mode,
-        )
-        _populate_optional_children(
-            children,
-            dct,
-            schema,
-            resolution_context,
-            node,
-            keypath,
-            mode=mode,
-        )
-        _populate_extra_children(
-            children,
-            dct,
-            schema,
-            resolution_context,
-            node,
-            keypath,
-            mode=mode,
-        )
-
-        node.children = children
-        return node
+        # a list, not a set difference, so that extra keys keep their input order
+        extra_keys = [
+            key for key in dct if key not in required_keys and key not in optional_keys
+        ]
+        if extra_keys and "extra_keys_schema" not in schema:
+            key = extra_keys[0]
+            raise ResolutionError(
+                f'Dictionary contains unexpected extra key "{key}".', keypath + (key,)
+            )
+        for key in extra_keys:
+            add_child(key, dct[key], schema["extra_keys_schema"])
 
     def resolve(self) -> _types.ConfigurationDict:
         """Recursively resolve the _DictNode into a ConfigurationDict."""
@@ -1502,35 +1338,13 @@ class _ListNode(_Node):
 
     Attributes
     ----------
-    resolution_context : ResolutionContext
-        The resolution context (converters, functions, variables, filters, etc.).
     children : list[_ConcreteNode]
         A list of the node's children.
-    parent : _ConcreteNode | None
-        The parent of this node. Can be `None`, in which case this is the root of the
-        tree.
-    local_variables : Mapping[str, Configuration] | None
-        A dictionary of local variables that can be accessed during string
-        interpolation
 
     """
 
     def __init__(
         self,
-        resolution_context: _types.ResolutionContext,
-        parent: _ConcreteNode | None = None,
-        local_variables: Mapping[str, _types.Configuration] | None = None,
-    ):
-        super().__init__(parent, local_variables)
-        self.resolution_context = resolution_context
-        # set by from_configuration
-        self.children: list[_ConcreteNode] = []
-        # set by from_configuration; used in error messages
-        self.keypath: _types.KeyPath = ()
-
-    @classmethod
-    def from_configuration(
-        cls,
         lst: _types.ConfigurationList,
         schema: _types.Schema,
         keypath: _types.KeyPath,
@@ -1538,53 +1352,19 @@ class _ListNode(_Node):
         parent: _ConcreteNode | None = None,
         local_variables: Mapping[str, _types.Configuration] | None = None,
         mode: ResolutionMode = ResolutionMode.STANDARD,
-    ) -> _ListNode:
-        """Construct a _ListNode from a configuration list and its schema.
-
-        Parameters
-        ----------
-        lst : ConfigurationList
-            The configuration list.
-        schema : Schema
-            The schema to enforce on the configuration list.
-        keypath : KeyPath
-            The keypath to this node in the configuration tree.
-        resolution_context : ResolutionContext
-            The resolution context (converters, functions, variables, filters, etc.).
-        parent : _ConcreteNode | None
-            The parent of this node. Can be `None`.
-        local_variables : Mapping[str, Configuration] | None
-            Local variables available during string interpolation within this
-            node's subtree. Defaults to `None`.
-        mode : ResolutionMode
-            The resolution mode to use for children of this node.
-
-        """
-        node = cls(resolution_context, parent=parent, local_variables=local_variables)
-        node.keypath = keypath
-
-        if schema["type"] == "any":
-            schema = {
-                "type": "list",
-                "element_schema": {"type": "any", "nullable": True},
-            }
-
-        child_schema = schema["element_schema"]
-
-        children = []
-        for i, lst_value in enumerate(lst):
-            r = make_node(
-                lst_value,
-                child_schema,
+    ):
+        super().__init__(keypath, resolution_context, parent, local_variables)
+        self.children: list[_ConcreteNode] = [
+            make_node(
+                value,
+                schema["element_schema"],
                 resolution_context,
-                node,
+                self,
                 keypath + (str(i),),
                 mode=mode,
             )
-            children.append(r)
-
-        node.children = children
-        return node
+            for i, value in enumerate(lst)
+        ]
 
     def resolve(self) -> _types.ConfigurationList:
         """Recursively resolve the _ListNode into a ConfigurationList."""
@@ -1606,17 +1386,8 @@ class _ValueNode(_Node):
     value : ConfigurationValue
         The "raw" value of the leaf node as it appeared in the configuration.
     type_ : str
-        A string describing the expected type of this leaf once resolved. Used
-        to determined which converter to use from the resolution options.
-    keypath : _types.KeyPath
-        The keypath to this node in the configuration tree.
-    resolution_context : ResolutionContext
-        The resolution context (converters, functions, variables, filters, etc.).
-    parent : _ConcreteNode | None
-        The parent of this node. Can be `None`, in which case this is the root.
-    local_variables : Mapping[str, Configuration | UnresolvedDict | UnresolvedList | UnresolvedFunctionCall] | None
-        A dictionary of local variables that can be accessed during string
-        interpolation.
+        The type the value is converted to once interpolated: the schema's "type",
+        which names a converter in the resolution context (or is "any").
     mode : ResolutionMode
         The resolution mode governing string interpolation for this node.
 
@@ -1625,61 +1396,17 @@ class _ValueNode(_Node):
     def __init__(
         self,
         value: _types.ConfigurationValue,
-        type_,
+        type_: str,
         keypath: _types.KeyPath,
         resolution_context: _types.ResolutionContext,
         parent: _ConcreteNode | None = None,
         local_variables: Mapping[str, _types.Configuration] | None = None,
         mode: ResolutionMode = ResolutionMode.STANDARD,
     ):
-        super().__init__(parent, local_variables)
+        super().__init__(keypath, resolution_context, parent, local_variables)
         self.value = value
         self.type_ = type_
-        self.keypath = keypath
-        self.resolution_context = resolution_context
         self.mode = mode
-
-    @classmethod
-    def from_configuration(
-        cls,
-        value: _types.ConfigurationValue,
-        schema: _types.Schema,
-        keypath: _types.KeyPath,
-        resolution_context: _types.ResolutionContext,
-        parent: _ConcreteNode | None = None,
-        local_variables: Mapping[str, _types.Configuration] | None = None,
-        mode: ResolutionMode = ResolutionMode.STANDARD,
-    ) -> _ValueNode:
-        """Construct a _ValueNode from a configuration value and its schema.
-
-        Parameters
-        ----------
-        value : ConfigurationValue
-            The raw configuration value.
-        schema : Schema
-            The schema describing the expected type and constraints.
-        keypath : KeyPath
-            The keypath to this node in the configuration tree.
-        resolution_context : ResolutionContext
-            The resolution context (converters, functions, variables, filters, etc.).
-        parent : _ConcreteNode | None
-            The parent of this node. Can be `None`.
-        local_variables : Mapping[str, Configuration] | None
-            Local variables available during string interpolation within this
-            node's subtree. Defaults to `None`.
-        mode : ResolutionMode
-            The resolution mode governing string interpolation for this node.
-
-        """
-        return cls(
-            value,
-            schema["type"],
-            keypath,
-            resolution_context,
-            parent=parent,
-            local_variables=local_variables,
-            mode=mode,
-        )
 
     @_cache_and_detect_cycles
     def resolve(self) -> _types.ConfigurationValue:
@@ -1915,21 +1642,12 @@ class _FunctionCallNode(_Node):
 
     Attributes
     ----------
-    keypath : _types.KeyPath
-        The keypath to this node in the configuration tree.
-    resolution_context : _types.ResolutionContext
-        The resolution context (converters, functions, variables, filters, etc.).
     function : _types.Function
         The function being called.
     input : _types.Configuration
         The input to the function.
     schema : _types.Schema
         The schema for the function's output.
-    parent : _ConcreteNode | None
-        The parent of this node. Can be `None`, in which case this is the root
-    local_variables : Mapping[str, Configuration | UnresolvedDict | UnresolvedList | UnresolvedFunctionCall] | None
-        A dictionary of local variables that can be accessed during string
-        interpolation.
     mode : ResolutionMode
         The resolution mode propagated to child nodes built from the function's
         result.
@@ -1947,9 +1665,7 @@ class _FunctionCallNode(_Node):
         local_variables: Mapping[str, _types.Configuration] | None = None,
         mode: ResolutionMode = ResolutionMode.STANDARD,
     ):
-        super().__init__(parent, local_variables)
-        self.keypath = keypath
-        self.resolution_context = resolution_context
+        super().__init__(keypath, resolution_context, parent, local_variables)
         self.schema = schema
         self.function = function
         self.input = input
@@ -2341,12 +2057,6 @@ class _TemplateNode(_Node):
         The outer parameters of a Template passed in, which it keeps when it is
         rebuilt here. The outer parameters of the evaluation the node is resolved
         in (if any) are added to them.
-    keypath : KeyPath
-        The keypath to this node in the configuration tree.
-    resolution_context : ResolutionContext
-        The resolution context (converters, functions, variables, filters, etc.).
-    parent : _ConcreteNode | None
-        The parent of this node. Can be `None`, in which case this is the root.
 
     """
 
@@ -2360,15 +2070,13 @@ class _TemplateNode(_Node):
         local_variables: Mapping[str, _types.Configuration] | None = None,
         outer_parameters: Mapping[str, Any] | None = None,
     ):
-        super().__init__(parent, local_variables)
+        super().__init__(keypath, resolution_context, parent, local_variables)
         self.value = value
         self.outer_parameters = dict(outer_parameters or {})
         # every template schema was validated (by resolve(), Template, or when a
         # dynamic schema returned it), so it has both keys
         self.inner_schema = template_schema["schema"]
         self.parameters = tuple(template_schema["parameters"])
-        self.keypath = keypath
-        self.resolution_context = resolution_context
 
     @classmethod
     def from_template(
@@ -2648,20 +2356,6 @@ def _make_template_node(
 # make_node() ==========================================================================
 
 
-# defined here rather than in make_node: a class statement in a function builds a
-# new class on every call, and for a TypedDict that is slow (it was most of the
-# time spent building the tree)
-class _CommonKwargs(TypedDict):
-    """Common keyword arguments passed to node constructors in make_node."""
-
-    resolution_context: _types.ResolutionContext
-    parent: _ConcreteNode | None
-    keypath: _types.KeyPath
-    local_variables: Mapping[str, _types.Configuration] | None
-    schema: _types.Schema
-    mode: ResolutionMode
-
-
 def make_node(
     cfg: _types.Configuration,
     schema: _types.Schema | _types.DynamicSchema,
@@ -2725,21 +2419,13 @@ def make_node(
             schema, cfg, keypath, resolution_context, allow_default=True
         )
 
-    common_kwargs: _CommonKwargs = {
-        "resolution_context": resolution_context,
-        "parent": parent,
-        "keypath": keypath,
-        "local_variables": local_variables,
-        "schema": schema,
-        "mode": mode,
-    }
-
     if cfg is None:
         # "any" accepts None unless the schema says explicitly that it isn't
         # nullable; other types accept it only if they are nullable
         if schema.get("nullable", schema.get("type") == "any"):
-            kwargs: _CommonKwargs = {**common_kwargs, "schema": {"type": "any"}}
-            return _ValueNode.from_configuration(None, **kwargs)
+            return _ValueNode(
+                None, "any", keypath, resolution_context, parent, local_variables, mode
+            )
         else:
             raise ResolutionError("Unexpectedly null.", keypath)
 
@@ -2762,46 +2448,44 @@ def make_node(
 
     # construct the configuration tree. the configuration tree is a nested container
     # whose terminal leaf values are _ValueNodes. "Internal" nodes are dictionaries or
-    # lists.
-    if isinstance(cfg, dict):
-        # dictionaries require a little extra care, since they could be function calls
-
-        if mode != ResolutionMode.RAW:
-            # check if this is a function call
-            try:
-                result = resolution_context.check_for_function_call(
-                    cfg, resolution_context.functions
-                )
-            except ValueError as exc:
-                raise ResolutionError(f"Invalid function call: {exc}", keypath)
-        else:
-            # RAW mode skips function call detection
-            result = None
-
-        if result is not None:
+    # lists. A dict may be a function call, except in RAW mode
+    if isinstance(cfg, dict) and mode != ResolutionMode.RAW:
+        try:
+            call = resolution_context.check_for_function_call(
+                cfg, resolution_context.functions
+            )
+        except ValueError as exc:
+            raise ResolutionError(f"Invalid function call: {exc}", keypath)
+        if call is not None:
+            function, input = call
             return _FunctionCallNode(
-                **common_kwargs,
-                function=result[0],
-                input=result[1],
+                keypath,
+                resolution_context,
+                function,
+                input,
+                schema,
+                parent,
+                local_variables,
+                mode,
             )
-        else:
-            _check_shape(cfg, schema, keypath)
-            return _DictNode.from_configuration(
-                cfg,
-                **common_kwargs,
-            )
-    elif isinstance(cfg, list):
-        _check_shape(cfg, schema, keypath)
-        return _ListNode.from_configuration(
-            cfg,
-            **common_kwargs,
+
+    _check_shape(cfg, schema, keypath)
+    is_any = schema["type"] == "any"
+    if isinstance(cfg, dict):
+        if is_any:
+            schema = {"type": "dict", "extra_keys_schema": {"type": "any"}}
+        return _DictNode(
+            cfg, schema, keypath, resolution_context, parent, local_variables, mode
         )
-    else:
-        _check_shape(cfg, schema, keypath)
-        return _ValueNode.from_configuration(
-            cfg,
-            **common_kwargs,
+    if isinstance(cfg, list):
+        if is_any:
+            schema = {"type": "list", "element_schema": {"type": "any"}}
+        return _ListNode(
+            cfg, schema, keypath, resolution_context, parent, local_variables, mode
         )
+    return _ValueNode(
+        cfg, schema["type"], keypath, resolution_context, parent, local_variables, mode
+    )
 
 
 def _check_shape(
