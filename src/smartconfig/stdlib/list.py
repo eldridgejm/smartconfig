@@ -6,12 +6,39 @@ from ..types import (
     Function,
     FunctionArgs,
     FunctionMapping,
+    ConfigurationDict,
     ConfigurationList,
     Configuration,
 )
 from ..exceptions import ResolutionError
 from .._utils import jinja_reserved_name_problem
 from ._args import list_of, to_integer
+
+
+def _variable(input_: ConfigurationDict, function: str, args: FunctionArgs) -> str:
+    """The ``variable`` of ``list.loop`` or ``list.filter``: the name bound in its body.
+
+    Raises
+    ------
+    ResolutionError
+        If it is not a string, or is a name that Jinja reserves.
+
+    """
+    variable = input_["variable"]
+    # a bare assert would give no keypath
+    if not isinstance(variable, str):
+        raise ResolutionError(
+            f"The value of 'variable' in '{function}' must be a string.", args.keypath
+        )
+
+    # a name like true or self could never be referred to: ${ true } would be
+    # Jinja's literal, silently, not the variable
+    problem = jinja_reserved_name_problem(variable)
+    if problem is not None:
+        raise ResolutionError(
+            f"Invalid 'variable' in '{function}': {problem}", args.keypath
+        )
+    return variable
 
 
 @Function.new(resolve_output=False)
@@ -116,23 +143,11 @@ def loop(args: FunctionArgs) -> Configuration:
 
     assert isinstance(over, list)
 
-    # the variable is a name, bound in the body; a bare assert would give no keypath
-    if not isinstance(args.input["variable"], str):
-        raise ResolutionError(
-            "The value of 'variable' in 'list.loop' must be a string.", args.keypath
-        )
-
-    # a name like true or self could never be referred to: ${ true } would be
-    # Jinja's literal, silently, not the variable
-    problem = jinja_reserved_name_problem(args.input["variable"])
-    if problem is not None:
-        raise ResolutionError(
-            f"Invalid 'variable' in 'list.loop': {problem}", args.keypath
-        )
+    variable = _variable(args.input, "list.loop", args)
 
     result = []
     for i, element in enumerate(over):
-        local_variables = {args.input["variable"]: element}
+        local_variables = {variable: element}
         result.append(
             args.resolve(
                 args.input["in"],
@@ -175,24 +190,11 @@ def filter_(args: FunctionArgs) -> ConfigurationList:
 
     assert isinstance(iterable, list)
 
-    # the variable is a name, bound in the condition; a bare assert would give no
-    # keypath, as in list.loop
-    if not isinstance(args.input["variable"], str):
-        raise ResolutionError(
-            "The value of 'variable' in 'list.filter' must be a string.", args.keypath
-        )
-
-    # a name like true or self could never be referred to: ${ true } would be
-    # Jinja's literal, silently, not the variable
-    problem = jinja_reserved_name_problem(args.input["variable"])
-    if problem is not None:
-        raise ResolutionError(
-            f"Invalid 'variable' in 'list.filter': {problem}", args.keypath
-        )
+    variable = _variable(args.input, "list.filter", args)
 
     result = []
     for i, element in enumerate(iterable):
-        local_variables = {args.input["variable"]: element}
+        local_variables = {variable: element}
         if args.resolve(
             args.input["condition"],
             local_variables=local_variables,
