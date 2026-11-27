@@ -13,7 +13,7 @@ from typing import Annotated, Any, assert_type
 
 import smartconfig
 from smartconfig import Prototype
-from smartconfig.types import Template
+from smartconfig.types import ConfigurationDict, Template
 
 
 class Course(Prototype):
@@ -31,7 +31,7 @@ class Config(Prototype, extra_keys=str):
     title: Annotated[Template, smartconfig.template({"type": "string"})]
 
 
-CFG = {
+CFG: ConfigurationDict = {
     "course": {"name": "DSC 40B", "start": "2026-09-24"},
     "title": {"__template__": "${ x }"},
     "motto": "hi",

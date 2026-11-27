@@ -13,7 +13,7 @@ from typing import Annotated, Any
 
 import smartconfig
 from smartconfig import Prototype, schema_of
-from smartconfig.types import Schema, Template
+from smartconfig.types import ConfigurationDict, ConfigurationList, Schema, Template
 
 # automata/config.py ===================================================================
 
@@ -224,7 +224,7 @@ def test_config_schema_equals_automatas():
 
 def test_config_resolves_to_nested_instances():
     # given
-    cfg = {
+    cfg: ConfigurationDict = {
         "website": {
             "theme": "default",
             "content_directory": "website",
@@ -263,7 +263,7 @@ def test_config_resolves_to_nested_instances():
 
 def test_config_without_calendar_has_none():
     # given
-    cfg = {
+    cfg: ConfigurationDict = {
         "website": {"theme": "t", "content_directory": "c", "build_directory": "b"},
         "course": {
             "name": "n",
@@ -361,7 +361,7 @@ def test_people_list_resolves_to_groups_of_people():
     # schema, not a dict, so it is resolved against the element schema
     # {"type": "list", "element_schema": schema_of(Group)} and built one group at
     # a time
-    cfg = [{"group": "Instructors", "members": [{"name": "Justin"}]}]
+    cfg: ConfigurationList = [{"group": "Instructors", "members": [{"name": "Justin"}]}]
     people_schema: Schema = {"type": "list", "element_schema": schema_of(Group)}
 
     # when

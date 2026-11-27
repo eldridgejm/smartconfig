@@ -122,7 +122,8 @@ def test_extra_keys_go_into_extra_keys():
     book = instantiate(Book, {"title": "t", "home": {"street": "s"}})
 
     # then
-    assert book == Book(title="t", extra_keys={"home": Address(street="s")})
+    assert book.title == "t"
+    assert book.extra_keys == {"home": Address(street="s")}
 
 
 def test_extra_keys_with_schema_are_kept_as_is():
@@ -152,3 +153,18 @@ def test_default_factory_class_field_missing_takes_a_fresh_instance():
 def test_instantiate_a_non_prototype_raises():
     with pytest.raises(TypeError):
         instantiate(dict, {})  # type: ignore[type-var]
+
+
+def test_annotated_with_other_metadata_holding_a_prototype_is_built():
+    # given
+    class Options(Prototype):
+        verbose: bool = False
+
+    class Settings(Prototype):
+        options: Annotated[Options, "other metadata"] = field(default_factory=Options)
+
+    # then
+    assert smartconfig.schema_of(Settings)["optional_keys"]["options"]["default"] == {}
+    assert instantiate(Settings, {"options": {"verbose": True}}) == Settings(
+        options=Options(verbose=True)
+    )

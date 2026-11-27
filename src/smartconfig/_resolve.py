@@ -19,6 +19,7 @@ import typing
 from . import converters as _converters, types as _types
 from ._core_functions import CORE_FUNCTIONS
 from ._internals import make_node, reporting_recursion_errors
+from ._prototypes import Prototype, _is_prototype, instantiate, schema_of
 from ._schemas import validate_schema
 from ._utils import jinja_reserved_name_problem
 from . import stdlib as _stdlib
@@ -264,6 +265,21 @@ def _make_resolution_context(
 
 
 @typing.overload
+def resolve[P: Prototype](
+    cfg: _types.Configuration,
+    spec: type[P],
+    converters: Mapping[str, Callable] = ...,
+    functions: _types.FunctionMapping | None = ...,
+    global_variables: Mapping[str, Any] | None = ...,
+    inject_root_as: str | None = ...,
+    filters: Mapping[str, Callable] | None = ...,
+    preserve_type: bool = ...,
+    check_for_function_call: _types.FunctionCallChecker | None = ...,
+) -> P:
+    """Overloaded resolve() for a Prototype class: returns an instance of it."""
+
+
+@typing.overload
 def resolve(
     cfg: _types.ConfigurationDict,
     spec: _types.Schema | _types.DynamicSchema,
@@ -313,7 +329,7 @@ def resolve(
 
 def resolve(
     cfg: _types.Configuration,
-    spec: _types.Schema | _types.DynamicSchema,
+    spec: _types.Schema | _types.DynamicSchema | type[Prototype],
     converters: Mapping[str, Callable] = DEFAULT_CONVERTERS,
     functions: _types.FunctionMapping | None = DEFAULT_FUNCTIONS,
     global_variables: Mapping[str, Any] | None = None,
@@ -322,18 +338,21 @@ def resolve(
     preserve_type: bool = False,
     check_for_function_call: _types.FunctionCallChecker
     | None = _check_for_dunder_function_call,
-) -> _types.Configuration:
+) -> _types.Configuration | Prototype:
     """Resolve a configuration by interpolating and parsing its entries.
 
     Parameters
     ----------
     cfg : :class:`types.Configuration`
         The "raw" configuration to resolve.
-    spec : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
+    spec : Union[:class:`types.Schema`, :class:`types.DynamicSchema`, type[:class:`Prototype`]]
         The schema describing the structure of the resolved configuration. If a
         :class:`types.DynamicSchema` is provided (which is a callable), it is called
         with the configuration and the keypath and should return a
         :class:`types.Schema`.
+        If a :class:`Prototype` subclass is provided, the configuration is resolved
+        against its schema (:func:`schema_of`), and the result is an instance of
+        it (:func:`instantiate`).
     converters : Mapping[str, Callable]
         A dictionary mapping value types to converter functions. The converter functions
         should take the raw value (after interpolation) and convert it to the specified
@@ -388,6 +407,23 @@ def resolve(
         ``self``), since ``${...}`` could never refer to it.
 
     """
+    if _is_prototype(spec):
+        # resolved like the equivalent schema dict, so errors are the same
+        # (cfg is cast so that mypy needn't match each part of its union to an
+        # overload; the overload for a dict, as of a dict schema, gives a dict)
+        resolved_dict = resolve(
+            typing.cast(Any, cfg),
+            schema_of(spec),
+            converters,
+            functions,
+            global_variables,
+            inject_root_as,
+            filters,
+            preserve_type,
+            check_for_function_call,
+        )
+        return instantiate(spec, resolved_dict)
+
     resolution_context = _make_resolution_context(
         converters,
         functions,

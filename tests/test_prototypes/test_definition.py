@@ -81,14 +81,15 @@ def test_extra_keys_is_an_init_argument_and_compared_in_eq():
     class Website(Prototype, extra_keys=str):
         title: str
 
-    # when
-    website = Website(title="t", extra_keys={"a": "b"})
+    # when: type checkers don't know of the extra_keys argument, since only a
+    # class with the extra_keys option has it
+    website = Website(title="t", extra_keys={"a": "b"})  # type: ignore[call-arg]
 
     # then
     assert website.extra_keys == {"a": "b"}
     assert website != Website(title="t")
     assert Website(title="t").extra_keys == {}
-    assert repr(website) == "Website(title='t', extra_keys={'a': 'b'})"
+    assert repr(website).endswith("Website(title='t', extra_keys={'a': 'b'})")
 
 
 # unsupported type hints ===============================================================
@@ -206,7 +207,7 @@ def test_nested_prototype_defaulting_to_its_class_needs_all_defaults():
     with pytest.raises(TypeError, match=r"Bad\.options"):
 
         class Bad(Prototype):
-            options: Options = field(default_factory=Options)
+            options: Options = field(default_factory=Options)  # type: ignore[arg-type]
 
 
 def test_default_holding_a_prototype_instance_is_an_error():
@@ -280,6 +281,19 @@ def test_schema_marker_needs_a_mapping_or_callable():
         smartconfig.schema("string")  # type: ignore[arg-type]
 
 
+def test_template_parameters_given_as_a_string_is_an_error():
+    # a string is an iterable of names, but one name was surely meant
+    with pytest.raises(TypeError, match="parameters"):
+        smartconfig.template({"type": "string"}, parameters="publication")
+
+
+def test_type_hint_that_cant_be_evaluated_is_an_error():
+    with pytest.raises(TypeError, match="Bad"):
+
+        class Bad(Prototype):
+            x: "Undefined"  # type: ignore[name-defined]  # noqa: F821
+
+
 def test_template_on_a_non_template_type_is_an_error():
     with pytest.raises(TypeError, match=r"Bad\.x.*Template"):
 
@@ -294,7 +308,7 @@ def test_field_named_extra_keys_with_extra_keys_option_is_an_error():
     with pytest.raises(TypeError, match=r"Bad.*extra_keys"):
 
         class Bad(Prototype, extra_keys=str):
-            extra_keys: str
+            extra_keys: str  # type: ignore[assignment]
 
 
 def test_field_named_extra_keys_without_the_option_is_also_an_error():

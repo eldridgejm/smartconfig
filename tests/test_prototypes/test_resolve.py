@@ -9,7 +9,13 @@ import pytest
 import smartconfig
 from smartconfig import Prototype, resolve, schema_of
 from smartconfig.exceptions import InvalidSchemaError, ResolutionError
-from smartconfig.types import Configuration, KeyPath, Schema, Template
+from smartconfig.types import (
+    Configuration,
+    ConfigurationDict,
+    KeyPath,
+    Schema,
+    Template,
+)
 
 
 class Address(Prototype):
@@ -51,7 +57,7 @@ def test_resolve_gives_the_same_values_as_the_schema_dict():
 
 def test_interpolation_functions_and_global_variables_work():
     # given
-    cfg = {
+    cfg: ConfigurationDict = {
         "name": "${ first } ${ last }",
         "age": {"__if__": {"condition": True, "then": 4, "else": 5}},
         "address": {"street": "${ street }", "city": "${ name }ville"},
@@ -73,7 +79,9 @@ def test_interpolation_functions_and_global_variables_work():
 def test_custom_functions_work():
     # given
     def double(args: smartconfig.types.FunctionArgs) -> Configuration:
-        return 2 * int(args.resolve(args.input))
+        value = args.resolve(args.input)
+        assert isinstance(value, int)
+        return 2 * value
 
     # when
     person = resolve(
@@ -194,7 +202,8 @@ def test_extra_keys_are_resolved_against_their_schema():
     website = resolve({"title": "t", "a": "1", "b": "${ a }2"}, Website)
 
     # then
-    assert website == Website(title="t", extra_keys={"a": 1, "b": 12})
+    assert website.title == "t"
+    assert website.extra_keys == {"a": 1, "b": 12}
 
 
 def test_extra_key_errors_are_the_same_as_for_the_schema_dict():
