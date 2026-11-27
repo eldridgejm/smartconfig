@@ -1619,35 +1619,30 @@ class _FunctionCallNode(_Node):
         self.input = input
         self.mode = mode
 
-    def _make_resolver(self) -> _types.Resolver:
-        """Make a "resolver" function that can be used by functions to resolve configs.
+    def _resolver(
+        self,
+        configuration: _types.Configuration,
+        schema: _types.Schema | None = None,
+        local_variables: Mapping[str, _types.Configuration] | None = None,
+        relative_keypath: _types.KeyPath = (),
+    ) -> _types.Configuration:
+        """Resolve a configuration under this call: the function's ``args.resolve``.
 
         This enables advanced use cases like using a function to implement for-loops.
-        This function satisfies the _types.Resolver protocol.
+        It satisfies the _types.Resolver protocol.
 
         """
-
-        def resolver(
-            configuration: _types.Configuration,
-            schema: _types.Schema | None = None,
-            local_variables: Mapping[str, _types.Configuration] | None = None,
-            relative_keypath: _types.KeyPath = (),
-        ) -> _types.Configuration:
-            if schema is None:
-                schema = self.schema
-            node = make_node(
-                configuration,
-                schema,
-                self.resolution_context,
-                parent=self,
-                # relative_keypath places it under the call, for error messages
-                keypath=self.keypath + tuple(relative_keypath),
-                local_variables=local_variables,
-                mode=self.mode,
-            )
-            return node.resolve()
-
-        return resolver
+        node = make_node(
+            configuration,
+            self.schema if schema is None else schema,
+            self.resolution_context,
+            parent=self,
+            # relative_keypath places it under the call, for error messages
+            keypath=self.keypath + tuple(relative_keypath),
+            local_variables=local_variables,
+            mode=self.mode,
+        )
+        return node.resolve()
 
     @_cache_and_detect_cycles
     def evaluate(self) -> _DictNode | _ListNode | _ValueNode | _TemplateNode:
@@ -1683,18 +1678,12 @@ class _FunctionCallNode(_Node):
         # function node that is either 1) the root, or 2) the successor of a root
         # that is a container node
         assert isinstance(self.root, (_DictNode, _ListNode, _FunctionCallNode))
-        root = _make_unresolved_container(self.root)
-
-        # create the resolver function that the function can use to resolve
-        # configurations
-        resolver = self._make_resolver()
-
         args = _types.FunctionArgs(
             input,
-            root,
+            _make_unresolved_container(self.root),
             self.keypath,
             self.resolution_context,
-            resolver,
+            self._resolver,
             self.schema,
             _root_node=self.root,
             _function_call_node=self,
@@ -1715,10 +1704,7 @@ class _FunctionCallNode(_Node):
         # returned node as the result directly; publicly, functions should return
         # Configuration, in which case we pass the output through make_node to
         # construct the appropriate node type
-        if isinstance(
-            output,
-            (_DictNode, _ListNode, _ValueNode, _FunctionCallNode, _TemplateNode),
-        ):
+        if isinstance(output, _Node):
             result = output
         else:
             # By default the output is configuration, resolved in this call's mode.
