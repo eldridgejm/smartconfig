@@ -8,6 +8,9 @@ to know the expected structure and types of the configuration. This structure
 is given by a **schema**: a dictionary defining which keys are required or
 optional, the types of values, and any default values.
 
+A dict schema can also be written as a Python class, a :ref:`prototype
+<prototypes>`, which resolves to an instance of the class.
+
 .. testsetup::
 
     import smartconfig

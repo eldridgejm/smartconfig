@@ -6,22 +6,27 @@ Core API
 
 The core functionality of `smartconfig` is exposed through two main functions:
 :func:`resolve` for resolving configurations and :func:`validate_schema` for
-checking the validity of schemas.
+checking the validity of schemas. :class:`Prototype` and the functions after it
+describe a configuration as a class instead of a schema (see :ref:`prototypes`).
 
-.. function:: resolve(...) -> Configuration
+.. function:: resolve(...) -> Configuration or Prototype
 
     Resolve a configuration by interpolating and parsing its entries. The
-    structure of the configuration is described by a schema dictionary.
+    structure of the configuration is described by a schema dictionary, or by a
+    :class:`Prototype` subclass, in which case the result is an instance of it.
 
     Parameters
     ----------
     cfg : :class:`types.Configuration`
         The "raw" configuration to resolve.
-    spec : :class:`types.Schema` or :class:`types.DynamicSchema`
+    spec : :class:`types.Schema` or :class:`types.DynamicSchema` or type[:class:`Prototype`]
         Either a schema dictionary describing the structure of the resolved
-        configuration, or a :class:`types.DynamicSchema` (a callable that
-        returns a schema based on the configuration and keypath).
-        See: :ref:`schemas`.
+        configuration, a :class:`types.DynamicSchema` (a callable that
+        returns a schema based on the configuration and keypath), or a
+        :class:`Prototype` subclass. A prototype is resolved against its schema
+        (:func:`schema_of`), so errors are those of the schema dictionary, and
+        the result is built with :func:`instantiate`.
+        See: :ref:`schemas` and :ref:`prototypes`.
     converters : Mapping[str, Callable]
         A dictionary mapping value types (as strings) to converter functions.
         The converter functions should take the raw value (after interpolation)
@@ -101,6 +106,19 @@ checking the validity of schemas.
 
 
 .. autofunction:: validate_schema
+
+Prototypes
+----------
+
+.. autoclass:: Prototype
+
+.. autofunction:: schema
+
+.. autofunction:: template
+
+.. autofunction:: schema_of
+
+.. autofunction:: instantiate
 
 Constants
 ---------

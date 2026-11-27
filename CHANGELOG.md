@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+### Prototypes are back, as dataclasses
+
+A configuration can again be described by a class: a subclass of `smartconfig.Prototype`. Prototypes were removed in 0.6.0 because they couldn't say everything a schema can. They return redesigned:
+
+- A subclass of `Prototype` is a stdlib dataclass (with keyword-only fields). `__init__`, `__eq__`, `__repr__` and `dataclasses.field(default_factory=...)` come from `dataclasses`, and type checkers know its fields (`Prototype` is marked with `typing.dataclass_transform`).
+- A field's schema is inferred from its type hint: `str`, `int`, `float`, `bool`, `datetime.date`, `datetime.datetime`, `Any`, `T | None` (nullable), `list[T]`, `dict[str, T]` (`extra_keys_schema`) and nested prototypes. Any other type hint is a `TypeError` when the class is defined, naming the class and the field.
+- A field is optional exactly when it has a default, which becomes its schema's default, and nullable exactly when its type includes `None`. There is no `NotRequired`.
+- Anything else is said with an explicit schema, used as given: `Annotated[T, smartconfig.schema(...)]`, which also takes a dynamic schema, and `Annotated[Template, smartconfig.template(<schema>, parameters=[...])]` for template fields.
+- The class option `extra_keys` gives the schema of extra keys (as a type or an explicit schema), as in `class Website(Prototype, extra_keys=str)`. They are kept in the instance's `extra_keys` attribute.
+
+```python
+from dataclasses import field
+from typing import Annotated, Any
+import smartconfig
+from smartconfig.types import Template
+
+class Build(smartconfig.Prototype):
+    jobs: int | None = None
+
+class Config(smartconfig.Prototype):
+    title: Annotated[Template, smartconfig.template({"type": "string"}, ["publication"])]
+    calendar: Annotated[dict[str, Any] | None, smartconfig.schema(CALENDAR_SCHEMA)] = None
+    build: Build = field(default_factory=Build)
+    ignore: list[str] = field(default_factory=list)
+
+config = smartconfig.resolve(raw, Config)  # a Config instance
+```
+
+`resolve(cfg, SomeProtoClass)` resolves against the class's schema, so interpolation, functions, global variables and errors (with their keypaths) are exactly those of the equivalent schema dict, and returns an instance. `smartconfig.schema_of(cls)` gives that schema, and `smartconfig.instantiate(cls, resolved)` builds an instance from a resolved dict.
+
 ## 0.6.1
 
 ### Templates inside templates
