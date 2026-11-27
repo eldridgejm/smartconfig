@@ -219,9 +219,8 @@ When a configuration containing a template field is resolved, the field is not
 resolved to an ordinary value (an int, a string, a dict, etc.). Rather, the node
 resolves to a :class:`smartconfig.types.Template` holding the value as written.
 
-The resolver does not unwrap a template field's value itself. make_node() (through
-_make_template_node()) builds an ordinary _FunctionCallNode for it, whose function is
-given the template schema; the value of a template field must be a function call (or
+The resolver does not unwrap a template field's value itself. make_node() builds an
+ordinary _FunctionCallNode for it, whose function is given the template schema; the value of a template field must be a function call (or
 a Template passed in). The core functions decide what to do with that schema:
 ``__template__`` returns a _TemplateNode of its input, and ``__use__`` returns a
 _TemplateNode of the template it copies (see _core_functions.py). Any other function's
@@ -2078,22 +2077,6 @@ class _TemplateNode(_Node):
         self.inner_schema = template_schema["schema"]
         self.parameters = tuple(template_schema["parameters"])
 
-    @classmethod
-    def from_template(
-        cls,
-        template: Template,
-        template_schema: _types.Schema,
-        keypath: _types.KeyPath,
-        resolution_context: _types.ResolutionContext,
-        parent: _ConcreteNode | None = None,
-    ) -> _TemplateNode:
-        """A node that resolves to an existing Template, unchanged."""
-        node = cls(
-            template.source, template_schema, keypath, resolution_context, parent
-        )
-        _set_result(node.resolve, template)
-        return node
-
     @_cache_and_detect_cycles
     def resolve(self) -> Template:
         """Expand, check and build (once) the Template for this field.
@@ -2266,93 +2249,6 @@ class _TemplateNode(_Node):
                 ) from None
 
 
-def _make_template_node(
-    cfg: _types.Configuration,
-    schema: _types.Schema,
-    resolution_context: _types.ResolutionContext,
-    parent: _ConcreteNode | None,
-    keypath: _types.KeyPath,
-    local_variables: Mapping[str, _types.Configuration] | None,
-    mode: ResolutionMode,
-) -> _TemplateNode | _FunctionCallNode:
-    """Build the node for a template field (a value whose schema is a template).
-
-    The value must be a function call or an existing Template. A Template that is
-    already this field's (same inner schema, parameters and keypath) is passed
-    through unchanged; any other is rebuilt from its source under this field's
-    schema. A function call becomes an ordinary _FunctionCallNode, whose
-    function is given the template schema: ``__template__`` and ``__use__`` return a
-    _TemplateNode for it. Any other function's result is built under the template
-    schema too, so it must in turn be a Template or a function call that makes one.
-
-    Raises
-    ------
-    TemplateRequiredError
-        If the value is neither a function call nor a Template. In RAW mode (under
-        ``__raw__``), a dict is never a function call, so it is this error too.
-    ResolutionError
-        If the value is an invalid function call.
-
-    """
-    inner_schema = schema["schema"]
-    parameters = tuple(schema["parameters"])
-
-    if isinstance(cfg, Template):
-        if (
-            cfg.schema == inner_schema
-            and cfg.parameters == parameters
-            and cfg.keypath == keypath
-        ):
-            # this field's own Template (as when a resolved configuration is
-            # resolved again): passed through unchanged
-            return _TemplateNode.from_template(
-                cfg, schema, keypath, resolution_context, parent
-            )
-        # a Template made elsewhere (by a __template__ on an "any" field that a
-        # function returned, say): like a __use__ copy, its value is kept as written
-        # under this field's schema and parameters. It keeps the values it carries
-        # from the templates around it, which its source may use
-        return _TemplateNode(
-            cfg.source,
-            schema,
-            keypath,
-            resolution_context,
-            parent=parent,
-            local_variables=local_variables,
-            outer_parameters=cfg.outer_parameters,
-        )
-
-    # under __raw__ (RAW mode) everything is data, as in make_node, so a dict is
-    # never a call: it falls through to the error below like any other value
-    if isinstance(cfg, dict) and mode != ResolutionMode.RAW:
-        try:
-            call = resolution_context.check_for_function_call(
-                cfg, resolution_context.functions
-            )
-        except ValueError as exc:
-            raise ResolutionError(f"Invalid function call: {exc}", keypath)
-
-        if call is not None:
-            return _FunctionCallNode(
-                keypath,
-                resolution_context,
-                function=call[0],
-                input=call[1],
-                schema=schema,
-                parent=parent,
-                local_variables=local_variables,
-                mode=mode,
-            )
-
-    names = ", ".join(parameters) if parameters else "none"
-    raise TemplateRequiredError(
-        f"This field expects a template (parameters: {names}). "
-        'Write it as {"__template__": ...}.',
-        keypath,
-        parameters,
-    )
-
-
 # make_node() ==========================================================================
 
 
@@ -2441,14 +2337,10 @@ def make_node(
                     keypath + (str(key),),
                 )
 
-    if schema.get("type") == "template":
-        return _make_template_node(
-            cfg, schema, resolution_context, parent, keypath, local_variables, mode
-        )
-
-    # construct the configuration tree. the configuration tree is a nested container
-    # whose terminal leaf values are _ValueNodes. "Internal" nodes are dictionaries or
-    # lists. A dict may be a function call, except in RAW mode
+    # a dict may be a function call, except in RAW mode (under __raw__), where
+    # everything is data. On a template field, the call's function is given the
+    # template schema: __template__ and __use__ return a _TemplateNode for it, and
+    # any other function's result is built under the template schema in turn
     if isinstance(cfg, dict) and mode != ResolutionMode.RAW:
         try:
             call = resolution_context.check_for_function_call(
@@ -2469,6 +2361,41 @@ def make_node(
                 mode,
             )
 
+    # any other value of a template field must be an existing Template
+    if schema.get("type") == "template":
+        if not isinstance(cfg, Template):
+            names = ", ".join(schema["parameters"]) or "none"
+            raise TemplateRequiredError(
+                f"This field expects a template (parameters: {names}). "
+                'Write it as {"__template__": ...}.',
+                keypath,
+                tuple(schema["parameters"]),
+            )
+
+        # like a __use__ copy, the Template's value is kept as written under this
+        # field's schema and parameters. It keeps the values it carries from the
+        # templates around it, which its source may use
+        node = _TemplateNode(
+            cfg.source,
+            schema,
+            keypath,
+            resolution_context,
+            parent,
+            local_variables,
+            outer_parameters=cfg.outer_parameters,
+        )
+        if (cfg.schema, cfg.parameters, cfg.keypath) == (
+            node.inner_schema,
+            node.parameters,
+            keypath,
+        ):
+            # this field's own Template (as when a resolved configuration is
+            # resolved again): passed through unchanged
+            _set_result(node.resolve, cfg)
+        return node
+
+    # otherwise, build the configuration tree: a nested container whose leaves are
+    # _ValueNodes, and whose internal nodes are dictionaries or lists
     _check_shape(cfg, schema, keypath)
     is_any = schema["type"] == "any"
     if isinstance(cfg, dict):
