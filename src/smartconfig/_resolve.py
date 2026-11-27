@@ -203,21 +203,11 @@ def _make_resolution_context(
 ) -> _types.ResolutionContext:
     """The resolution context for the options of :func:`resolve`.
 
-    The defaults are those of :func:`resolve`. Also used by
-    :meth:`Template.evaluate`.
+    The defaults are those of :func:`resolve`. Also used by :class:`Template`,
+    which makes its context when it is created.
 
     """
-    if functions is None:
-        converted_functions: Mapping[str, _types.Function] = {}
-    else:
-        # convert standard Python functions to _types.Function instances,
-        # flattening any nested mappings into dot-separated keys
-        converted_functions = _flatten_functions(functions)
-
-    if global_variables is None:
-        global_variables = {}
-    else:
-        global_variables = dict(global_variables)
+    global_variables = dict(global_variables or {})
 
     # a global or root named like a Jinja literal (true, none) or self could never
     # be referred to: ${ true } would be the literal, silently, not the variable
@@ -229,21 +219,16 @@ def _make_resolution_context(
     if problem is not None:
         raise ValueError(f"Invalid inject_root_as: {problem}")
 
-    if filters is None:
-        filters = {}
-
     if check_for_function_call is None:
         # do not check for function calls
-        def _no_check(*_):
+        def check_for_function_call(*_):
             return None
-
-        check_for_function_call = _no_check
 
     return _types.ResolutionContext(
         converters,
-        converted_functions,
+        {} if functions is None else _flatten_functions(functions),
         global_variables,
-        filters,
+        filters or {},
         inject_root_as,
         check_for_function_call,
     )
