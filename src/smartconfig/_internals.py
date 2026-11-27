@@ -221,11 +221,12 @@ resolves to a :class:`smartconfig.types.Template` holding the value as written.
 
 The resolver does not unwrap a template field's value itself. make_node() builds an
 ordinary _FunctionCallNode for it, whose function is given the template schema; the
-value of a template field must be a function call (or a Template passed in). The core functions decide what to do with that schema:
-``__template__`` returns a _TemplateNode of its input, and ``__use__`` returns a
-_TemplateNode of the template it copies (see _core_functions.py). Any other function's
-result is built under the template schema too, so ``__if__`` choosing between two
-``__template__`` values works, and a result that isn't a template is an error.
+value of a template field must be a function call (or a Template passed in). The
+core functions decide what to do with that schema: ``__template__`` returns a
+_TemplateNode of its input, and ``__use__`` returns a _TemplateNode of the template
+it copies (see _core_functions.py). Any other function's result is built under the
+template schema too, so ``__if__`` choosing between two ``__template__`` values
+works, and a result that isn't a template is an error.
 
 Like a _ValueNode, a _TemplateNode is resolved lazily and the result cached.
 Resolving it:
