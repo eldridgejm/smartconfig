@@ -405,7 +405,6 @@ def resolve(
         root = make_node(cfg, spec, resolution_context)
         resolved = root.resolve()
 
-    if not preserve_type or not isinstance(resolved, (dict, list)):
-        # a leaf at the root (e.g. a Template) has no structure to preserve
+    if not preserve_type:
         return resolved
     return _preserve_types(copy.deepcopy(cfg), resolved, resolution_context)
