@@ -13,7 +13,6 @@ from typing import (
     Mapping,
 )
 import copy
-import functools
 import typing
 
 from . import converters as _converters, types as _types
@@ -96,14 +95,10 @@ def _check_for_dunder_function_call(
 # helpers ------------------------------------------------------------------------------
 
 
-def _is_leaf(x: _types.Configuration) -> bool:
-    return not isinstance(x, dict) and not isinstance(x, list)
-
-
 def _preserve_types(
     original: Any,
     resolved: _types.Configuration,
-    is_function_call: Callable[[_types.ConfigurationDict], bool],
+    context: _types.ResolutionContext,
 ) -> Any:
     """``resolved``, with each container replaced by ``original``'s where it has one.
 
@@ -118,12 +113,12 @@ def _preserve_types(
     if isinstance(resolved, dict):
         # a function call is a dict in the input, but its result has nothing to do
         # with that dict, so there is no container to preserve
-        if not isinstance(original, dict) or is_function_call(original):
+        if not isinstance(original, dict) or _is_function_call(original, context):
             return resolved
         for key, value in resolved.items():
             # keys only in resolved (filled in by defaults) get original.get(key)
             # of None, so their resolved values are used
-            original[key] = _preserve_types(original.get(key), value, is_function_call)
+            original[key] = _preserve_types(original.get(key), value, context)
         return original
 
     if isinstance(resolved, list):
@@ -132,7 +127,7 @@ def _preserve_types(
         if not isinstance(original, list) or len(original) != len(resolved):
             return resolved
         for i, value in enumerate(resolved):
-            original[i] = _preserve_types(original[i], value, is_function_call)
+            original[i] = _preserve_types(original[i], value, context)
         return original
 
     # a leaf (a number, string, date, Template, ...) has no type to preserve
@@ -150,22 +145,12 @@ def _is_function_call(
         return False
 
 
-def _ensure_function(
-    callable_or_function: _types.FunctionOrCallable,
-) -> _types.Function:
-    """Converts standard Python functions to _types.Function instances."""
-    if isinstance(callable_or_function, _types.Function):
-        return callable_or_function
-    else:
-        return _types.Function(callable_or_function)
-
-
 def _flatten_functions(
     mapping: _types.FunctionMapping, prefix: str = ""
 ) -> dict[str, _types.Function]:
     """Flatten a possibly-nested function mapping into dot-separated keys.
 
-    Raw callables are wrapped in :class:`Function` via :func:`_ensure_function`.
+    Raw callables are wrapped in :class:`Function`.
 
     Parameters
     ----------
@@ -187,8 +172,10 @@ def _flatten_functions(
         full_key = f"{prefix}.{key}" if prefix else key
         if isinstance(value, Mapping):
             result.update(_flatten_functions(value, full_key))
+        elif isinstance(value, _types.Function):
+            result[full_key] = value
         else:
-            result[full_key] = _ensure_function(value)
+            result[full_key] = _types.Function(value)
     return result
 
 
@@ -410,25 +397,18 @@ def resolve(
         check_for_function_call,
     )
 
-    schema = typing.cast(_types.Schema, spec)
-
     # so that a schema or configuration too deep to handle is a ResolutionError, not
     # a RecursionError (each of the three steps below is recursive)
     with reporting_recursion_errors():
         # validate the schema first: an invalid one would otherwise fail later with
         # an unhelpful error (e.g. a KeyError), or be silently accepted. Dynamic
         # schemas are validated when they are called
-        validate_schema(schema, converters=resolution_context.converters)
+        validate_schema(spec, converters=resolution_context.converters)
 
-        root = make_node(cfg, schema, resolution_context)
+        root = make_node(cfg, spec, resolution_context)
         resolved = root.resolve()
 
-    if not preserve_type or _is_leaf(resolved):
+    if not preserve_type or not isinstance(resolved, (dict, list)):
         # a leaf at the root (e.g. a Template) has no structure to preserve
         return resolved
-    else:
-        # pass _preserve_types only the check it needs, not the whole context
-        is_function_call = functools.partial(
-            _is_function_call, context=resolution_context
-        )
-        return _preserve_types(copy.deepcopy(cfg), resolved, is_function_call)
+    return _preserve_types(copy.deepcopy(cfg), resolved, resolution_context)
