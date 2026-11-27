@@ -9,7 +9,6 @@ type validators, ensuring that the resulting value is of the correct type.
 
 import datetime as datetimelib
 import math
-import re
 
 from . import exceptions
 
@@ -284,9 +283,9 @@ def datetime(
         )
 
     if isinstance(value, str):
-        # advise adding a time only if the string is a date with no time (HH:MM);
-        # for anything else (like "tomorrow"), adding a time wouldn't help
-        if not re.search(r"\d{2}:\d{2}", value) and _is_iso_date(value):
+        # advise adding a time only if the string is a date; for anything else
+        # (like "tomorrow"), adding a time wouldn't help
+        if _is_iso_date(value):
             raise exceptions.ConversionError(
                 f"Cannot implicitly convert date string '{value}' into datetime. "
                 "Please include a time component.",
