@@ -1717,9 +1717,7 @@ class _ValueNode(_Node):
         # make_node gives a None value the "any" type, which _convert passes through
         return self._safely_evaluate(self._convert, value, self.type_)
 
-    def _make_custom_jinja_context(
-        self, global_variables: Mapping[str, Any], inject_root_as: str | None = None
-    ) -> type[jinja2.runtime.Context]:
+    def _make_custom_jinja_context(self) -> type[jinja2.runtime.Context]:
         """This creates a custom Jinja2 context for string interpolation.
 
         We create this custom context to carefully control how Jinja2 resolves
@@ -1750,11 +1748,12 @@ class _ValueNode(_Node):
         # save a copy of self, because we shadow `self` in `resolve_or_missing` below
         this_node = self
 
-        # copy the globals to prevent modification, then insert the root node if
-        # requested
-        global_variables = dict(global_variables)
-        if inject_root_as is not None:
-            global_variables[inject_root_as] = root_container
+        # the globals and template parameters, in a new dict so that the root node
+        # can be inserted, if requested, without modifying them
+        context = self.resolution_context
+        global_variables = _names_after_the_document(context)
+        if context.inject_root_as is not None:
+            global_variables[context.inject_root_as] = root_container
 
         class CustomContext(jinja2.runtime.Context):
             def resolve_or_missing(self, key):
@@ -1829,10 +1828,7 @@ class _ValueNode(_Node):
         # up keys in the local variables, and then in the root of the configuration
         # tree, and finally in the global variables. See the
         # _make_custom_jinja_context() method for more information.
-        environment.context_class = self._make_custom_jinja_context(
-            _names_after_the_document(self.resolution_context),
-            inject_root_as=self.resolution_context.inject_root_as,
-        )
+        environment.context_class = self._make_custom_jinja_context()
 
         # a name whose value failed to resolve is a _DeferredError, which tests and
         # filters would take for a missing name; these raise its error instead
