@@ -274,7 +274,7 @@ class Resolver(Protocol):
 
 
 # According to the public interface, functions should return Configuration. However,
-# internal functions may return node types (defined in _resolve.py) instead of
+# internal functions may return node types (defined in _internals.py) instead of
 # Configuration, as this allows for more expressivity. At runtime, _FunctionResult
 # equals Configuration so that documentation generators display the public type. At
 # type-check time, we use the wider union to allow internal node types without requiring
