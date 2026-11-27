@@ -75,6 +75,7 @@ Table of Contents
 
    configurations
    schemas
+   prototypes
    resolution
 
 .. toctree::

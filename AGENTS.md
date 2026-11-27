@@ -31,10 +31,11 @@ cd docs && uv run make doctest     # Run doctests
 
 ```
 src/smartconfig/
-├── __init__.py            # Public API: resolve(), DEFAULT_FUNCTIONS, DEFAULT_CONVERTERS
+├── __init__.py            # Public API: resolve(), Prototype, DEFAULT_FUNCTIONS, DEFAULT_CONVERTERS
 ├── _resolve.py            # resolve() function, defaults, function flattening
 ├── _internals.py          # Node types, unresolved containers, make_node() (see docstring)
 ├── _core_functions.py     # Core functions: if, let, raw, resolve, fully_resolve, splice, template, use
+├── _prototypes.py         # Prototype (dataclass-based schemas), schema(), template(), schema_of(), instantiate()
 ├── _schemas.py            # Schema validation
 ├── _utils.py              # Shared utilities (deep_update)
 ├── converters.py          # Type converters (int, float, bool, date, datetime)
@@ -51,6 +52,7 @@ tests/
 ├── test_converters.py          # Converter tests
 ├── test_core_functions.py      # Core function tests
 ├── test_jinja.py               # Jinja2 integration tests
+├── test_prototypes/            # Prototype tests (incl. automata's configs as Prototypes)
 ├── test_validate_schema.py     # Schema validation tests
 ├── test_resolve/               # Resolution tests
 ├── test_stdlib/                # Stdlib function tests

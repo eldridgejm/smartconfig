@@ -61,12 +61,28 @@ The resolved configuration is a dictionary with all values computed:
  'welcome_msg': 'Welcome to Introduction to Computer Science!'}
 ```
 
+The same structure can be written as a class, a `smartconfig.Prototype`, which is a dataclass whose fields' schemas come from their type hints. Resolving against it gives an instance, whose attributes type checkers know:
+
+```python
+import datetime
+
+class Course(smartconfig.Prototype):
+    course_name: str
+    start_date: datetime.date
+    first_homework_due: datetime.date
+    welcome_msg: str
+
+course = smartconfig.resolve(raw_config, Course)
+course.first_homework_due  # datetime.date(2025, 9, 2)
+```
+
 ## Features
 
 `smartconfig` supports extending configuration formats with the following features:
 
 - **String interpolation**: Use `${...}` to refer to other values in the configuration file. This helps avoid tedious duplication and the errors that can arise from it.
 - **Type conversion and validation**: `smartconfig` includes converters that parse string values into Python types like `int`, `float`, `bool`, `datetime.date`, and `datetime.datetime`. Converters also validate that values match the expected type.
+- **Typed configurations**: a configuration can be described by a schema dictionary, or by a Prototype: a dataclass whose fields' schemas are inferred from their type hints, with an escape hatch (`Annotated[T, smartconfig.schema(...)]`) for anything a type hint can't say.
 - **Default values**: default values can be provided, so that the user can save typing and highlight what's important by only specifying the values that are different from the default.
 - **Function calls**: `smartconfig` defines a syntax for calling functions in the configuration file. This allows the user to specify complex values that are calculated at runtime. Default functions are provided for conditional logic, list operations, dictionary merging, date manipulation, and more. Developers can also define their own functions.
 - **Complex control flow**: the Jinja2 templating engine is used under the hood, which means that you can use Jinja2's control flow constructs like `if` statements, `for` loops, and more to define complex values in your configuration file. You can also use Jinja2 filters to transform values in your configuration file, as in `${value | capitalize}` to capitalize a string.
