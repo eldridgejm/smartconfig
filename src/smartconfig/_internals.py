@@ -576,11 +576,7 @@ _JINJA_TESTS = {
 
 class _Uninsertable(Exception):
     """A ``${...}`` gave a value that can't go into a string: a dict, a list or
-    Jinja's ``self``."""
-
-    def __init__(self, message: str):
-        super().__init__(message)
-        self.message = message
+    Jinja's ``self``. Its argument is the message."""
 
 
 class _InsertedNone(Exception):
@@ -1545,7 +1541,7 @@ class _ValueNode(_Node):
         except jinja2.exceptions.UndefinedError as exc:
             raise ResolutionError(str(exc), self.keypath)
         except _Uninsertable as exc:
-            raise ResolutionError(exc.message, self.keypath) from None
+            raise ResolutionError(str(exc), self.keypath) from None
         except _InsertedNone:
             raise ResolutionError(
                 f'A ${{ ... }} in "{s}" is None, which can\'t be inserted into a '
