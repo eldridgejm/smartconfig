@@ -5,7 +5,13 @@ import enum
 import re
 from collections.abc import Callable
 
-from ..types import Configuration, FunctionArgs, FunctionMapping, KeyPath
+from ..types import (
+    Configuration,
+    ConfigurationDict,
+    FunctionArgs,
+    FunctionMapping,
+    KeyPath,
+)
 from ..exceptions import ResolutionError
 from ._args import to_integer
 
@@ -547,23 +553,66 @@ def _first_weekday(
 # at -----------------------------------------------------------------------------------
 
 
-def _check_keys(
-    input_: dict, allowed: set[str], function: str, keypath: KeyPath
-) -> None:
-    """Raise if the input to ``function`` has a key that isn't in ``allowed``.
+def _check_input(
+    args: FunctionArgs,
+    function: str,
+    allowed: set[str],
+    required: tuple[str, ...] = (),
+) -> ConfigurationDict:
+    """``args.input``, checked to be a dict with the ``required`` keys and no others.
 
     An unknown key is otherwise ignored, so a misspelling like "skp" for "skip"
     would silently do nothing.
 
     """
+    input_ = args.input
+    if not isinstance(input_, dict):
+        raise ResolutionError(
+            f"Input to '{function}' must be a dictionary.", args.keypath
+        )
+
     unknown = set(input_) - allowed
     if unknown:
         raise ResolutionError(
             f"Unknown key(s) in the input to '{function}': "
             f"{', '.join(sorted(map(str, unknown)))}. Its keys are "
             f"{', '.join(repr(k) for k in sorted(allowed))}.",
+            args.keypath,
+        )
+
+    for key in required:
+        if key not in input_:
+            raise ResolutionError(
+                f"Input to '{function}' must contain '{key}'.", args.keypath
+            )
+    return input_
+
+
+def _direction(input_: ConfigurationDict, function: str, keypath: KeyPath) -> str:
+    """Which of ``"before"`` and ``"after"`` the input to ``function`` contains.
+
+    Raises
+    ------
+    ResolutionError
+        If it contains neither or both.
+
+    """
+    has_before = "before" in input_
+    has_after = "after" in input_
+
+    if not has_before and not has_after:
+        raise ResolutionError(
+            f"Input to '{function}' must contain either 'before' or 'after'.",
             keypath,
         )
+
+    if has_before and has_after:
+        raise ResolutionError(
+            f"Input to '{function}' must not contain both 'before' and 'after'.",
+            keypath,
+        )
+
+    return "before" if has_before else "after"
 
 
 def at(args: FunctionArgs) -> datetimelib.datetime:
@@ -577,25 +626,11 @@ def at(args: FunctionArgs) -> datetimelib.datetime:
     If the input date is already a datetime, the time component is overridden.
 
     """
-    if not isinstance(args.input, dict):
-        raise ResolutionError(
-            "Input to 'datetime.at' must be a dictionary.", args.keypath
-        )
-    _check_keys(args.input, {"date", "time"}, "datetime.at", args.keypath)
+    input_ = _check_input(args, "datetime.at", {"date", "time"}, ("date", "time"))
 
-    if "date" not in args.input:
-        raise ResolutionError(
-            "Input to 'datetime.at' must contain 'date'.", args.keypath
-        )
+    reference = _read_date_or_datetime(input_["date"], args.keypath)
 
-    if "time" not in args.input:
-        raise ResolutionError(
-            "Input to 'datetime.at' must contain 'time'.", args.keypath
-        )
-
-    reference = _read_date_or_datetime(args.input["date"], args.keypath)
-
-    raw_time = args.input["time"]
+    raw_time = input_["time"]
     if not isinstance(raw_time, str):
         raise ResolutionError(
             f"'time' must be a string, got {type(raw_time).__name__}.", args.keypath
@@ -640,51 +675,26 @@ def offset(args: FunctionArgs) -> _DateOrDatetime:
         - ``by``: the offset amount (string or dict)
 
     """
-    if not isinstance(args.input, dict):
-        raise ResolutionError(
-            "Input to 'datetime.offset' must be a dictionary.", args.keypath
-        )
-    _check_keys(
-        args.input, {"before", "after", "by", "skip"}, "datetime.offset", args.keypath
-    )
+    function = "datetime.offset"
+    input_ = _check_input(args, function, {"before", "after", "by", "skip"})
+    direction = _direction(input_, function, args.keypath)
 
-    has_before = "before" in args.input
-    has_after = "after" in args.input
+    if "by" not in input_:
+        raise ResolutionError(f"Input to '{function}' must contain 'by'.", args.keypath)
 
-    if not has_before and not has_after:
-        raise ResolutionError(
-            "Input to 'datetime.offset' must contain either 'before' or 'after'.",
-            args.keypath,
-        )
-
-    if has_before and has_after:
-        raise ResolutionError(
-            "Input to 'datetime.offset' must not contain both 'before' and 'after'.",
-            args.keypath,
-        )
-
-    if "by" not in args.input:
-        raise ResolutionError(
-            "Input to 'datetime.offset' must contain 'by'.", args.keypath
-        )
-
-    skip_dates: set[datetimelib.date] = set()
-    if "skip" in args.input:
-        skip_dates = _read_skip_dates(args.input["skip"], args.keypath)
-
-    direction_key = "before" if has_before else "after"
-    reference = _read_date_or_datetime(args.input[direction_key], args.keypath)
-    by = args.input["by"]
+    skip_dates = _read_skip_dates(input_.get("skip", []), args.keypath)
+    reference = _read_date_or_datetime(input_[direction], args.keypath)
+    by = input_["by"]
     # convert the values of a dict of units, so that a value written as "${ n }",
     # which interpolates to a string, is accepted
     if isinstance(by, dict):
         by = {
-            unit: to_integer(n, f"by.{unit}", "datetime.offset", args)
-            for unit, n in by.items()
+            unit: to_integer(n, f"by.{unit}", function, args) for unit, n in by.items()
         }
     delta = _read_offset(by, args.keypath)
 
-    return _offset_date(reference, delta, has_before, skip_dates, args.keypath)
+    before = direction == "before"
+    return _offset_date(reference, delta, before, skip_dates, args.keypath)
 
 
 # first --------------------------------------------------------------------------------
@@ -702,39 +712,12 @@ def first(args: FunctionArgs) -> _DateOrDatetime:
         - ``before`` or ``after``: the reference date (mutually exclusive)
 
     """
-    if not isinstance(args.input, dict):
-        raise ResolutionError(
-            "Input to 'datetime.first' must be a dictionary.", args.keypath
-        )
-    _check_keys(
-        args.input,
-        {"weekday", "before", "after", "skip"},
-        "datetime.first",
-        args.keypath,
-    )
+    function = "datetime.first"
+    allowed = {"weekday", "before", "after", "skip"}
+    input_ = _check_input(args, function, allowed, ("weekday",))
+    direction = _direction(input_, function, args.keypath)
 
-    if "weekday" not in args.input:
-        raise ResolutionError(
-            "Input to 'datetime.first' must contain 'weekday'.", args.keypath
-        )
-
-    has_before = "before" in args.input
-    has_after = "after" in args.input
-
-    if not has_before and not has_after:
-        raise ResolutionError(
-            "Input to 'datetime.first' must contain either 'before' or 'after'.",
-            args.keypath,
-        )
-
-    if has_before and has_after:
-        raise ResolutionError(
-            "Input to 'datetime.first' must not contain both 'before' and 'after'.",
-            args.keypath,
-        )
-
-    # parse weekday(s)
-    raw_weekday = args.input["weekday"]
+    raw_weekday = input_["weekday"]
     if isinstance(raw_weekday, str):
         weekdays = _parse_weekdays(raw_weekday, args.keypath)
     elif isinstance(raw_weekday, list):
@@ -744,14 +727,11 @@ def first(args: FunctionArgs) -> _DateOrDatetime:
             "The 'weekday' key must be a string or list of strings.", args.keypath
         )
 
-    skip_dates: set[datetimelib.date] = set()
-    if "skip" in args.input:
-        skip_dates = _read_skip_dates(args.input["skip"], args.keypath)
+    skip_dates = _read_skip_dates(input_.get("skip", []), args.keypath)
+    reference = _read_date_or_datetime(input_[direction], args.keypath)
 
-    direction_key = "before" if has_before else "after"
-    reference = _read_date_or_datetime(args.input[direction_key], args.keypath)
-
-    return _first_weekday(reference, weekdays, has_before, skip_dates, args.keypath)
+    before = direction == "before"
+    return _first_weekday(reference, weekdays, before, skip_dates, args.keypath)
 
 
 # parse --------------------------------------------------------------------------------
