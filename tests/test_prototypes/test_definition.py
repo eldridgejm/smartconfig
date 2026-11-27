@@ -152,7 +152,7 @@ def test_unsupported_type_inside_a_container_names_the_field():
 
 
 def test_template_without_a_schema_is_unsupported_and_says_what_to_do():
-    with pytest.raises(TypeError, match=r"smartconfig\.template"):
+    with pytest.raises(TypeError, match=r"smartconfig\.prototypes\.template"):
 
         class Bad(Prototype):
             title: Template
@@ -226,7 +226,9 @@ def test_explicit_schema_default_different_from_the_fields_is_an_error():
     with pytest.raises(TypeError, match=r"Bad\.x"):
 
         class Bad(Prototype):
-            x: Annotated[int, smartconfig.schema({"type": "integer", "default": 1})] = 2
+            x: Annotated[
+                int, smartconfig.prototypes.schema({"type": "integer", "default": 1})
+            ] = 2
 
 
 # the escape hatch =====================================================================
@@ -238,8 +240,8 @@ def test_two_smartconfig_annotations_are_an_error():
         class Bad(Prototype):
             x: Annotated[
                 int,
-                smartconfig.schema({"type": "integer"}),
-                smartconfig.schema({"type": "integer"}),
+                smartconfig.prototypes.schema({"type": "integer"}),
+                smartconfig.prototypes.schema({"type": "integer"}),
             ]
 
 
@@ -247,21 +249,25 @@ def test_nullable_type_with_non_nullable_schema_is_an_error():
     with pytest.raises(TypeError, match=r"Bad\.x.*nullable"):
 
         class Bad(Prototype):
-            x: Annotated[str | None, smartconfig.schema({"type": "string"})]
+            x: Annotated[str | None, smartconfig.prototypes.schema({"type": "string"})]
 
 
 def test_non_nullable_type_with_nullable_schema_is_an_error():
     with pytest.raises(TypeError, match=r"Bad\.x.*nullable"):
 
         class Bad(Prototype):
-            x: Annotated[str, smartconfig.schema({"type": "string", "nullable": True})]
+            x: Annotated[
+                str, smartconfig.prototypes.schema({"type": "string", "nullable": True})
+            ]
 
 
 def test_any_type_with_any_schema_is_fine():
     # given: Any includes None, so either kind of schema fits it
     class Fine(Prototype):
-        x: Annotated[Any, smartconfig.schema({"type": "string", "nullable": True})]
-        y: Annotated[Any, smartconfig.schema({"type": "string"})]
+        x: Annotated[
+            Any, smartconfig.prototypes.schema({"type": "string", "nullable": True})
+        ]
+        y: Annotated[Any, smartconfig.prototypes.schema({"type": "string"})]
 
     # then
     assert dataclasses.is_dataclass(Fine)
@@ -270,7 +276,7 @@ def test_any_type_with_any_schema_is_fine():
 def test_nullable_type_with_any_schema_is_fine():
     # given: "any" accepts None unless it says it isn't nullable
     class Fine(Prototype):
-        x: Annotated[str | None, smartconfig.schema({"type": "any"})]
+        x: Annotated[str | None, smartconfig.prototypes.schema({"type": "any"})]
 
     # then
     assert dataclasses.is_dataclass(Fine)
@@ -278,13 +284,13 @@ def test_nullable_type_with_any_schema_is_fine():
 
 def test_schema_marker_needs_a_mapping_or_callable():
     with pytest.raises(TypeError):
-        smartconfig.schema("string")  # type: ignore[arg-type]
+        smartconfig.prototypes.schema("string")  # type: ignore[arg-type]
 
 
 def test_template_parameters_given_as_a_string_is_an_error():
     # a string is an iterable of names, but one name was surely meant
     with pytest.raises(TypeError, match="parameters"):
-        smartconfig.template({"type": "string"}, parameters="publication")
+        smartconfig.prototypes.template({"type": "string"}, parameters="publication")
 
 
 def test_type_hint_that_cant_be_evaluated_is_an_error():
@@ -298,7 +304,7 @@ def test_template_on_a_non_template_type_is_an_error():
     with pytest.raises(TypeError, match=r"Bad\.x.*Template"):
 
         class Bad(Prototype):
-            x: Annotated[str, smartconfig.template({"type": "string"})]
+            x: Annotated[str, smartconfig.prototypes.template({"type": "string"})]
 
 
 # extra keys ===========================================================================

@@ -8,7 +8,8 @@ from typing import Annotated, Any, ClassVar, Optional
 import pytest
 
 import smartconfig
-from smartconfig import Prototype, schema_of
+from smartconfig import Prototype
+from smartconfig.prototypes import schema_of
 from smartconfig.types import Configuration, KeyPath, Schema, Template
 
 
@@ -346,7 +347,7 @@ def test_class_variables_and_methods_are_not_fields():
     }
 
 
-# the escape hatch: smartconfig.schema() ===============================================
+# the escape hatch: smartconfig.prototypes.schema() ===============================================
 
 
 CALENDAR_SCHEMA: Schema = {
@@ -359,7 +360,9 @@ CALENDAR_SCHEMA: Schema = {
 def test_annotated_schema_is_used_as_given():
     # given
     class WithSchema(Prototype):
-        calendar: Annotated[dict[str, Any] | None, smartconfig.schema(CALENDAR_SCHEMA)]
+        calendar: Annotated[
+            dict[str, Any] | None, smartconfig.prototypes.schema(CALENDAR_SCHEMA)
+        ]
 
     # then
     assert schema_of(WithSchema)["required_keys"]["calendar"] == CALENDAR_SCHEMA
@@ -369,7 +372,7 @@ def test_annotated_schema_gets_the_fields_default():
     # given
     class WithSchema(Prototype):
         calendar: Annotated[
-            dict[str, Any] | None, smartconfig.schema(CALENDAR_SCHEMA)
+            dict[str, Any] | None, smartconfig.prototypes.schema(CALENDAR_SCHEMA)
         ] = None
 
     # then
@@ -382,7 +385,9 @@ def test_annotated_schema_gets_the_fields_default():
 def test_annotated_schema_with_the_same_default_as_the_field():
     # given
     class WithSchema(Prototype):
-        x: Annotated[int, smartconfig.schema({"type": "integer", "default": 3})] = 3
+        x: Annotated[
+            int, smartconfig.prototypes.schema({"type": "integer", "default": 3})
+        ] = 3
 
     # then
     assert schema_of(WithSchema)["optional_keys"]["x"] == {
@@ -402,7 +407,7 @@ def test_annotated_schema_with_its_own_default_makes_the_field_optional():
     }
 
     class WithTemplate(Prototype):
-        items: Annotated[Template, smartconfig.schema(template_schema)]
+        items: Annotated[Template, smartconfig.prototypes.schema(template_schema)]
 
     # then
     assert schema_of(WithTemplate)["optional_keys"]["items"] == template_schema
@@ -414,7 +419,7 @@ def test_annotated_dynamic_schema_is_used_as_given():
         return {"type": "string"}
 
     class WithDynamic(Prototype):
-        x: Annotated[Any, smartconfig.schema(dynamic)]
+        x: Annotated[Any, smartconfig.prototypes.schema(dynamic)]
 
     # then
     assert schema_of(WithDynamic)["required_keys"]["x"] is dynamic
@@ -426,7 +431,7 @@ def test_annotated_dynamic_schema_with_default_is_optional():
         return {"type": "string", "default": "x"}
 
     class WithDynamic(Prototype):
-        x: Annotated[str, smartconfig.schema(dynamic)] = "x"
+        x: Annotated[str, smartconfig.prototypes.schema(dynamic)] = "x"
 
     # then
     assert schema_of(WithDynamic)["optional_keys"]["x"] is dynamic
@@ -444,7 +449,7 @@ def test_annotated_without_smartconfig_metadata_is_inferred_from_the_type():
 def test_annotated_inside_a_container():
     # given
     class Inside(Prototype):
-        xs: list[Annotated[Any, smartconfig.schema({"type": "string"})]]
+        xs: list[Annotated[Any, smartconfig.prototypes.schema({"type": "string"})]]
 
     # then
     assert schema_of(Inside)["required_keys"]["xs"] == {
@@ -458,13 +463,13 @@ def test_annotated_or_none_is_the_same_as_annotated_with_none_inside():
     nullable: Schema = {"type": "string", "nullable": True}
 
     class Outside(Prototype):
-        x: Annotated[str, smartconfig.schema(nullable)] | None
+        x: Annotated[str, smartconfig.prototypes.schema(nullable)] | None
 
     # then
     assert schema_of(Outside)["required_keys"]["x"] == nullable
 
 
-# the escape hatch: smartconfig.template() =============================================
+# the escape hatch: smartconfig.prototypes.template() =============================================
 
 
 def test_template_field():
@@ -472,7 +477,9 @@ def test_template_field():
     class WithTemplate(Prototype):
         title: Annotated[
             Template,
-            smartconfig.template({"type": "string"}, parameters=["publication"]),
+            smartconfig.prototypes.template(
+                {"type": "string"}, parameters=["publication"]
+            ),
         ]
 
     # then
@@ -486,7 +493,7 @@ def test_template_field():
 def test_template_field_without_parameters():
     # given
     class WithTemplate(Prototype):
-        title: Annotated[Template, smartconfig.template({"type": "string"})]
+        title: Annotated[Template, smartconfig.prototypes.template({"type": "string"})]
 
     # then
     assert schema_of(WithTemplate)["required_keys"]["title"] == {
@@ -501,7 +508,7 @@ def test_template_field_parameters_given_as_a_tuple_become_a_list():
     class WithTemplate(Prototype):
         title: Annotated[
             Template,
-            smartconfig.template({"type": "string"}, parameters=("a", "b")),
+            smartconfig.prototypes.template({"type": "string"}, parameters=("a", "b")),
         ]
 
     # then
@@ -514,7 +521,9 @@ def test_template_field_parameters_given_as_a_tuple_become_a_list():
 def test_nullable_template_field_from_the_type():
     # given
     class WithTemplate(Prototype):
-        label: Annotated[Template | None, smartconfig.template({"type": "string"})]
+        label: Annotated[
+            Template | None, smartconfig.prototypes.template({"type": "string"})
+        ]
 
     # then
     assert schema_of(WithTemplate)["required_keys"]["label"] == {
@@ -530,7 +539,7 @@ def test_template_field_with_a_default():
     class WithTemplate(Prototype):
         items: Annotated[
             Template,
-            smartconfig.template(
+            smartconfig.prototypes.template(
                 {"type": "list", "element_schema": {"type": "string"}}, default=[]
             ),
         ]
@@ -547,9 +556,9 @@ def test_template_field_with_a_default():
 def test_template_field_defaulting_to_none():
     # given
     class WithTemplate(Prototype):
-        label: Annotated[Template | None, smartconfig.template({"type": "string"})] = (
-            None
-        )
+        label: Annotated[
+            Template | None, smartconfig.prototypes.template({"type": "string"})
+        ] = None
 
     # then
     assert schema_of(WithTemplate)["optional_keys"]["label"] == {
@@ -579,7 +588,7 @@ def test_extra_keys_from_a_type():
 
 def test_extra_keys_from_a_schema():
     # given
-    class Website(Prototype, extra_keys=smartconfig.schema({"type": "any"})):
+    class Website(Prototype, extra_keys=smartconfig.prototypes.schema({"type": "any"})):
         title: str
 
     # then

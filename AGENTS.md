@@ -35,7 +35,7 @@ src/smartconfig/
 ├── _resolve.py            # resolve() function, defaults, function flattening
 ├── _internals.py          # Node types, unresolved containers, make_node() (see docstring)
 ├── _core_functions.py     # Core functions: if, let, raw, resolve, fully_resolve, splice, template, use
-├── _prototypes.py         # Prototype (dataclass-based schemas), schema(), template(), schema_of(), instantiate()
+├── prototypes.py          # Prototype (dataclass-based schemas), schema(), template(), schema_of(), instantiate()
 ├── _schemas.py            # Schema validation
 ├── _utils.py              # Shared utilities (deep_update)
 ├── converters.py          # Type converters (int, float, bool, date, datetime)

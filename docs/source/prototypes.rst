@@ -39,11 +39,11 @@ types of its attributes.
            instructors=['Justin'])
 
 A prototype is equivalent to a schema dictionary, its **schema**, which
-:func:`smartconfig.schema_of` gives:
+:func:`smartconfig.prototypes.schema_of` gives:
 
 .. testcode::
 
-    print(smartconfig.schema_of(Course))
+    print(smartconfig.prototypes.schema_of(Course))
 
 .. testoutput::
 
@@ -132,7 +132,7 @@ Explicit schemas
 ----------------
 
 When a field's schema can't be inferred from its type, give it one with
-``typing.Annotated`` and :func:`smartconfig.schema`. The schema is used as
+``typing.Annotated`` and :func:`smartconfig.prototypes.schema`. The schema is used as
 given, so anything a schema dictionary can say, a prototype can say. This is
 the way to describe a complex or deeply nested value, or one whose schema is
 :ref:`dynamic <dynamic_schemas_example>`:
@@ -148,7 +148,7 @@ the way to describe a complex or deeply nested value, or one whose schema is
     class Config(Prototype):
         title: str
         calendar: Annotated[
-            dict[str, Any] | None, smartconfig.schema(CALENDAR_SCHEMA)
+            dict[str, Any] | None, smartconfig.prototypes.schema(CALENDAR_SCHEMA)
         ] = None
 
     config = {"title": "DSC 40B", "calendar": {"exams": ["2026-10-20"]}}
@@ -177,14 +177,14 @@ Template fields
 A :ref:`template field <template_fields_example>` resolves to a
 :class:`smartconfig.types.Template`. Type it ``Template`` (or ``Template |
 None``, to make it nullable) and give it its schema with
-:func:`smartconfig.template`, which takes the schema of the template's value
+:func:`smartconfig.prototypes.template`, which takes the schema of the template's value
 and its parameters:
 
 .. testcode::
 
     class Page(Prototype):
         title: Annotated[
-            Template, smartconfig.template({"type": "string"}, ["publication"])
+            Template, smartconfig.prototypes.template({"type": "string"}, ["publication"])
         ]
 
     page = smartconfig.resolve(
@@ -202,7 +202,7 @@ Extra keys
 By default, a key that isn't a field is an error, as for a schema dictionary
 without ``extra_keys_schema``. The class option ``extra_keys`` allows such keys
 and gives their schema, as a type hint (``extra_keys=str``) or an explicit
-schema (``extra_keys=smartconfig.schema({...})``). The extra keys are kept,
+schema (``extra_keys=smartconfig.prototypes.schema({...})``). The extra keys are kept,
 resolved, in the instance's ``extra_keys`` attribute, a dict:
 
 .. testcode::
@@ -227,16 +227,16 @@ field called ``extra_keys``. A subclass inherits its base's extra keys.
 Prototypes and schema dictionaries together
 -------------------------------------------
 
-:func:`smartconfig.schema_of` gives a prototype's schema, to use inside a
-schema dictionary, where it resolves to a dict. :func:`smartconfig.instantiate`
+:func:`smartconfig.prototypes.schema_of` gives a prototype's schema, to use inside a
+schema dictionary, where it resolves to a dict. :func:`smartconfig.prototypes.instantiate`
 builds an instance from such a dict, which is what :func:`smartconfig.resolve`
 does with a prototype:
 
 .. testcode::
 
-    people_schema = {"type": "list", "element_schema": smartconfig.schema_of(Person)}
+    people_schema = {"type": "list", "element_schema": smartconfig.prototypes.schema_of(Person)}
     resolved = smartconfig.resolve([{"name": "Ada"}], people_schema)
-    print([smartconfig.instantiate(Person, p) for p in resolved])
+    print([smartconfig.prototypes.instantiate(Person, p) for p in resolved])
 
 .. testoutput::
 

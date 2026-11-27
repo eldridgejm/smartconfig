@@ -7,7 +7,8 @@ from typing import Annotated, Any
 import pytest
 
 import smartconfig
-from smartconfig import Prototype, resolve, schema_of
+from smartconfig import Prototype, resolve
+from smartconfig.prototypes import schema_of
 from smartconfig.exceptions import InvalidSchemaError, ResolutionError
 from smartconfig.types import (
     Configuration,
@@ -52,7 +53,7 @@ def test_resolve_gives_the_same_values_as_the_schema_dict():
     as_dict = resolve(PERSON_CFG, schema_of(Person))
 
     # then
-    assert instance == smartconfig.instantiate(Person, as_dict)
+    assert instance == smartconfig.prototypes.instantiate(Person, as_dict)
 
 
 def test_interpolation_functions_and_global_variables_work():
@@ -148,7 +149,7 @@ def test_reference_error_is_the_same_as_for_the_schema_dict():
 def test_invalid_explicit_schema_error_is_the_same_as_for_the_schema_dict():
     # given: the explicit schema is used as given, so it is checked by resolve()
     class Bad(Prototype):
-        x: Annotated[Any, smartconfig.schema({"type": "nonsense"})]
+        x: Annotated[Any, smartconfig.prototypes.schema({"type": "nonsense"})]
 
     # then
     assert _error({"x": 1}, Bad) == _error({"x": 1}, schema_of(Bad))
@@ -167,7 +168,7 @@ def test_dynamic_schema_through_the_escape_hatch():
         raise ResolutionError("Unknown kind.", keypath + ("kind",))
 
     class Thing(Prototype):
-        item: Annotated[dict[str, Any], smartconfig.schema(by_kind)]
+        item: Annotated[dict[str, Any], smartconfig.prototypes.schema(by_kind)]
 
     # when
     thing = resolve({"item": {"kind": "number", "x": "3"}}, Thing)
@@ -182,7 +183,9 @@ def test_template_field_resolves_to_a_template():
     class Page(Prototype):
         title: Annotated[
             Template,
-            smartconfig.template({"type": "string"}, parameters=["publication"]),
+            smartconfig.prototypes.template(
+                {"type": "string"}, parameters=["publication"]
+            ),
         ]
 
     # when
@@ -223,7 +226,7 @@ def test_preserve_type_keeps_containers_inside_annotated_fields():
         pass
 
     class Holder(Prototype):
-        data: Annotated[dict[str, Any], smartconfig.schema({"type": "any"})]
+        data: Annotated[dict[str, Any], smartconfig.prototypes.schema({"type": "any"})]
 
     # when
     holder = resolve({"data": MyDict(x=1)}, Holder, preserve_type=True)

@@ -11,6 +11,10 @@ that can't be described is a ``TypeError`` there.
 from a dict resolved against it. :func:`smartconfig.resolve` does both when it is
 given a Prototype class.
 
+:class:`Prototype` is also available as ``smartconfig.Prototype``. The functions are
+kept here, rather than at the top level, so that their names (``schema``,
+``template``) don't read as the general schema and template tools.
+
 """
 
 import copy
@@ -98,13 +102,13 @@ def schema(schema: _types.Schema | _types.DynamicSchema) -> _SchemaAnnotation:
     >>> class Config(smartconfig.Prototype):
     ...     calendar: Annotated[
     ...         dict[str, Any] | None,
-    ...         smartconfig.schema({"type": "any", "nullable": True}),
+    ...         smartconfig.prototypes.schema({"type": "any", "nullable": True}),
     ...     ] = None
-    >>> smartconfig.schema_of(Config)
+    >>> smartconfig.prototypes.schema_of(Config)
     {'type': 'dict', 'optional_keys': {'calendar': {'type': 'any', 'nullable': True, 'default': None}}}
 
     """
-    _check_is_schema(schema, "smartconfig.schema()")
+    _check_is_schema(schema, "smartconfig.prototypes.schema()")
     return _SchemaAnnotation(schema)
 
 
@@ -152,7 +156,7 @@ def template(
     >>> from smartconfig.types import Template
     >>> class Page(smartconfig.Prototype):
     ...     title: Annotated[
-    ...         Template, smartconfig.template({"type": "string"}, ["publication"])
+    ...         Template, smartconfig.prototypes.template({"type": "string"}, ["publication"])
     ...     ]
     >>> page = smartconfig.resolve(
     ...     {"title": {"__template__": "Lecture ${ publication.number }"}}, Page
@@ -161,10 +165,10 @@ def template(
     'Lecture 4'
 
     """
-    _check_is_schema(schema, "smartconfig.template()")
+    _check_is_schema(schema, "smartconfig.prototypes.template()")
     if isinstance(parameters, str):
         raise TypeError(
-            "smartconfig.template()'s parameters must be an iterable of names, not "
+            "smartconfig.prototypes.template()'s parameters must be an iterable of names, not "
             "a string."
         )
     return _TemplateAnnotation(schema, tuple(parameters), default)
@@ -221,7 +225,7 @@ class Prototype:
 
     Any other type is a ``TypeError`` when the class is defined. A field whose schema
     can't be inferred is given one with ``typing.Annotated`` and :func:`schema` or
-    :func:`template`, as in ``Annotated[dict[str, Any], smartconfig.schema(...)]``.
+    :func:`template`, as in ``Annotated[dict[str, Any], smartconfig.prototypes.schema(...)]``.
 
     A field is optional exactly when it has a default (``= value``, or
     ``dataclasses.field(default_factory=...)``), and its schema gets that default.
@@ -426,7 +430,7 @@ def _schema_for(hint: Any) -> _types.Schema | _types.DynamicSchema:
             raise _Unsupported(
                 f"Unsupported type hint {hint!r}: a union is supported only as "
                 "T | None. Give the field a schema with Annotated[..., "
-                "smartconfig.schema(...)]."
+                "smartconfig.prototypes.schema(...)]."
             )
         (inner,) = others
         if typing.get_origin(inner) is typing.Annotated:
@@ -460,7 +464,7 @@ def _schema_for(hint: Any) -> _types.Schema | _types.DynamicSchema:
     if hint is _types.Template:
         raise _Unsupported(
             "A Template field needs the schema of its value and its parameters: "
-            "type it Annotated[Template, smartconfig.template(<schema>, "
+            "type it Annotated[Template, smartconfig.prototypes.template(<schema>, "
             "parameters=[...])]."
         )
 
@@ -468,7 +472,7 @@ def _schema_for(hint: Any) -> _types.Schema | _types.DynamicSchema:
         f"Unsupported type hint {hint!r}. Supported are str, int, float, bool, "
         "datetime.date, datetime.datetime, Any, T | None, list[T], dict[str, T] and "
         "Prototype subclasses; give any other field a schema with Annotated[..., "
-        "smartconfig.schema(...)]."
+        "smartconfig.prototypes.schema(...)]."
     )
 
 
@@ -481,7 +485,7 @@ def _explicit_schema(
     if isinstance(annotation, _TemplateAnnotation):
         if base is not Any and _without_none(base) is not _types.Template:
             raise _Unsupported(
-                "smartconfig.template() makes a template field, whose value is a "
+                "smartconfig.prototypes.template() makes a template field, whose value is a "
                 f"Template, so its type must be Template (or Template | None), not "
                 f"{base!r}."
             )
@@ -637,7 +641,7 @@ def schema_of(cls: type[Prototype]) -> _types.Schema:
     >>> class Button(smartconfig.Prototype):
     ...     label: str
     ...     url: str | None = None
-    >>> smartconfig.schema_of(Button)
+    >>> smartconfig.prototypes.schema_of(Button)
     {'type': 'dict', 'required_keys': {'label': {'type': 'string'}}, 'optional_keys': {'url': {'type': 'string', 'nullable': True, 'default': None}}}
 
     """
@@ -680,7 +684,7 @@ def instantiate[P: Prototype](cls: type[P], data: Mapping[str, Any]) -> P:
     >>> class Person(smartconfig.Prototype):
     ...     name: str
     ...     address: Address
-    >>> smartconfig.instantiate(Person, {"name": "A", "address": {"street": "S"}})
+    >>> smartconfig.prototypes.instantiate(Person, {"name": "A", "address": {"street": "S"}})
     Person(name='A', address=Address(street='S'))
 
     """
