@@ -773,16 +773,7 @@ class _UnresolvedList(_types.UnresolvedList):
     def __init__(self, list_node: _ListNode):
         self.list_node = list_node
 
-    @typing.overload
-    def __getitem__(
-        self, ix: int
-    ) -> _UnresolvedDict | _UnresolvedList | _types.Configuration: ...
-
-    @typing.overload
-    def __getitem__(
-        self, ix: slice
-    ) -> list[_types.UnresolvedDict | _types.UnresolvedList | _types.Configuration]: ...
-
+    # typed by the overloads of UnresolvedList.__getitem__
     def __getitem__(self, ix):
         """Access an element in the unresolved list (see _view).
 
