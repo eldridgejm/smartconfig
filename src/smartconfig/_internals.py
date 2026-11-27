@@ -1699,20 +1699,22 @@ class _ValueNode(_Node):
         The resolved value.
 
         """
-        # Step 1: interpolate the string (if its a string and mode is not RAW)
-        value: _types.ConfigurationValue
-        if isinstance(self.value, str) and self.mode != ResolutionMode.RAW:
-            value = self._safely_evaluate(
-                self._interpolate,
-                self.value,
-                full=(self.mode == ResolutionMode.FULL),
-            )
-        else:
-            value = self.value
+        # a smartconfig error other than a ResolutionError (a converter's
+        # ConversionError, say) is reported at this value's keypath
+        try:
+            # Step 1: interpolate the string (if it's a string and mode is not RAW)
+            value: _types.ConfigurationValue = self.value
+            if isinstance(value, str) and self.mode != ResolutionMode.RAW:
+                value = self._interpolate(value, full=self.mode == ResolutionMode.FULL)
 
-        # Step 2: convert the value to the expected type. None is never converted:
-        # make_node gives a None value the "any" type, which _convert passes through
-        return self._safely_evaluate(self._convert, value)
+            # Step 2: convert the value to the expected type. None is never
+            # converted: make_node gives a None value the "any" type, which _convert
+            # passes through
+            return self._convert(value)
+        except ResolutionError:
+            raise
+        except Error as exc:
+            raise ResolutionError(str(exc), self.keypath) from exc
 
     def _make_custom_jinja_context(self) -> type[jinja2.runtime.Context]:
         """This creates a custom Jinja2 context for string interpolation.
@@ -1889,19 +1891,7 @@ class _ValueNode(_Node):
             return result
 
     def _convert(self, value: _types.ConfigurationValue) -> _types.ConfigurationValue:
-        """Convert the configuration value into its final type, ``self.type_``.
-
-        Parameters
-        ----------
-        value : ConfigurationValue
-            The value to convert.
-
-        Returns
-        -------
-        ConfigurationValue
-            The converted value.
-
-        """
+        """Convert the configuration value into this node's type."""
         # "any" is a built-in type, like "dict": validate_schema accepts it whatever
         # the converters are, so it must not depend on one here either
         if self.type_ == "any":
@@ -1915,17 +1905,6 @@ class _ValueNode(_Node):
             )
 
         return converter(value)
-
-    def _safely_evaluate[T, **P](
-        self, fn: Callable[P, T], *args: P.args, **kwargs: P.kwargs
-    ) -> T:
-        """Apply the function and catch any exceptions, raising a ResolutionError."""
-        try:
-            return fn(*args, **kwargs)
-        except ResolutionError as exc:
-            raise exc
-        except Error as exc:
-            raise ResolutionError(str(exc), self.keypath) from exc
 
 
 # _FunctionCallNode --------------------------------------------------------------------
