@@ -375,7 +375,6 @@ def _call_dynamic_schema(
         result,
         keypath,
         allow_default=allow_default,
-        allow_dynamic=True,
         converters=resolution_context.converters,
     )
     return result
