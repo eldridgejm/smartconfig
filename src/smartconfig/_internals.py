@@ -1397,13 +1397,13 @@ class _DictNode(_Node):
     def __init__(
         self,
         resolution_context: _types.ResolutionContext,
-        children: dict[str, _ConcreteNode] | None = None,
         parent: _ConcreteNode | None = None,
         local_variables: Mapping[str, _types.Configuration] | None = None,
     ):
         super().__init__(parent, local_variables)
         self.resolution_context = resolution_context
-        self.children: dict[str, _ConcreteNode] = {} if children is None else children
+        # set by from_configuration
+        self.children: dict[str, _ConcreteNode] = {}
         # set by from_configuration; used in error messages
         self.keypath: _types.KeyPath = ()
 
@@ -1521,13 +1521,13 @@ class _ListNode(_Node):
     def __init__(
         self,
         resolution_context: _types.ResolutionContext,
-        children: list[_ConcreteNode] | None = None,
         parent: _ConcreteNode | None = None,
         local_variables: Mapping[str, _types.Configuration] | None = None,
     ):
         super().__init__(parent, local_variables)
         self.resolution_context = resolution_context
-        self.children: list[_ConcreteNode] = [] if children is None else children
+        # set by from_configuration
+        self.children: list[_ConcreteNode] = []
         # set by from_configuration; used in error messages
         self.keypath: _types.KeyPath = ()
 
