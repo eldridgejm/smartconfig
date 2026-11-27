@@ -297,21 +297,16 @@ def _let(args: _types.FunctionArgs) -> _ConcreteNode:
             args.keypath,
         )
 
-    # Resolve regular variables.
-    local_variables: dict = {}
-    if has_variables:
-        if not isinstance(args.input["variables"], dict):
-            raise ResolutionError(
-                "The value of 'variables' in 'let' must be a dictionary.",
-                args.keypath,
-            )
-        resolved_vars = args.resolve(args.input["variables"], schema={"type": "any"})
-        if not isinstance(resolved_vars, dict):
-            raise ResolutionError(
-                "The value of 'variables' in 'let' must be a dictionary.",
-                args.keypath,
-            )
-        local_variables = resolved_vars
+    # Resolve regular variables. They must be a dict both as written and once
+    # resolved: a dict can be a function call that resolves to something else
+    local_variables = args.input.get("variables", {})
+    if isinstance(local_variables, dict):
+        local_variables = args.resolve(local_variables, schema={"type": "any"})
+    if not isinstance(local_variables, dict):
+        raise ResolutionError(
+            "The value of 'variables' in 'let' must be a dictionary.",
+            args.keypath,
+        )
 
     # Build the "in" node without resolving it.
     fcn = args._function_call_node
