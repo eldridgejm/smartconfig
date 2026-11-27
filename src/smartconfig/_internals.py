@@ -1116,6 +1116,15 @@ class _Node(abc.ABC):
             return _make_unresolved_container(self.root)
         return {}
 
+    def _global_variables(self, root_container: _RootContainer) -> dict[str, Any]:
+        """The names after the document (the globals and template parameters; see
+        _names_after_the_document), with the root under ``inject_root_as`` if set."""
+        context = self.resolution_context
+        global_variables = _names_after_the_document(context)
+        if context.inject_root_as is not None:
+            global_variables[context.inject_root_as] = root_container
+        return global_variables
+
     def _look_up_name(
         self,
         key: str,
@@ -1418,16 +1427,10 @@ class _ValueNode(_Node):
 
         """
         root_container = self._root_container()
+        global_variables = self._global_variables(root_container)
 
         # save a copy of self, because we shadow `self` in `resolve_or_missing` below
         this_node = self
-
-        # the globals and template parameters, in a new dict so that the root node
-        # can be inserted, if requested, without modifying them
-        context = self.resolution_context
-        global_variables = _names_after_the_document(context)
-        if context.inject_root_as is not None:
-            global_variables[context.inject_root_as] = root_container
 
         class CustomContext(jinja2.runtime.Context):
             def resolve_or_missing(self, key):
@@ -1496,6 +1499,8 @@ class _ValueNode(_Node):
             keep_trailing_newline=True,
             # inserting None, a dict or a list into a string is an error
             finalize=_refuse_uninsertable,
+            # make undefined references raise an error
+            undefined=StrictUndefined,
         )
 
         # create a custom jinja context for resolving references. This will first look
@@ -1523,9 +1528,6 @@ class _ValueNode(_Node):
             "sort_keys": True,
             "default": _resolve_for_json,
         }
-
-        # make undefined references raise an error
-        environment.undefined = StrictUndefined
 
         try:
             template = environment.from_string(s)
@@ -1821,12 +1823,8 @@ def _look_up_keypath(node: _ConcreteNode, keypath: str) -> Any:
     """
     first, *rest = keypath.split(".")
 
-    context = node.resolution_context
     root_container = node._root_container()
-    global_variables = _names_after_the_document(context)
-    if context.inject_root_as is not None:
-        global_variables[context.inject_root_as] = root_container
-
+    global_variables = node._global_variables(root_container)
     value = node._look_up_name(first, root_container, global_variables)
 
     environment = _Environment()
