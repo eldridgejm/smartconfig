@@ -352,8 +352,8 @@ class Function:
     def __call__(self, args: FunctionArgs) -> _FunctionResult:
         """Call the function.
 
-        If :attr:`resolve_input` is `True`, the input will be resolved before being
-        passed to the function. Otherwise, it will be passed as-is.
+        This does not resolve the input: when :attr:`resolve_input` is `True`, the
+        resolver does that before calling the function.
 
         """
         return self.fn(args)
@@ -750,15 +750,12 @@ class Template:
     # copying, comparison, display -----------------------------------------------------
 
     def __deepcopy__(self, memo: dict[int, Any]) -> Template:
-        new = object.__new__(type(self))
+        # only the source is copied: the schema, parameters, keypath, context and
+        # outer parameters are shared (the outer parameters' values are the
+        # program's, like those given to evaluate())
+        new = copy.copy(self)
         memo[id(self)] = new
         new.source = copy.deepcopy(self.source, memo)
-        new.schema = self.schema
-        new.parameters = self.parameters
-        new.keypath = self.keypath
-        new._context = self._context
-        # the values are the program's, like those given to evaluate()
-        new._outer_parameters = self._outer_parameters
         return new
 
     def __eq__(self, other: object) -> bool:
