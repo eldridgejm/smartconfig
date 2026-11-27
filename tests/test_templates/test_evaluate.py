@@ -350,6 +350,36 @@ def test_a_template_made_directly_takes_global_variables():
     assert template.evaluate({"name": "Ana"}) == "Hi, Ana"
 
 
+def test_a_template_made_directly_takes_functions_and_filters():
+    template = Template(
+        {"a": {"__double__": 4}, "b": "${ 'hi' | shout }"},
+        functions={"double": double},
+        filters={"shout": str.upper},
+    )
+
+    assert template.evaluate() == {"a": 8, "b": "HI"}
+
+
+def test_a_template_made_directly_takes_converters_for_its_schema():
+    # the schema names a type that only the template's converters define
+    template = Template(
+        "${ name }",
+        schema={"type": "shout"},
+        parameters=["name"],
+        converters={"shout": str.upper},
+    )
+
+    assert template.evaluate({"name": "Ana"}) == "ANA"
+
+
+def test_a_template_made_directly_can_turn_off_function_calls():
+    # None turns function calls off, as in resolve(); leaving the option out
+    # keeps resolve()'s default checker
+    template = Template({"__double__": 4}, check_for_function_call=None)
+
+    assert template.evaluate() == {"__double__": 4}
+
+
 def test_a_template_evaluating_to_a_tree_nested_too_deeply_is_a_resolution_error():
     # given — the deep tree comes from a function, since a source this deep can't
     # even be copied into a Template; it is deeper than Python's default recursion

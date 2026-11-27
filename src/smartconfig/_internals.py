@@ -2227,27 +2227,6 @@ def _is_raw_function(function: _types.Function) -> bool:
     return function is _raw
 
 
-def _template_schema_parts(
-    schema: _types.Schema, keypath: _types.KeyPath
-) -> tuple[_types.Schema | _types.DynamicSchema, tuple[str, ...]]:
-    """The inner schema and parameters of a template schema.
-
-    Static schemas are not validated by resolve(), so the keys are read defensively.
-
-    Raises
-    ------
-    InvalidSchemaError
-        If the schema has no "schema" or no "parameters".
-
-    """
-    for key in ("schema", "parameters"):
-        if key not in schema:
-            raise InvalidSchemaError(
-                f'A template schema must have a "{key}" key.', keypath + (key,)
-            )
-    return schema["schema"], tuple(schema["parameters"])
-
-
 def _look_up_keypath(node: _ConcreteNode, keypath: str) -> Any:
     """The value at a dotted keypath, found as ``${...}`` would find it from ``node``.
 
@@ -2431,9 +2410,10 @@ class _TemplateNode(_Node):
         self.value = value
         self.outer_parameters = dict(outer_parameters or {})
         self.template_schema = template_schema
-        self.inner_schema, self.parameters = _template_schema_parts(
-            template_schema, keypath
-        )
+        # every template schema was validated (by resolve(), Template, or when a
+        # dynamic schema returned it), so it has both keys
+        self.inner_schema = template_schema["schema"]
+        self.parameters = tuple(template_schema["parameters"])
         self.keypath = keypath
         self.resolution_context = resolution_context
 
@@ -2529,18 +2509,15 @@ class _TemplateNode(_Node):
         # resolved, rather than only when the program evaluates the template
         check_keys_are_not_parameters(tree, self.parameters, outer)
 
-        return Template(
+        # the context is handed over whole, so that the Template evaluates with
+        # every option of this resolve() without listing them here
+        return Template._from_context(
             self.value,
             self.inner_schema,
-            parameters=self.parameters,
-            keypath=self.keypath,
-            converters=context.converters,
-            functions=context.functions,
-            filters=context.filters,
-            global_variables=context.global_variables,
-            inject_root_as=context.inject_root_as,
-            check_for_function_call=context.check_for_function_call,
-            outer_parameters=outer,
+            self.parameters,
+            self.keypath,
+            context,
+            outer,
         )
 
     def _expand_uses(
@@ -2656,7 +2633,8 @@ def _make_template_node(
         If the value is an invalid function call.
 
     """
-    inner_schema, parameters = _template_schema_parts(schema, keypath)
+    inner_schema = schema["schema"]
+    parameters = tuple(schema["parameters"])
 
     if isinstance(cfg, Template):
         if (
