@@ -215,11 +215,15 @@ def _make_resolution_context(
     )
 
 
-# overloads ----------------------------------------------------------------------------
+# resolve() ----------------------------------------------------------------------------
 
-# these overloads are provided so that type checkers can predict that the return
-# type of resolve() is the same as the input type. This is useful for IDEs and
-# static type checkers.
+# Resolving against a Prototype class always gives an instance of it, so that
+# overload is exact. Against a schema, resolve() gives Any, with no overloads by the
+# type of `cfg`: an overload typing a dict configuration as giving a dict would be
+# wrong, since a dict may be a function call, whose result can be anything, as
+# {"__list.range__": {"stop": 3}} gives a list and {"__if__": ...} or
+# {"__template__": ...} can give a value or a Template. Only a list root reliably
+# gives a list, which isn't worth an overload of its own.
 
 
 @typing.overload
@@ -239,35 +243,7 @@ def resolve[P: Prototype](
 
 @typing.overload
 def resolve(
-    cfg: _types.ConfigurationDict,
-    spec: _types.Schema | _types.DynamicSchema,
-    converters: Mapping[str, Callable] = ...,
-    functions: _types.FunctionMapping | None = ...,
-    global_variables: Mapping[str, Any] | None = ...,
-    inject_root_as: str | None = ...,
-    filters: Mapping[str, Callable] | None = ...,
-    preserve_type: bool = ...,
-    check_for_function_call: _types.FunctionCallChecker | None = ...,
-) -> dict: ...
-
-
-@typing.overload
-def resolve(
-    cfg: _types.ConfigurationList,
-    spec: _types.Schema | _types.DynamicSchema,
-    converters: Mapping[str, Callable] = ...,
-    functions: _types.FunctionMapping | None = ...,
-    global_variables: Mapping[str, Any] | None = ...,
-    inject_root_as: str | None = ...,
-    filters: Mapping[str, Callable] | None = ...,
-    preserve_type: bool = ...,
-    check_for_function_call: _types.FunctionCallChecker | None = ...,
-) -> list: ...
-
-
-@typing.overload
-def resolve(
-    cfg: _types.ConfigurationValue,
+    cfg: _types.Configuration,
     spec: _types.Schema | _types.DynamicSchema,
     converters: Mapping[str, Callable] = ...,
     functions: _types.FunctionMapping | None = ...,
@@ -293,7 +269,7 @@ def resolve(
     preserve_type: bool = False,
     check_for_function_call: _types.FunctionCallChecker
     | None = _check_for_dunder_function_call,
-) -> _types.Configuration | Prototype:
+) -> Any:
     """Resolve a configuration by interpolating and parsing its entries.
 
     Parameters
@@ -364,10 +340,8 @@ def resolve(
     """
     if _is_prototype(spec):
         # resolved like the equivalent schema dict, so errors are the same
-        # (cfg is cast so that mypy needn't match each part of its union to an
-        # overload; the overload for a dict, as of a dict schema, gives a dict)
         resolved_dict = resolve(
-            typing.cast(Any, cfg),
+            cfg,
             schema_of(spec),
             converters,
             functions,
@@ -388,15 +362,18 @@ def resolve(
         check_for_function_call,
     )
 
+    # not a Prototype, so a schema
+    schema = typing.cast(_types.Schema | _types.DynamicSchema, spec)
+
     # so that a schema or configuration too deep to handle is a ResolutionError, not
     # a RecursionError (each of the three steps below is recursive)
     with reporting_recursion_errors():
         # validate the schema first: an invalid one would otherwise fail later with
         # an unhelpful error (e.g. a KeyError), or be silently accepted. Dynamic
         # schemas are validated when they are called
-        validate_schema(spec, converters=resolution_context.converters)
+        validate_schema(schema, converters=resolution_context.converters)
 
-        root = make_node(cfg, spec, resolution_context)
+        root = make_node(cfg, schema, resolution_context)
         resolved = root.resolve()
 
     if not preserve_type:
