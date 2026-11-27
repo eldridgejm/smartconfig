@@ -240,8 +240,9 @@ Resolving it:
        at any depth;
 
     Steps 1 and 2 are the only places where the resolver must recognize a core
-    function by identity (in _TemplateNode._expand_uses and _check): a template's
-    value is not evaluated, so no function in it runs that could act for itself;
+    function (in _TemplateNode._expand_uses and _check): a template's value is not
+    evaluated, so no function in it runs that could act for itself. It is recognized
+    by identity, not by name, since the core functions may be given any name;
     3. returns a Template that remembers the resolution options and the parameters.
 
 A ``__template__`` wrapper on a field of type ``any`` also gives a _TemplateNode (with
@@ -2126,7 +2127,9 @@ class _TemplateNode(_Node):
         is added to ``expanded``.
 
         """
-        # imported here: _core_functions imports this module
+        # imported here: _core_functions imports this module. The core functions are
+        # compared by identity, so they are found under any name they were given in
+        # `functions` (see "Template Fields" in the module docstring)
         from ._core_functions import _raw, _use
 
         if isinstance(value, list):
@@ -2172,7 +2175,8 @@ class _TemplateNode(_Node):
             (nor ``any``). Its ``enclosing`` is this template's keypath.
 
         """
-        # imported here: _core_functions imports this module
+        # imported here: _core_functions imports this module. Compared by identity,
+        # like the core functions in _expand_uses
         from ._core_functions import _template
 
         if isinstance(node, _DictNode):
