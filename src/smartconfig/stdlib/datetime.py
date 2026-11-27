@@ -1,7 +1,6 @@
 """Datetime-related functions: at, offset, first, and parse."""
 
 import datetime as datetimelib
-import enum
 import re
 from collections.abc import Callable
 
@@ -188,18 +187,20 @@ def _read_offset(value: Configuration, keypath: KeyPath) -> datetimelib.timedelt
     )
 
 
-class _DaysOfTheWeek(enum.IntEnum):
-    MONDAY = 0
-    TUESDAY = 1
-    WEDNESDAY = 2
-    THURSDAY = 3
-    FRIDAY = 4
-    SATURDAY = 5
-    SUNDAY = 6
+# the names of the days, at their index in datetime.date.weekday()
+_WEEKDAYS = (
+    "MONDAY",
+    "TUESDAY",
+    "WEDNESDAY",
+    "THURSDAY",
+    "FRIDAY",
+    "SATURDAY",
+    "SUNDAY",
+)
 
 
-def _get_day_of_the_week(s: Configuration, keypath: KeyPath) -> _DaysOfTheWeek:
-    """Convert a day name string to a ``_DaysOfTheWeek`` value.
+def _get_day_of_the_week(s: Configuration, keypath: KeyPath) -> int:
+    """Convert a day name string to its weekday number, from 0 for Monday.
 
     Parameters
     ----------
@@ -210,7 +211,7 @@ def _get_day_of_the_week(s: Configuration, keypath: KeyPath) -> _DaysOfTheWeek:
 
     Returns
     -------
-    _DaysOfTheWeek
+    int
 
     Raises
     ------
@@ -220,9 +221,9 @@ def _get_day_of_the_week(s: Configuration, keypath: KeyPath) -> _DaysOfTheWeek:
     Examples
     --------
     >>> _get_day_of_the_week("Monday", keypath=())
-    <_DaysOfTheWeek.MONDAY: 0>
+    0
     >>> _get_day_of_the_week("friday", keypath=())
-    <_DaysOfTheWeek.FRIDAY: 4>
+    4
 
     """
     if not isinstance(s, str):
@@ -230,13 +231,13 @@ def _get_day_of_the_week(s: Configuration, keypath: KeyPath) -> _DaysOfTheWeek:
             f"Expected a day name string, got {type(s).__name__}.", keypath
         )
     try:
-        return _DaysOfTheWeek[s.upper()]
-    except KeyError:
+        return _WEEKDAYS.index(s.upper())
+    except ValueError:
         raise ResolutionError(f"Invalid day of week: '{s}'.", keypath)
 
 
-def _parse_weekdays(raw: str, keypath: KeyPath) -> set[_DaysOfTheWeek]:
-    """Parse a string of weekday names into a set of ``_DaysOfTheWeek`` values.
+def _parse_weekdays(raw: str, keypath: KeyPath) -> set[int]:
+    """Parse a string of weekday names into a set of weekday numbers.
 
     Names may be separated by commas, spaces, or the word ``"or"``.
     All separators are normalized before splitting, so ``"monday, friday"``,
@@ -251,7 +252,7 @@ def _parse_weekdays(raw: str, keypath: KeyPath) -> set[_DaysOfTheWeek]:
 
     Returns
     -------
-    set of _DaysOfTheWeek
+    set of int
 
     Raises
     ------
@@ -261,7 +262,7 @@ def _parse_weekdays(raw: str, keypath: KeyPath) -> set[_DaysOfTheWeek]:
     Examples
     --------
     >>> sorted(_parse_weekdays("monday, friday", keypath=()))
-    [<_DaysOfTheWeek.MONDAY: 0>, <_DaysOfTheWeek.FRIDAY: 4>]
+    [0, 4]
 
     """
     normalized = raw.replace(",", " ").replace(" or ", " ")
@@ -352,69 +353,15 @@ def _read_skip_dates(value: Configuration, keypath: KeyPath) -> set[datetimelib.
     return {_day(_read_date_or_datetime(item, keypath)) for item in value}
 
 
-def _find_first_weekday(
-    reference: _DateOrDatetime,
-    weekdays: set[_DaysOfTheWeek],
-    before: bool,
-) -> _DateOrDatetime:
-    """Find the first occurrence of a weekday before/after a reference date.
-
-    Parameters
-    ----------
-    reference : datetime.date or datetime.datetime
-        The starting point. This date is excluded from the search.
-    weekdays : set of _DaysOfTheWeek
-        The target weekday(s) to search for.
-    before : bool
-        If True, search backward in time; otherwise search forward.
-
-    Returns
-    -------
-    datetime.date or datetime.datetime
-        The first matching date, of the same type as ``reference``. The time
-        component of a datetime is preserved.
-
-    Examples
-    --------
-    The first Monday after Sep 14, 2021 (a Tuesday):
-
-    >>> _find_first_weekday(
-    ...     datetimelib.datetime(2021, 9, 14), {_DaysOfTheWeek.MONDAY}, before=False
-    ... )
-    datetime.datetime(2021, 9, 20, 0, 0)
-
-    """
-    sign = -1 if before else 1
-    delta = datetimelib.timedelta(days=sign)
-    cursor = reference + delta
-    while cursor.weekday() not in weekdays:
-        cursor += delta
-    return cursor
-
-
 def _skip_excluded(
     result: _DateOrDatetime,
     skip_dates: set[datetimelib.date],
     next_candidate: Callable[[_DateOrDatetime], _DateOrDatetime],
     keypath: KeyPath,
 ) -> _DateOrDatetime:
-    """Advance past excluded dates using a caller-supplied step function.
+    """The first of ``result`` and the candidates after it that isn't skipped.
 
-    Parameters
-    ----------
-    result : datetime.date or datetime.datetime
-        The initial candidate date.
-    skip_dates : set of datetime.date
-        Dates to skip.
-    next_candidate : callable
-        A function ``(date) -> date`` that produces the next candidate when the
-        current one is excluded.
-    keypath : tuple of str
-        The keypath for error reporting.
-
-    Returns
-    -------
-    datetime.date or datetime.datetime
+    Each candidate is ``next_candidate`` of the one before.
 
     Raises
     ------
@@ -490,13 +437,11 @@ def _offset_date(
     """
     # going past the first or last representable date raises a bare
     # OverflowError, which would say nothing about which offset it was
+    day = datetimelib.timedelta(days=-1 if before else 1)
     try:
-        result = _shift(reference, delta, before=before)
-        if skip_dates:
-            day_step = datetimelib.timedelta(days=-1 if before else 1)
-            result = _skip_excluded(
-                result, skip_dates, lambda dt: dt + day_step, keypath
-            )
+        result = _skip_excluded(
+            _shift(reference, delta, before), skip_dates, lambda dt: dt + day, keypath
+        )
     except OverflowError:
         direction = "before" if before else "after"
         raise ResolutionError(
@@ -509,12 +454,14 @@ def _offset_date(
 
 def _first_weekday(
     reference: _DateOrDatetime,
-    weekdays: set[_DaysOfTheWeek],
+    weekdays: set[int],
     before: bool,
     skip_dates: set[datetimelib.date],
     keypath: KeyPath,
 ) -> _DateOrDatetime:
     """The first of ``weekdays`` before or after ``reference``, not in ``skip_dates``.
+
+    The result is of the same type as ``reference``, and a datetime keeps its time.
 
     Raises
     ------
@@ -530,17 +477,21 @@ def _first_weekday(
 
     # going past the first or last representable date raises a bare
     # OverflowError, which would say nothing about which search it was
+    day = datetimelib.timedelta(days=-1 if before else 1)
+
+    def next_weekday(cursor: _DateOrDatetime) -> _DateOrDatetime:
+        """The first of ``weekdays`` after (or before) ``cursor``, not counting it."""
+        cursor += day
+        while cursor.weekday() not in weekdays:
+            cursor += day
+        return cursor
+
     try:
-        result = _find_first_weekday(reference, weekdays, before=before)
-        if skip_dates:
-            result = _skip_excluded(
-                result,
-                skip_dates,
-                lambda dt: _find_first_weekday(dt, weekdays, before=before),
-                keypath,
-            )
+        result = _skip_excluded(
+            next_weekday(reference), skip_dates, next_weekday, keypath
+        )
     except OverflowError:
-        names = ", ".join(day.name.lower() for day in sorted(weekdays))
+        names = ", ".join(_WEEKDAYS[n].lower() for n in sorted(weekdays))
         direction = "before" if before else "after"
         raise ResolutionError(
             f"The first {names} {direction} {reference} is out of range.", keypath
