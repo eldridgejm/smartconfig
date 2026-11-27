@@ -254,8 +254,7 @@ def resolve(
     filters: Mapping[str, Callable] | None = ...,
     preserve_type: bool = ...,
     check_for_function_call: _types.FunctionCallChecker | None = ...,
-) -> dict:
-    """Overloaded resolve() for ConfigurationDict."""
+) -> dict: ...
 
 
 @typing.overload
@@ -269,8 +268,7 @@ def resolve(
     filters: Mapping[str, Callable] | None = ...,
     preserve_type: bool = ...,
     check_for_function_call: _types.FunctionCallChecker | None = ...,
-) -> list:
-    """Overloaded resolve() for ConfigurationList."""
+) -> list: ...
 
 
 @typing.overload
@@ -284,8 +282,7 @@ def resolve(
     filters: Mapping[str, Callable] | None = ...,
     preserve_type: bool = ...,
     check_for_function_call: _types.FunctionCallChecker | None = ...,
-) -> Any:
-    """Overloaded resolve() for ConfigurationValue."""
+) -> Any: ...
 
 
 # implementation -----------------------------------------------------------------------
