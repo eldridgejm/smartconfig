@@ -1615,9 +1615,6 @@ class _ValueNode(_Node):
         The keypath to this node in the configuration tree.
     resolution_context : ResolutionContext
         The resolution context (converters, functions, variables, filters, etc.).
-    nullable : bool
-        Whether the value can be None or not. If `raw` is None this is True, it
-        is not converted (no matter what type_ is). Default: False.
     parent : _ConcreteNode | None
         The parent of this node. Can be `None`, in which case this is the root.
     local_variables : Mapping[str, Configuration | UnresolvedDict | UnresolvedList | UnresolvedFunctionCall] | None
@@ -1634,7 +1631,6 @@ class _ValueNode(_Node):
         type_,
         keypath: _types.KeyPath,
         resolution_context: _types.ResolutionContext,
-        nullable: bool = False,
         parent: _ConcreteNode | None = None,
         local_variables: Mapping[str, _types.Configuration] | None = None,
         mode: ResolutionMode = ResolutionMode.STANDARD,
@@ -1644,7 +1640,6 @@ class _ValueNode(_Node):
         self.type_ = type_
         self.keypath = keypath
         self.resolution_context = resolution_context
-        self.nullable = nullable
         self.mode = mode
 
     @classmethod
@@ -1679,15 +1674,11 @@ class _ValueNode(_Node):
             The resolution mode governing string interpolation for this node.
 
         """
-        if schema["type"] == "any":
-            schema = {"type": "any", "nullable": True}
-
         return cls(
             value,
             schema["type"],
             keypath,
             resolution_context,
-            nullable=schema["nullable"] if "nullable" in schema else False,
             parent=parent,
             local_variables=local_variables,
             mode=mode,
@@ -1722,9 +1713,8 @@ class _ValueNode(_Node):
         else:
             value = self.value
 
-        # Step 2: convert the value to the expected type (if it's not None)
-        if self.nullable and self.value is None:
-            return None
+        # Step 2: convert the value to the expected type. None is never converted:
+        # make_node gives a None value the "any" type, which _convert passes through
         return self._safely_evaluate(self._convert, value, self.type_)
 
     def _make_custom_jinja_context(
