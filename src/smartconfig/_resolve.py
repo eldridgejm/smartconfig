@@ -73,32 +73,24 @@ def _check_for_dunder_function_call(
         function being called is not known.
 
     """
-
-    def _is_dunder(s: str) -> bool:
-        """Checks if a string is of the form "__<something>__"."""
-        return s.startswith("__") and s.endswith("__")
-
-    is_potential_function_call = any(_is_dunder(key) for key in dct.keys())
-
-    if is_potential_function_call:
-        if len(dct) != 1:
-            # name the other keys: a function call is a dict with exactly one key
-            function_key = next(key for key in dct if _is_dunder(key))
-            others = ", ".join(repr(key) for key in dct if key != function_key)
-            raise ValueError(
-                f"A function call must be a dict with exactly one key, but "
-                f"{function_key!r} has the other key(s) {others}."
-            )
-        else:
-            key = next(iter(dct.keys()))
-            function_name = key[2:-2]
-    else:
+    dunder_keys = [key for key in dct if key.startswith("__") and key.endswith("__")]
+    if not dunder_keys:
         return None
 
+    function_key = dunder_keys[0]
+    if len(dct) != 1:
+        # name the other keys: a function call is a dict with exactly one key
+        others = ", ".join(repr(key) for key in dct if key != function_key)
+        raise ValueError(
+            f"A function call must be a dict with exactly one key, but "
+            f"{function_key!r} has the other key(s) {others}."
+        )
+
+    function_name = function_key[2:-2]
     if function_name not in functions:
         raise ValueError(f"Unknown function: {function_name}")
 
-    return functions[function_name], dct[key]
+    return functions[function_name], dct[function_key]
 
 
 # helpers ------------------------------------------------------------------------------
