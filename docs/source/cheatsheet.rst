@@ -1,5 +1,5 @@
-Reference
-=========
+Cheat Sheet
+===========
 
 .. testsetup::
 
@@ -553,10 +553,10 @@ into its ``CLAUDE.md`` or ``AGENTS.md``:
     Python library, which adds its own syntax to them: `${...}` interpolation
     (not Jinja's `{{ }}`), function calls written as one-key dicts like
     `{"__list.loop__": {...}}`, and schemas. Don't guess this syntax. Before
-    editing a configuration file, read smartconfig's reference, which is
+    editing a configuration file, read smartconfig's cheat sheet, which is
     installed with the package. Print its path with:
 
-        python -c "import smartconfig, pathlib; print(pathlib.Path(smartconfig.__file__).parent / 'docs' / 'reference.rst')"
+        python -c "import smartconfig, pathlib; print(pathlib.Path(smartconfig.__file__).parent / 'docs' / 'cheatsheet.rst')"
 
     (Run it in the project's environment, e.g. with `uv run python`.) The other
     pages of the documentation are in the same directory, and online at

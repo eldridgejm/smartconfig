@@ -2,7 +2,7 @@
 
 `smartconfig` is a Python library for enhancing standard configuration formats (JSON, YAML, TOML) with dynamic features like interpolation, type conversion, and function evaluation, allowing you to build powerful configuration systems for your applications.
 
-See the [documentation](https://eldridgejm.github.io/smartconfig/) for more information. The [reference page](https://eldridgejm.github.io/smartconfig/reference.html) summarizes the whole configuration language on one page; it is also installed with the package, at `smartconfig/docs/reference.rst`, for AI agents editing smartconfig configurations.
+See the [documentation](https://eldridgejm.github.io/smartconfig/) for more information. The [cheat sheet](https://eldridgejm.github.io/smartconfig/cheatsheet.html) summarizes the whole configuration language on one page; it is also installed with the package, at `smartconfig/docs/cheatsheet.rst`, for AI agents editing smartconfig configurations.
 
 ## Use Cases and Quick Start
 
