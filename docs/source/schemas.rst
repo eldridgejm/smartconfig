@@ -43,10 +43,8 @@ More precisely, a schema dictionary follows the formal grammar below:
         ["nullable": (True | False)]
     }
 
-    <VALUE_TYPE> = (
-        "string" | "integer" | "float" | "boolean" | "date" | "datetime"
-        | <NAME OF A CUSTOM CONVERTER>
-    )
+    <VALUE_TYPE> = the name of a converter passed to resolve
+        (by default: "string", "integer", "float", "boolean", "date", "datetime")
 
     <ANY_SCHEMA> = {
         "type": "any",
@@ -75,13 +73,69 @@ same as their non-default counterparts, but with an additional field named
 `default` that specifies the default value should that part of the
 configuration be missing.
 
+A default is resolved just like a value written in the configuration: it is
+interpolated, its function calls are evaluated, and it is converted, and a dict
+default gets the defaults of its own keys:
+
+.. testcode::
+
+    schema = {
+        "type": "dict",
+        "required_keys": {"x": {"type": "integer"}},
+        "optional_keys": {
+            "y": {"type": "integer", "default": "${ x + 1 }"},
+            "z": {
+                "type": "dict",
+                "optional_keys": {"w": {"type": "string", "default": "hi"}},
+                "default": {},
+            },
+        },
+    }
+    print(smartconfig.resolve({"x": 1}, schema))
+
+.. testoutput::
+
+    {'x': 1, 'y': 2, 'z': {'w': 'hi'}}
+
+The default of a template schema is the template as written, *without* a
+``__template__`` wrapper. Wrapping it is an
+:class:`~smartconfig.exceptions.UnexpectedTemplateError`.
+
+.. testcode::
+
+    schema = {
+        "type": "dict",
+        "optional_keys": {
+            "greeting": {
+                "type": "template",
+                "schema": {"type": "string"},
+                "parameters": ["name"],
+                "default": "Hello, ${ name }!",
+            },
+        },
+    }
+    result = smartconfig.resolve({}, schema)
+    print(result["greeting"].evaluate({"name": "Ada"}))
+
+.. testoutput::
+
+    'Hello, Ada!'
+
 Anywhere a schema is expected, you can also provide a **dynamic schema**.
-A dynamic schema is a Python function that takes a configuration and a
+A dynamic schema is a Python function that takes a configuration value and its
 keypath as input and returns a schema dictionary. This allows the schema to be
 determined at runtime based on the configuration itself. This is particularly
 useful for handling polymorphic lists or dictionaries where the schema of an
 element depends on its content (e.g., a "type" field).
 (See :ref:`dynamic_schemas_example` for an example).
+
+The function gets the *raw* value, as written in the configuration, before any
+interpolation or function evaluation: a ``"${...}"`` string or a function call
+is passed as it is. When an optional key is missing, the function is called
+with ``None``, so that it can return a schema with a default. What it returns is
+validated like any other schema, so it may have a ``default`` only where one
+could be written: under ``required_keys``, a returned default is an
+:class:`~smartconfig.exceptions.InvalidSchemaError`.
 
 A **template schema** marks a field whose value is evaluated later, possibly
 many times: its value is kept as written and resolves to a
@@ -97,8 +151,11 @@ a top-level default; put the default on the template schema. The inner schema
 may contain template schemas: a template inside a template sees the parameters
 of the templates around it. (See :ref:`template_fields_example`.)
 
-Schemas can be validated using the :func:`smartconfig.validate_schema`
-function.
+:func:`smartconfig.resolve` validates the schema itself, so there is no need
+to check it first. To check a schema ahead of time, use
+:func:`smartconfig.validate_schema`. If the schema uses custom types, pass it
+the same ``converters`` as ``resolve``, since the valid types are the names of
+the converters.
 
 Examples
 ~~~~~~~~
@@ -184,6 +241,8 @@ Example 3: Allowing nullable values
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Mark a field as nullable when ``None`` is an allowed value in the configuration.
+``nullable`` defaults to ``False``, except for the ``any`` type, which accepts
+``None`` unless it is given ``"nullable": False``.
 
 Input:
 

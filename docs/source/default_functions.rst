@@ -21,7 +21,7 @@ Default functions are organized into two groups:
 One stdlib function, ``python``, is not on by default, since it runs code written
 in the configuration. See :doc:`inline_python`.
 
-The default functions are available by default — :func:`smartconfig.resolve`
+You don't need to do anything to use these functions: :func:`smartconfig.resolve`
 uses :data:`smartconfig.DEFAULT_FUNCTIONS` as the default value for its
 ``functions`` parameter. Pass ``functions=None`` to make no functions available;
 a function call is then an error. (To turn off function-call detection entirely,
@@ -190,7 +190,7 @@ Introduces local variables and/or references for use within a subtree.
      - A dictionary of variable bindings. Each key-value pair is resolved and made available as a local variable within the body. At least one of ``variables`` or ``references`` must be provided.
    * - ``references``
      - No
-     - A dictionary mapping names to special targets: ``"__this__"`` (the body itself) or ``"__previous__"`` (the previous sibling in a list). These are exposed as unresolved containers. At least one of ``variables`` or ``references`` must be provided.
+     - A dictionary mapping names to special targets: ``"__this__"`` (the body itself) or ``"__previous__"`` (the previous sibling in a list). ``__this__`` gives access to the other parts of the body, and ``__previous__`` to the list element before this one; either is read like a local variable, as in ``${this.number}``. See the restrictions below. At least one of ``variables`` or ``references`` must be provided.
    * - ``in``
      - Yes
      - The configuration to evaluate with the defined variables and references.
@@ -220,6 +220,64 @@ This produces:
 
     {'x': 10, 'y': 14}
 
+**Example with references**: below, each lecture's ``title`` refers to its own
+``number`` through ``__this__``, and the second lecture computes its ``number``
+from the previous lecture's through ``__previous__``.
+
+.. testcode:: python
+
+    config = {
+        "lectures": [
+            {
+                "__let__": {
+                    "references": {"this": "__this__"},
+                    "in": {"number": 1, "title": "Lecture ${this.number}"},
+                }
+            },
+            {
+                "__let__": {
+                    "references": {"this": "__this__", "prev": "__previous__"},
+                    "in": {
+                        "number": "${prev.number + 1}",
+                        "title": "Lecture ${this.number}",
+                    },
+                }
+            },
+        ]
+    }
+
+    lecture_schema = {
+        "type": "dict",
+        "required_keys": {
+            "number": {"type": "integer"},
+            "title": {"type": "string"},
+        },
+    }
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "lectures": {"type": "list", "element_schema": lecture_schema}
+        },
+    }
+
+    print(smartconfig.resolve(config, schema))
+
+This produces:
+
+.. testoutput:: python
+
+    {'lectures': [{'number': 1, 'title': 'Lecture 1'},
+                  {'number': 2, 'title': 'Lecture 2'}]}
+
+References have some restrictions:
+
+- ``__this__`` can't be used when ``in`` is a single value or a template, since
+  there are no other parts to refer to.
+- ``__previous__`` can only be used on an element of a list, and not on the
+  first one. It also can't be used inside a function call's input, such as the
+  body of ``list.loop``, since that input isn't a list.
+
 
 .. _func-raw:
 
@@ -229,9 +287,11 @@ raw
 Keeps its input as written: everything in it is data. ``${...}`` references are
 not interpolated, and function calls (including ``__template__`` and ``__use__``)
 are not evaluated, but kept as the dicts they are written as. The value is still
-converted to the field's schema. Note that the raw wrapper is removed upon
-resolution — if you need a template that survives resolution boundaries, see
-:ref:`__template__ <func-template>`.
+converted to the field's schema. Use it for values that must be taken
+literally, such as a string containing ``${...}`` meant for another tool. The
+result is the plain value, without the ``__raw__`` wrapper. For a value that
+should be evaluated later, with its references filled in then, use
+:ref:`__template__ <func-template>` instead.
 
 **Input**: Any configuration. The input is returned as written, with nothing in it
 interpolated or evaluated.
@@ -367,6 +427,9 @@ splice
 Copies a subtree from elsewhere in the configuration.
 
 **Input**: A string keypath (e.g., ``"x.b"``). The node at that keypath is resolved and inserted at the splice location.
+
+The keypath is always looked up from the root of the configuration; unlike
+``__use__``, local variables and global variables aren't searched.
 
 **Example**:
 
@@ -861,9 +924,10 @@ This produces:
 list.zip
 ~~~~~~~~
 
-Zips lists together, producing a list of lists.
+Zips lists together, producing a list of lists. Like Python's ``zip``, the result
+is as long as the shortest list.
 
-**Input**: A list of lists.
+**Input**: A non-empty list of lists. An empty list (``[]``) is an error.
 
 **Example**:
 
@@ -891,7 +955,7 @@ list.concatenate
 
 Concatenates multiple lists into one.
 
-**Input**: A list of lists.
+**Input**: A non-empty list of lists. An empty list (``[]``) is an error.
 
 **Example**:
 
@@ -926,7 +990,7 @@ dict.update
 Deep merges dictionaries, with later dictionaries taking precedence. Nested
 dictionaries are merged recursively.
 
-**Input**: A list of dictionaries.
+**Input**: A non-empty list of dictionaries. An empty list (``[]``) is an error.
 
 **Example**:
 
@@ -970,7 +1034,7 @@ dict.update_shallow
 Shallow merges dictionaries, with later dictionaries taking precedence. Unlike
 ``dict.update``, nested dictionaries are not merged recursively.
 
-**Input**: A list of dictionaries.
+**Input**: A non-empty list of dictionaries. An empty list (``[]``) is an error.
 
 **Example**:
 
@@ -1075,13 +1139,19 @@ Parses a natural language date/datetime string.
 **Input**: A string in one of the following forms:
 
 - An ISO date or datetime: ``"2021-10-05"`` or ``"2021-10-05 23:59:10"``
-- An offset: ``"3 days after 2021-10-05"`` (multiple units can be comma-separated,
-  e.g., ``"1 week, 2 days after 2021-10-05"``; each unit may appear only once)
-- A first-weekday: ``"first monday after 2021-09-14"`` (multiple day names can be
-  separated by commas, e.g., ``"first monday, wednesday after 2021-09-14"``)
+- An offset: ``"3 days after 2021-10-05"`` or ``"3 days before 2021-10-05"``
+  (multiple units can be comma-separated, e.g., ``"1 week, 2 days after
+  2021-10-05"``; each unit may appear only once)
+- A first-weekday: ``"first monday after 2021-09-14"`` or ``"first monday before
+  2021-09-14"`` (multiple day names can be separated by commas, spaces or "or",
+  e.g., ``"first monday, wednesday after 2021-09-14"`` or ``"first monday or
+  wednesday after 2021-09-14"``). As with ``datetime.first``, the search is
+  strict: the reference date itself is never the result, even if it falls on
+  one of the given days.
 
 Any form may end with ``" at HH:MM"`` or ``" at HH:MM:SS"`` to override the time
-component; the hour may have one digit, as in ``" at 9:00"``.
+component; the hour may have one digit, as in ``" at 9:00"``. Matching is
+case-insensitive, so ``"First Monday Before 2021-09-14"`` works too.
 
 **Example**:
 
@@ -1182,6 +1252,8 @@ datetime.first
 ~~~~~~~~~~~~~~
 
 Finds the first occurrence of a given weekday before or after a reference date.
+The search is strict: the reference date itself is never the result, so the
+first Monday after a Monday is a week later.
 
 **Input**: A dictionary with the following keys:
 
@@ -1194,7 +1266,7 @@ Finds the first occurrence of a given weekday before or after a reference date.
      - Description
    * - ``weekday``
      - Yes
-     - A day name (e.g., ``"monday"``) or comma-separated list of day names (e.g., ``"monday, friday"``).
+     - A day name (e.g., ``"monday"``), or several: either a list of names (e.g., ``["monday", "friday"]``) or a string with the names separated by commas, spaces or "or" (e.g., ``"monday, friday"`` or ``"monday or friday"``). Names are case-insensitive.
    * - ``before``
      - No
      - The reference date to search backward from. Mutually exclusive with ``after``; exactly one must be provided.

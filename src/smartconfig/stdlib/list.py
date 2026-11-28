@@ -160,7 +160,7 @@ def loop(args: FunctionArgs) -> Configuration:
 def filter_(args: FunctionArgs) -> ConfigurationList:
     """Filters a list.
 
-    ``args.input`` should be a list of dictionaries with three keys:
+    ``args.input`` should be a dictionary with three keys:
 
         - ``iterable``: the list to filter
         - ``variable``: a string representing the name of the variable that will be

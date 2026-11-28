@@ -81,7 +81,7 @@ def schema(schema: _types.Schema | _types.DynamicSchema) -> _SchemaAnnotation:
 
     Parameters
     ----------
-    schema : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
+    schema : Union[:class:`~smartconfig.types.Schema`, :class:`~smartconfig.types.DynamicSchema`]
         The field's schema: a schema dict, or a dynamic schema (a function).
 
     Returns
@@ -121,14 +121,14 @@ def template(
     """Make a Prototype field a template field.
 
     Used as ``typing.Annotated`` metadata on a field typed
-    :class:`types.Template` (or ``Template | None``, for a nullable template field).
-    The field's schema is ``{"type": "template", "schema": schema, "parameters":
+    :class:`~smartconfig.types.Template` (or ``Template | None``, for a nullable
+    template field). The field's schema is ``{"type": "template", "schema": schema, "parameters":
     [...]}``, nullable if the type includes ``None``, and its resolved value is a
-    :class:`types.Template`.
+    :class:`~smartconfig.types.Template`.
 
     Parameters
     ----------
-    schema : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
+    schema : Union[:class:`~smartconfig.types.Schema`, :class:`~smartconfig.types.DynamicSchema`]
         The schema of the template's value, once it is evaluated.
     parameters : Iterable[str]
         The names given to the template each time it is evaluated. Defaults to none.
@@ -210,7 +210,7 @@ class Prototype:
     ``__repr__`` come from :mod:`dataclasses`, as does ``dataclasses.field()``, and
     its fields describe the keys of a dict schema. Pass the class to
     :func:`smartconfig.resolve` in place of a schema to get an instance of it, or
-    get its schema with :func:`schema_of`.
+    get its schema with :func:`~smartconfig.prototypes.schema_of`.
 
     A field's schema is inferred from its type hint:
 
@@ -224,8 +224,10 @@ class Prototype:
     - a Prototype subclass is its dict schema, and its value becomes an instance.
 
     Any other type is a ``TypeError`` when the class is defined. A field whose schema
-    can't be inferred is given one with ``typing.Annotated`` and :func:`schema` or
-    :func:`template`, as in ``Annotated[dict[str, Any], smartconfig.prototypes.schema(...)]``.
+    can't be inferred is given one with ``typing.Annotated`` and
+    :func:`~smartconfig.prototypes.schema` or
+    :func:`~smartconfig.prototypes.template`, as in
+    ``Annotated[dict[str, Any], smartconfig.prototypes.schema(...)]``.
 
     A field is optional exactly when it has a default (``= value``, or
     ``dataclasses.field(default_factory=...)``), and its schema gets that default.
@@ -237,10 +239,10 @@ class Prototype:
 
     The class option ``extra_keys`` allows keys besides the fields, as a dict
     schema's ``extra_keys_schema`` does. Its value is a type hint or an explicit
-    :func:`schema`, as for a field. The extra keys are kept in the ``extra_keys``
-    attribute, a dict, which is an ``__init__`` argument and is compared by
-    ``__eq__``. The name ``extra_keys`` is reserved: no Prototype may have a field
-    called that.
+    :func:`~smartconfig.prototypes.schema`, as for a field. The extra keys are kept
+    in the ``extra_keys`` attribute, a dict, which is an ``__init__`` argument and is
+    compared by ``__eq__``. The name ``extra_keys`` is reserved: no Prototype may
+    have a field called that.
 
     Examples
     --------
@@ -627,7 +629,7 @@ def schema_of(cls: type[Prototype]) -> _types.Schema:
 
     Returns
     -------
-    :class:`types.Schema`
+    :class:`~smartconfig.types.Schema`
         A dict schema, a copy that is the caller's to change.
 
     Raises

@@ -99,7 +99,8 @@ an explicit schema (see `Explicit schemas`_).
 
 A field is **optional** exactly when it has a default (``= value``, or
 ``field(default_factory=...)``), and its schema then gets that default. A field
-is **nullable** exactly when its type includes ``None``. The two are
+is **nullable** exactly when its type includes ``None`` (or is ``Any``, which
+accepts anything, ``None`` included). The two are
 independent: ``x: str | None`` is required but may be null, and ``x: str =
 "a"`` is optional but may not be null.
 
@@ -159,17 +160,51 @@ the way to describe a complex or deeply nested value, or one whose schema is
     Config(title='DSC 40B', calendar={'exams': [datetime.date(2026, 10, 20)]})
 
 The type inside ``Annotated`` is what type checkers see; the schema is what
-`smartconfig` uses. Two things connect them. If the field has a default and the
-schema doesn't, the field's default is added to the schema (as with
-``calendar`` above). And the type's ``None`` must agree with the schema's
-``nullable``: a field typed ``str | None`` with a schema that isn't nullable is
-a ``TypeError``. A field with an explicit schema keeps its resolved value as
-is: here, ``calendar`` is a dict, and it would be one even if its schema were a
+`smartconfig` uses. Two checks connect them, both made when the class is
+defined:
+
+- **Defaults.** If the field has a default and the schema doesn't, the field's
+  default is copied into the schema (as with ``calendar`` above). If both have
+  one, they must be equal, or it is a ``TypeError``.
+- **Nullability.** The type includes ``None`` exactly when the schema is
+  nullable, and a mismatch either way is a ``TypeError``: a field typed
+  ``str | None`` with a schema that isn't nullable, or a field typed ``str``
+  with a nullable schema.
+
+Both checks are skipped for a dynamic schema, whose default and nullability
+aren't known until it is called. The nullability check is also skipped for a
+field typed ``Any``.
+
+A field with an explicit schema keeps its resolved value as is: here,
+``calendar`` is a dict, and it would be one even if its schema were a
 prototype's.
+
+An explicit schema isn't validated when the class is defined, because the
+converters, and so the valid types, aren't known until
+:func:`smartconfig.resolve` is called. A mistake in it is found by ``resolve``
+(or by :func:`smartconfig.validate_schema` on the class's
+:func:`~smartconfig.prototypes.schema_of`), as an
+:class:`~smartconfig.exceptions.InvalidSchemaError` whose keypath points into
+the class's schema:
+
+.. testcode::
+
+    class Typo(Prototype):
+        count: Annotated[int, smartconfig.prototypes.schema({"type": "intger"})]
+
+    try:
+        smartconfig.resolve({"count": 3}, Typo)
+    except smartconfig.exceptions.InvalidSchemaError as exc:
+        print(exc.keypath)
+
+.. testoutput::
+
+    ('required_keys', 'count', 'type')
 
 A schema that has a default of its own also makes its field optional. This is
 how a template field gets a default, since a template's default is the
-template as written, which isn't a value of the field's type.
+template as written, which isn't a value of the field's type (see the example
+in `Template fields`_).
 
 Template fields
 ~~~~~~~~~~~~~~~
@@ -196,14 +231,38 @@ and its parameters:
 
     'Lecture 4'
 
+To give a template field a default, pass it to
+:func:`~smartconfig.prototypes.template` as the keyword argument ``default``.
+The default is the template as written, without a ``__template__`` wrapper, and
+the field becomes optional:
+
+.. testcode::
+
+    class Page(Prototype):
+        title: Annotated[
+            Template,
+            smartconfig.prototypes.template(
+                {"type": "string"}, ["publication"], default="Lecture ${ publication.number }"
+            ),
+        ]
+
+    page = smartconfig.resolve({}, Page)
+    print(page.title.evaluate({"publication": {"number": 5}}))
+
+.. testoutput::
+
+    'Lecture 5'
+
 Extra keys
 ----------
 
 By default, a key that isn't a field is an error, as for a schema dictionary
 without ``extra_keys_schema``. The class option ``extra_keys`` allows such keys
 and gives their schema, as a type hint (``extra_keys=str``) or an explicit
-schema (``extra_keys=smartconfig.prototypes.schema({...})``). The extra keys are kept,
-resolved, in the instance's ``extra_keys`` attribute, a dict:
+schema (``extra_keys=smartconfig.prototypes.schema({...})``). It may also be
+``extra_keys=smartconfig.prototypes.template(...)``, to make every extra key a
+template. The extra keys are kept, resolved, in the instance's ``extra_keys``
+attribute, a dict:
 
 .. testcode::
 

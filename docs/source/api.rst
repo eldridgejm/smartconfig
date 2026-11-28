@@ -2,7 +2,6 @@ Core API
 ========
 
 .. module:: smartconfig
-   :noindex:
 
 The core functionality of `smartconfig` is exposed through two main functions:
 :func:`resolve` for resolving configurations and :func:`validate_schema` for
@@ -10,11 +9,14 @@ checking the validity of schemas. :class:`Prototype` and the functions in
 :mod:`smartconfig.prototypes` describe a configuration as a class instead of a
 schema (see :ref:`prototypes`).
 
-.. function:: resolve(...) -> Configuration or Prototype
+.. function:: resolve[P: Prototype](cfg, spec: type[P], **options) -> P
+              resolve(cfg, spec: types.Schema | types.DynamicSchema, **options) -> typing.Any
 
     Resolve a configuration by interpolating and parsing its entries. The
     structure of the configuration is described by a schema dictionary, or by a
-    :class:`Prototype` subclass, in which case the result is an instance of it.
+    :class:`Prototype` subclass ``P``, in which case the result is an instance of
+    ``P``. The ``options`` are the keyword arguments described below, from
+    ``converters`` on; they can also be passed by position.
 
     Parameters
     ----------
@@ -50,7 +52,7 @@ schema (see :ref:`prototypes`).
         entirely, use ``check_for_function_call=None``.
         See :doc:`default_functions` for more information on the default functions.
         See :doc:`custom_functions` for how to define custom functions.
-    global_variables : Optional[Mapping[str, Any]]
+    global_variables : Mapping[str, Any] | None
         A dictionary of global variables to make available during string interpolation.
         If this is not provided, no global variables are available.
 
@@ -59,7 +61,7 @@ schema (see :ref:`prototypes`).
         engine. If you wish to provide external variables, it is suggested to
         include them in the configuration itself as shown in
         :ref:`recipes_external_variables`.
-    inject_root_as : Optional[str]
+    inject_root_as : str | None
         If this is not None, the root of the configuration tree is made
         available during string interpolation as a variable with this name.
         The root is passed as an :class:`types.UnresolvedDict`,
@@ -68,7 +70,7 @@ schema (see :ref:`prototypes`).
 
         It is suggested to avoid this and instead use the convention in
         :ref:`recipes_external_variables`.
-    filters : Optional[Mapping[str, Callable]]
+    filters : Mapping[str, Callable] | None
         A dictionary of Jinja2 filters to make available to templates. These will be
         added to Jinja2's set of default filters. If ``None``, no custom filters are
         provided. Defaults to ``None``.
@@ -79,10 +81,11 @@ schema (see :ref:`prototypes`).
         This is most useful in cases where the input is of a custom mapping type
         (such as an ordered dictionary) that should be preserved in the output.
         See :ref:`type-preservation` for more information.
-    check_for_function_call : :class:`types.FunctionCallChecker`
+    check_for_function_call : :class:`types.FunctionCallChecker` | None
         A function that checks if a :class:`types.ConfigurationDict` represents a
-        function call. It is given the configuration and the available functions. If it
-        is determined to be a function call, it returns a 2-tuple of the
+        function call. It is given the configuration and the available functions, as
+        a flat mapping from dotted names (such as ``"list.loop"``) to
+        :class:`types.Function` instances. If it is determined to be a function call, it returns a 2-tuple of the
         :class:`types.Function` and the input to the function. If not, it
         returns None. If it is determined to be a malformed function call, it
         should raise a ``ValueError``.
@@ -103,8 +106,8 @@ schema (see :ref:`prototypes`).
         reference, or there is some other issue with the configuration itself.
     ValueError
         If the name of a global variable, or ``inject_root_as``, is one that
-        ``${ ... }`` could never refer to (``true``, ``false``, ``none`` in
-        either case, ``not`` or ``self``).
+        ``${ ... }`` could never refer to: ``true``, ``True``, ``false``,
+        ``False``, ``none``, ``None``, ``not`` or ``self``.
 
 
 .. autofunction:: validate_schema
@@ -142,9 +145,13 @@ Constants
 
 .. data:: DEFAULT_FUNCTIONS
 
-    A dictionary containing all default functions (both core functions
-    and standard library functions). Pass this as the ``functions``
-    argument to :func:`resolve` to enable all default functions.
+    The default value of the ``functions`` argument of :func:`resolve`: the
+    core functions, plus the standard library functions under their namespaces
+    (``{"list": {"loop": ...}, ...}``).
+
+    To add top-level functions while keeping the defaults, pass
+    ``{**DEFAULT_FUNCTIONS, "name": fn}``. To add, override or remove functions
+    in general, including namespaced ones, see :doc:`custom_functions`.
 
 .. data:: CORE_FUNCTIONS
 
@@ -163,5 +170,5 @@ Constants
 .. data:: python
 
     The function that runs Python code written in the configuration. It is not
-    on by default; add it to the ``functions`` passed to :func:`resolve` to use
-    it. See :doc:`inline_python`.
+    on by default; add it to the ``functions`` passed to
+    :func:`~smartconfig.resolve` to use it. See :doc:`inline_python`.

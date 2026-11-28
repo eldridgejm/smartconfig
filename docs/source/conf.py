@@ -28,8 +28,13 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.doctest",
+    "sphinx.ext.intersphinx",
     "sphinxcontrib.mermaid",
 ]
+
+# link references to the standard library (datetime.date, collections.abc.Mapping,
+# dataclasses) to Python's own docs
+intersphinx_mapping = {"python": ("https://docs.python.org/3", None)}
 
 autodoc_typehints = "signature"
 
