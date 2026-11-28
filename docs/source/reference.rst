@@ -11,7 +11,8 @@ with the name of the page that covers its topic in full. Those pages are in the
 same directory as this one (``smartconfig/docs/`` in the installed package) and
 at https://eldridgejm.github.io/smartconfig/.
 
-The examples are Python dicts; JSON, YAML and TOML files load to the same thing.
+The examples are Python dicts. A configuration can come from any source (JSON,
+YAML, TOML, Python, ...) that gives dicts, lists and values.
 They are resolved with ``smartconfig.resolve(config, schema)``, and most use
 the schema ``{"type": "any"}``, which accepts anything and converts nothing.
 

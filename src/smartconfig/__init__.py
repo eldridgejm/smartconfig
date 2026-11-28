@@ -1,7 +1,7 @@
-"""smartconfig: smart features for JSON, YAML and TOML configurations.
+"""smartconfig: interpolation, functions and schemas for configurations.
 
-smartconfig resolves a configuration (a dict, list or value loaded from a file)
-against a schema: it interpolates ``${...}`` references with Jinja2, evaluates
+smartconfig resolves a configuration (dicts, lists and values, from any source:
+JSON, YAML, TOML, Python, ...) against a schema: it interpolates ``${...}`` references with Jinja2, evaluates
 function calls written as one-key dicts like ``{"__list.loop__": {...}}``, and
 converts values to their types. The entry point is ``resolve()``.
 
