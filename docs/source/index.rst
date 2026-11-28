@@ -71,6 +71,7 @@ Table of Contents
    :caption: Getting Started
 
    quick_start
+   agent_cheatsheet
 
 .. toctree::
    :maxdepth: 1
@@ -102,13 +103,12 @@ Table of Contents
 
 .. toctree::
    :maxdepth: 1
-   :caption: Reference
+   :caption: API Reference
 
    api
    types
    converters
    exceptions
-   agent_cheatsheet
 
 .. toctree::
    :maxdepth: 1

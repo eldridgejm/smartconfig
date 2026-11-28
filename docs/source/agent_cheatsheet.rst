@@ -6,7 +6,11 @@ Agent Cheat Sheet
     import smartconfig
     from pprint import pprint
 
-This page summarizes the configuration language and schemas. Each section ends
+This page is intended for AI agents. It summarizes the configuration language
+and schemas on one page, so that an agent can read all of it before editing a
+smartconfig configuration or writing code that calls smartconfig. One of the
+quickest ways to get started with smartconfig is to point your agent at this
+page (see "Telling an agent about smartconfig" at the end). Each section ends
 with the name of the page that covers its topic in full. Those pages are in the
 same directory as this one (``smartconfig/docs/`` in the installed package) and
 at https://eldridgejm.github.io/smartconfig/.
