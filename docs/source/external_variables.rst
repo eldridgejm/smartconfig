@@ -50,9 +50,12 @@ dictionary of variables that will be available to Jinja2 during string interpola
 
     {'greeting': 'Hello, Alice!'}
 
-Global variables are searched last, after local variables (defined on nodes) and the
-configuration root. This means that if a key exists in the configuration, it will shadow
-a global variable of the same name.
+Global variables are searched last: after local variables (introduced by
+``__let__``, ``__list.loop__``, or a custom function's
+``args.resolve(local_variables=...)``), the configuration root and, inside a
+template, the template's parameters. This means that if a key exists in the
+configuration, it will shadow a global variable of the same name. See
+:ref:`variable_lookup` for the full order.
 
 As discussed below, global variables should generally not be used to pass external variables
 whose names are unknown in advance, as this can lead to naming collisions and

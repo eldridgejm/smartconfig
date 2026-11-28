@@ -13,9 +13,11 @@ Configuration Graphs
 
 When thinking about how resolution works,
 it is helpful to conceptualize a configuration as a graph. Each node in the
-graph represents a piece of the configuration. We can imagine four different
-types of node: dictionary, list, value, and function call. Each edge in the
-graph represents a dependency between nodes.
+graph represents a piece of the configuration. We can imagine five different
+types of node: dictionary, list, value, function call, and template. A template
+node holds the value of a template field, which is evaluated lazily, when the
+program asks for it. Each edge in the graph represents a dependency between
+nodes.
 
 For example, consider the following configuration:
 
@@ -112,12 +114,22 @@ When a leaf (value) node is encountered, resolution happens in two phases:
    transforms it into the appropriate Python type (e.g., parsing ``"2025-01-10"``
    into a ``datetime.date`` object).
 
-The following sections describe each phase in more detail.
+When a function call node is encountered, the function is called first, and
+its result is then resolved like any other part of the configuration: a dict
+or list result is traversed in turn, and a value is interpolated and
+converted. (A function made with ``resolve_output=False`` has its result
+converted but not interpolated; see :doc:`custom_functions`.) When a template
+node is encountered, it resolves to a :class:`~smartconfig.types.Template`, without
+evaluating its contents.
+
+The following sections describe the two phases for value nodes in more detail.
+
+.. _variable_lookup:
 
 Interpolation and Variable Lookup
 ---------------------------------
 
-.. module:: smartconfig
+.. currentmodule:: smartconfig
 
 During interpolation, references like ``${foo.bar.baz}`` are resolved by looking
 up variables. Jinja2 traverses the dotted path by first looking up ``foo``, then
@@ -132,13 +144,19 @@ follows a specific search order:
 2. **The configuration itself** is searched next. This is how cross-references
    between different parts of the configuration work. When you write
    ``${course_name}``, `smartconfig` looks for a key called ``course_name`` in the
-   configuration.
+   configuration's root. Inside a template, the root is the template itself.
 
-3. **Global variables** are searched last. These are variables passed to
+3. **Template parameters** are searched next, inside a template. These are the
+   values passed to :meth:`Template.evaluate <smartconfig.types.Template.evaluate>`. A template parameter wins
+   over a global variable of the same name.
+
+4. **Global variables** are searched last. These are variables passed to
    :func:`resolve` via the ``global_variables`` parameter. Unlike configuration
    values, global variables are not interpolated or converted—they are used as-is.
    This makes them useful for injecting Python functions or constants that should
-   be available during interpolation.
+   be available during interpolation. The name given by ``inject_root_as`` lives
+   with the global variables, and it wins over a global variable of the same
+   name.
 
 A reference inserts a single value into the string: a string, a number, a date,
 and so on. **Inserting a whole dict or list is an error**, raising
