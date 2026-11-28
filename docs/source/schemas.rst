@@ -43,10 +43,8 @@ More precisely, a schema dictionary follows the formal grammar below:
         ["nullable": (True | False)]
     }
 
-    <VALUE_TYPE> = (
-        "string" | "integer" | "float" | "boolean" | "date" | "datetime"
-        | <NAME OF A CUSTOM CONVERTER>
-    )
+    <VALUE_TYPE> = the name of a converter passed to resolve
+        (by default: "string", "integer", "float", "boolean", "date", "datetime")
 
     <ANY_SCHEMA> = {
         "type": "any",
@@ -153,8 +151,11 @@ a top-level default; put the default on the template schema. The inner schema
 may contain template schemas: a template inside a template sees the parameters
 of the templates around it. (See :ref:`template_fields_example`.)
 
-Schemas can be validated using the :func:`smartconfig.validate_schema`
-function.
+:func:`smartconfig.resolve` validates the schema itself, so there is no need
+to check it first. To check a schema ahead of time, use
+:func:`smartconfig.validate_schema`. If the schema uses custom types, pass it
+the same ``converters`` as ``resolve``, since the valid types are the names of
+the converters.
 
 Examples
 ~~~~~~~~

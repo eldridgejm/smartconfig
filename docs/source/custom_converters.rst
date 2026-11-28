@@ -25,20 +25,49 @@ specify. These include ``integer``, ``float``, ``string``, ``boolean``,
 ``date``, and ``datetime``. For example, you might want to
 override the default ``integer`` converter to accept hexadecimal strings, or
 override ``boolean`` to accept ``"yes"`` and ``"no"`` in addition to ``"True"``
-and ``"False"``. You can also add a converter under a new name, such as
-``"hex"``, and use that name as a type in a schema. A schema whose type has no
-converter is rejected with an :class:`~smartconfig.exceptions.InvalidSchemaError`.
+and ``"False"``. You can also add a converter under a new name (other than
+``any``, ``dict``, ``list`` or ``template``, which are structural types and
+never use a converter), such as ``"hex"``, and use that name as a type in a
+schema. A schema whose type has no converter is rejected with an
+:class:`~smartconfig.exceptions.InvalidSchemaError`.
 
 Converters are responsible for validating their input and raising an appropriate
 exception if the input cannot be converted to the expected type. When a converter
 encounters invalid input, it should raise a :class:`smartconfig.exceptions.ConversionError`.
 This exception will be caught by `smartconfig` and re-raised with additional
-context about where in the configuration the error occurred.
+context about where in the configuration the error occurred. Any other
+exception escapes as it is, without a keypath, and isn't a `smartconfig`
+exception, so a converter should catch the errors it expects and raise a
+``ConversionError`` instead:
 
-To override a default converter, simply copy :data:`smartconfig.DEFAULT_CONVERTERS`
-and replace the entry for the type you wish to customize (do not modify the original
-dictionary in place). Then, pass the modified dictionary to :func:`smartconfig.resolve`
-via the `converters` keyword argument.
+.. testcode:: python
+
+    from smartconfig.exceptions import ConversionError
+
+    def hex_converter(value):
+        try:
+            return int(value, 16)
+        except ValueError as e:
+            raise ConversionError(f"Not hex: {value!r}.") from e
+
+    converters = {**smartconfig.DEFAULT_CONVERTERS, "hex": hex_converter}
+    schema = {"type": "dict", "required_keys": {"color": {"type": "hex"}}}
+
+    try:
+        smartconfig.resolve({"color": "zz"}, schema, converters=converters)
+    except smartconfig.exceptions.ResolutionError as exc:
+        print(str(exc))
+
+.. testoutput:: python
+
+    'Cannot resolve keypath "color": Not hex: \'zz\'.'
+
+Whether you override a default converter or add a new one, start from a copy
+of :data:`smartconfig.DEFAULT_CONVERTERS` and change the copy (do not modify the
+original dictionary in place). The ``converters`` argument replaces the default
+converters rather than adding to them, so passing ``converters={"hex": ...}``
+alone would leave out ``string`` and the rest. Then, pass the modified
+dictionary to :func:`smartconfig.resolve` via the `converters` keyword argument.
 
 Example: A Boolean Converter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
