@@ -119,7 +119,7 @@ its result is then resolved like any other part of the configuration: a dict
 or list result is traversed in turn, and a value is interpolated and
 converted. (A function made with ``resolve_output=False`` has its result
 converted but not interpolated; see :doc:`custom_functions`.) When a template
-node is encountered, it resolves to a :class:`types.Template`, without
+node is encountered, it resolves to a :class:`~smartconfig.types.Template`, without
 evaluating its contents.
 
 The following sections describe the two phases for value nodes in more detail.
@@ -147,7 +147,7 @@ follows a specific search order:
    configuration's root. Inside a template, the root is the template itself.
 
 3. **Template parameters** are searched next, inside a template. These are the
-   values passed to :meth:`types.Template.evaluate`. A template parameter wins
+   values passed to :meth:`Template.evaluate <smartconfig.types.Template.evaluate>`. A template parameter wins
    over a global variable of the same name.
 
 4. **Global variables** are searched last. These are variables passed to
