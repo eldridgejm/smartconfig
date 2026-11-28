@@ -190,7 +190,7 @@ Introduces local variables and/or references for use within a subtree.
      - A dictionary of variable bindings. Each key-value pair is resolved and made available as a local variable within the body. At least one of ``variables`` or ``references`` must be provided.
    * - ``references``
      - No
-     - A dictionary mapping names to special targets: ``"__this__"`` (the body itself) or ``"__previous__"`` (the previous sibling in a list). These are exposed as unresolved containers. At least one of ``variables`` or ``references`` must be provided.
+     - A dictionary mapping names to special targets: ``"__this__"`` (the body itself) or ``"__previous__"`` (the previous sibling in a list). ``__this__`` gives access to the other parts of the body, and ``__previous__`` to the list element before this one; either is read like a local variable, as in ``${this.number}``. See the restrictions below. At least one of ``variables`` or ``references`` must be provided.
    * - ``in``
      - Yes
      - The configuration to evaluate with the defined variables and references.
@@ -219,6 +219,64 @@ This produces:
 .. testoutput:: python
 
     {'x': 10, 'y': 14}
+
+**Example with references**: below, each lecture's ``title`` refers to its own
+``number`` through ``__this__``, and the second lecture computes its ``number``
+from the previous lecture's through ``__previous__``.
+
+.. testcode:: python
+
+    config = {
+        "lectures": [
+            {
+                "__let__": {
+                    "references": {"this": "__this__"},
+                    "in": {"number": 1, "title": "Lecture ${this.number}"},
+                }
+            },
+            {
+                "__let__": {
+                    "references": {"this": "__this__", "prev": "__previous__"},
+                    "in": {
+                        "number": "${prev.number + 1}",
+                        "title": "Lecture ${this.number}",
+                    },
+                }
+            },
+        ]
+    }
+
+    lecture_schema = {
+        "type": "dict",
+        "required_keys": {
+            "number": {"type": "integer"},
+            "title": {"type": "string"},
+        },
+    }
+
+    schema = {
+        "type": "dict",
+        "required_keys": {
+            "lectures": {"type": "list", "element_schema": lecture_schema}
+        },
+    }
+
+    print(smartconfig.resolve(config, schema))
+
+This produces:
+
+.. testoutput:: python
+
+    {'lectures': [{'number': 1, 'title': 'Lecture 1'},
+                  {'number': 2, 'title': 'Lecture 2'}]}
+
+References have some restrictions:
+
+- ``__this__`` can't be used when ``in`` is a single value or a template, since
+  there are no other parts to refer to.
+- ``__previous__`` can only be used on an element of a list, and not on the
+  first one. It also can't be used inside a function call's input, such as the
+  body of ``list.loop``, since that input isn't a list.
 
 
 .. _func-raw:
@@ -367,6 +425,9 @@ splice
 Copies a subtree from elsewhere in the configuration.
 
 **Input**: A string keypath (e.g., ``"x.b"``). The node at that keypath is resolved and inserted at the splice location.
+
+The keypath is always looked up from the root of the configuration; unlike
+``__use__``, local variables and global variables aren't searched.
 
 **Example**:
 
