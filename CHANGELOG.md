@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.0
+
+### `resolve()` with a schema is typed `Any`
+
+`resolve()` had overloads promising that a dict configuration resolves to a `dict` and a list to a `list`. The dict overload was wrong: a dict may be a function call whose result can be anything, as `{"__list.range__": {"stop": 3}}` gives a list. Resolving against a schema is now typed `Any`. Resolving against a `Prototype` class is still typed as an instance of it.
+
+Code that relied on a type checker seeing a `dict` can annotate the result (`config: dict = smartconfig.resolve(...)`) or use a `Prototype`.
+
+### A `Template` checks its options when it is made
+
+`smartconfig.types.Template(...)` now builds its resolution context and validates its schema in the constructor. An invalid schema raises `InvalidSchemaError`, and a global variable or `inject_root_as` with a name that Jinja reserves raises `ValueError`, when the template is made rather than when it is first evaluated. Templates made by `resolve()` are unaffected.
+
+### A schema passed to `args.resolve` is validated
+
+A custom function's `args.resolve(..., schema=...)` now validates the schema as `resolve()` validates its own. A bad one raises `InvalidSchemaError` at the call's keypath, followed by the path inside the schema, instead of a `ResolutionError` wrapping a bare `KeyError`.
+
+### Internal simplification
+
+The resolver was simplified throughout, with no other change in behavior: the source is about 800 lines shorter.
+
 ## 0.7.1
 
 ### The Prototype functions move to `smartconfig.prototypes`
