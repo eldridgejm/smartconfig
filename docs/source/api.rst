@@ -2,7 +2,6 @@ Core API
 ========
 
 .. module:: smartconfig
-   :noindex:
 
 The core functionality of `smartconfig` is exposed through two main functions:
 :func:`resolve` for resolving configurations and :func:`validate_schema` for
