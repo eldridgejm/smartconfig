@@ -6,8 +6,8 @@ references with Jinja2, evaluates function calls written as one-key dicts like
 ``{"__list.loop__": {...}}``, and converts values to their types. The entry
 point is ``resolve()``.
 
-A cheat sheet covering the whole configuration language is
-``docs/cheatsheet.rst``, in the directory next to this file. The full
+An agent cheat sheet covering the whole configuration language is
+``docs/agent_cheatsheet.rst``, in the directory next to this file. The full
 documentation is in that same ``docs/`` directory and at
 https://eldridgejm.github.io/smartconfig/. (In a source checkout, such as an
 editable install, the pages are in the repository's ``docs/source/`` instead.)

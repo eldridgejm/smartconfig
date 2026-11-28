@@ -6,9 +6,9 @@
 
 The wheel now contains the documentation's `.rst` pages at `smartconfig/docs/`, and the `smartconfig` module docstring points to them, so that AI agents (and anyone else) reading the installed package find the docs next to the code.
 
-### A cheat sheet
+### An agent cheat sheet
 
-The new page `cheatsheet.rst` covers the whole configuration language on one page: `${...}` interpolation, function-call syntax, every default function with its argument keys, schemas, converters, reserved names and common mistakes. It is short enough for an agent to read in full before editing a configuration, and it ends with a snippet that projects using smartconfig can paste into their `CLAUDE.md` or `AGENTS.md`.
+The new page `agent_cheatsheet.rst` covers the whole configuration language on one page: `${...}` interpolation, function-call syntax, every default function with its argument keys, schemas, converters, reserved names and common mistakes. It is short enough for an agent to read in full before editing a configuration, and it ends with a snippet that projects using smartconfig can paste into their `CLAUDE.md` or `AGENTS.md`.
 
 ## 0.8.0
 
