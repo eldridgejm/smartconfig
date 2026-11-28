@@ -1136,13 +1136,19 @@ Parses a natural language date/datetime string.
 **Input**: A string in one of the following forms:
 
 - An ISO date or datetime: ``"2021-10-05"`` or ``"2021-10-05 23:59:10"``
-- An offset: ``"3 days after 2021-10-05"`` (multiple units can be comma-separated,
-  e.g., ``"1 week, 2 days after 2021-10-05"``; each unit may appear only once)
-- A first-weekday: ``"first monday after 2021-09-14"`` (multiple day names can be
-  separated by commas, e.g., ``"first monday, wednesday after 2021-09-14"``)
+- An offset: ``"3 days after 2021-10-05"`` or ``"3 days before 2021-10-05"``
+  (multiple units can be comma-separated, e.g., ``"1 week, 2 days after
+  2021-10-05"``; each unit may appear only once)
+- A first-weekday: ``"first monday after 2021-09-14"`` or ``"first monday before
+  2021-09-14"`` (multiple day names can be separated by commas, spaces or "or",
+  e.g., ``"first monday, wednesday after 2021-09-14"`` or ``"first monday or
+  wednesday after 2021-09-14"``). As with ``datetime.first``, the search is
+  strict: the reference date itself is never the result, even if it falls on
+  one of the given days.
 
 Any form may end with ``" at HH:MM"`` or ``" at HH:MM:SS"`` to override the time
-component; the hour may have one digit, as in ``" at 9:00"``.
+component; the hour may have one digit, as in ``" at 9:00"``. Matching is
+case-insensitive, so ``"First Monday Before 2021-09-14"`` works too.
 
 **Example**:
 
@@ -1243,6 +1249,8 @@ datetime.first
 ~~~~~~~~~~~~~~
 
 Finds the first occurrence of a given weekday before or after a reference date.
+The search is strict: the reference date itself is never the result, so the
+first Monday after a Monday is a week later.
 
 **Input**: A dictionary with the following keys:
 
@@ -1255,7 +1263,7 @@ Finds the first occurrence of a given weekday before or after a reference date.
      - Description
    * - ``weekday``
      - Yes
-     - A day name (e.g., ``"monday"``) or comma-separated list of day names (e.g., ``"monday, friday"``).
+     - A day name (e.g., ``"monday"``), or several: either a list of names (e.g., ``["monday", "friday"]``) or a string with the names separated by commas, spaces or "or" (e.g., ``"monday, friday"`` or ``"monday or friday"``). Names are case-insensitive.
    * - ``before``
      - No
      - The reference date to search backward from. Mutually exclusive with ``after``; exactly one must be provided.
