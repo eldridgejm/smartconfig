@@ -21,13 +21,27 @@ Integer and Float
 
 The integer converter is applied to any configuration value whose schema type
 is ``integer``, and the float converter is applied to values with schema type
-``float``. These converters accept numeric values and numeric strings:
+``float``. Both reject ``bool`` values, even though ``bool`` is a subclass of
+``int`` in Python.
 
-- Integer values pass through unchanged.
-- Whole-number floats (e.g., ``3.0``) are coerced to ``int``.
-- The float converter accepts ``int`` values, coercing them to ``float``.
-- Numeric strings (e.g., ``"42"``, ``"4.5"``) are parsed with ``int()`` or
-  ``float()``.
+The integer converter accepts:
+
+- ``int`` values (pass-through)
+- whole-number floats, which are coerced to ``int`` (``3.0`` becomes ``3``)
+- strings of whole numbers, parsed with ``int()`` (e.g., ``"42"``)
+
+It rejects floats that aren't whole (``4.5``) and strings that aren't whole
+numbers, including decimal strings like ``"4.5"`` and ``"3.0"``, and ``"inf"``
+and ``"nan"``.
+
+The float converter accepts:
+
+- ``float`` values (pass-through)
+- ``int`` values, which are coerced to ``float``
+- numeric strings, parsed with ``float()`` (e.g., ``"42"``, ``"4.5"``,
+  ``"inf"``, ``"nan"``)
+
+It rejects strings whose value is too large for a float (``"1e400"``).
 
 .. note::
 
