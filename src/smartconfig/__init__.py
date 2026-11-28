@@ -1,3 +1,18 @@
+"""smartconfig: smart features for JSON, YAML and TOML configurations.
+
+smartconfig resolves a configuration (a dict, list or value loaded from a file)
+against a schema: it interpolates ``${...}`` references with Jinja2, evaluates
+function calls written as one-key dicts like ``{"__list.loop__": {...}}``, and
+converts values to their types. The entry point is ``resolve()``.
+
+The complete, compact reference to the configuration language is
+``docs/reference.rst``, in the directory next to this file. The full
+documentation is in that same ``docs/`` directory and at
+https://eldridgejm.github.io/smartconfig/. (In a source checkout, such as an
+editable install, the pages are in the repository's ``docs/source/`` instead.)
+
+"""
+
 from . import exceptions
 from . import stdlib
 from . import converters
