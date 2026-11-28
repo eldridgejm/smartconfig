@@ -13,9 +13,11 @@ Configuration Graphs
 
 When thinking about how resolution works,
 it is helpful to conceptualize a configuration as a graph. Each node in the
-graph represents a piece of the configuration. We can imagine four different
-types of node: dictionary, list, value, and function call. Each edge in the
-graph represents a dependency between nodes.
+graph represents a piece of the configuration. We can imagine five different
+types of node: dictionary, list, value, function call, and template. A template
+node holds the value of a template field, which is evaluated lazily, when the
+program asks for it. Each edge in the graph represents a dependency between
+nodes.
 
 For example, consider the following configuration:
 
@@ -112,7 +114,15 @@ When a leaf (value) node is encountered, resolution happens in two phases:
    transforms it into the appropriate Python type (e.g., parsing ``"2025-01-10"``
    into a ``datetime.date`` object).
 
-The following sections describe each phase in more detail.
+When a function call node is encountered, the function is called first, and
+its result is then resolved like any other part of the configuration: a dict
+or list result is traversed in turn, and a value is interpolated and
+converted. (A function made with ``resolve_output=False`` has its result
+converted but not interpolated; see :doc:`custom_functions`.) When a template
+node is encountered, it resolves to a :class:`types.Template`, without
+evaluating its contents.
+
+The following sections describe the two phases for value nodes in more detail.
 
 .. _variable_lookup:
 
