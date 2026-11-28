@@ -48,7 +48,7 @@ exception, so a converter should catch the errors it expects and raise a
         try:
             return int(value, 16)
         except ValueError as e:
-            raise ConversionError(f"Not hex: {value!r}.") from e
+            raise ConversionError(f"Not hex: {value}.") from e
 
     converters = {**smartconfig.DEFAULT_CONVERTERS, "hex": hex_converter}
     schema = {"type": "dict", "required_keys": {"color": {"type": "hex"}}}
@@ -60,7 +60,7 @@ exception, so a converter should catch the errors it expects and raise a
 
 .. testoutput:: python
 
-    'Cannot resolve keypath "color": Not hex: \'zz\'.'
+    'Cannot resolve keypath "color": Not hex: zz.'
 
 Whether you override a default converter or add a new one, start from a copy
 of :data:`smartconfig.DEFAULT_CONVERTERS` and change the copy (do not modify the
