@@ -44,7 +44,8 @@ has a key named ``true``. Such a key is still reachable through its container,
 as in ``${ flags.true }``, or through the root with ``inject_root_as``, as in
 ``${ root["true"] }``. A name that ``${...}`` could never refer to is an error
 wherever a name is introduced: a global variable, ``inject_root_as``, a
-``__let__`` variable or reference, or a template parameter. Likewise, inside a
+``__let__`` variable or reference, a template parameter, or the ``variable`` of
+``__list.loop__`` or ``__list.filter__``. Likewise, inside a
 ``{% for %}`` loop, ``loop`` is Jinja's loop variable rather than a key named
 ``loop``.
 
@@ -188,6 +189,10 @@ default, it is a dictionary with a single key of the form
 ``__<function_name>__``. The value of the key is the argument that is passed to
 the function.
 
+Although this section comes last, a function call is evaluated first: the
+function is called, and its result is then resolved like any other value,
+with interpolation and conversion as above.
+
 For example, consider the default :code:`if` function, implementing conditional
 logic. It takes a dictionary with three keys: ``condition``, ``then``, and
 ``else``, as shown below:
@@ -215,8 +220,8 @@ This resolves to:
 
     {'is_eligible': True, 'student_score': 85}
 
-Here we are taking advantage of the fact that templating is done by the
-Jinja2 and so during interpolation ``${student_score >= 70}`` evaluates to ``True``, and
+Here we are taking advantage of the fact that templating is done by
+Jinja2, so during interpolation ``${student_score >= 70}`` evaluates to ``True``, and
 thus the ``then`` branch is taken.
 
 More Details
