@@ -254,8 +254,8 @@ Every problem with the code is reported as a
 :class:`~smartconfig.exceptions.ResolutionError` at the keypath of the call:
 
 - The input is not a string, or is empty.
-- The code is not valid Python. The message gives the line of the code with the
-  error.
+- The code is not valid Python. The message gives the number of the line with
+  the error, counting from the first line of the code, and Python's reason.
 - The code has no ``return`` statement, or uses ``yield``.
 - The code raises an exception. The message gives the exception's type and
   message, and the exception is kept as the error's ``__cause__``.

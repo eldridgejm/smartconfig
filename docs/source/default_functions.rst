@@ -21,7 +21,7 @@ Default functions are organized into two groups:
 One stdlib function, ``python``, is not on by default, since it runs code written
 in the configuration. See :doc:`inline_python`.
 
-The default functions are available by default — :func:`smartconfig.resolve`
+You don't need to do anything to use these functions: :func:`smartconfig.resolve`
 uses :data:`smartconfig.DEFAULT_FUNCTIONS` as the default value for its
 ``functions`` parameter. Pass ``functions=None`` to make no functions available;
 a function call is then an error. (To turn off function-call detection entirely,
@@ -287,9 +287,11 @@ raw
 Keeps its input as written: everything in it is data. ``${...}`` references are
 not interpolated, and function calls (including ``__template__`` and ``__use__``)
 are not evaluated, but kept as the dicts they are written as. The value is still
-converted to the field's schema. Note that the raw wrapper is removed upon
-resolution — if you need a template that survives resolution boundaries, see
-:ref:`__template__ <func-template>`.
+converted to the field's schema. Use it for values that must be taken
+literally, such as a string containing ``${...}`` meant for another tool. The
+result is the plain value, without the ``__raw__`` wrapper. For a value that
+should be evaluated later, with its references filled in then, use
+:ref:`__template__ <func-template>` instead.
 
 **Input**: Any configuration. The input is returned as written, with nothing in it
 interpolated or evaluated.
