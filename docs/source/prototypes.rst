@@ -181,7 +181,8 @@ prototype's.
 
 A schema that has a default of its own also makes its field optional. This is
 how a template field gets a default, since a template's default is the
-template as written, which isn't a value of the field's type.
+template as written, which isn't a value of the field's type (see the example
+in `Template fields`_).
 
 Template fields
 ~~~~~~~~~~~~~~~
@@ -208,14 +209,38 @@ and its parameters:
 
     'Lecture 4'
 
+To give a template field a default, pass it to
+:func:`~smartconfig.prototypes.template` as the keyword argument ``default``.
+The default is the template as written, without a ``__template__`` wrapper, and
+the field becomes optional:
+
+.. testcode::
+
+    class Page(Prototype):
+        title: Annotated[
+            Template,
+            smartconfig.prototypes.template(
+                {"type": "string"}, ["publication"], default="Lecture ${ publication.number }"
+            ),
+        ]
+
+    page = smartconfig.resolve({}, Page)
+    print(page.title.evaluate({"publication": {"number": 5}}))
+
+.. testoutput::
+
+    'Lecture 5'
+
 Extra keys
 ----------
 
 By default, a key that isn't a field is an error, as for a schema dictionary
 without ``extra_keys_schema``. The class option ``extra_keys`` allows such keys
 and gives their schema, as a type hint (``extra_keys=str``) or an explicit
-schema (``extra_keys=smartconfig.prototypes.schema({...})``). The extra keys are kept,
-resolved, in the instance's ``extra_keys`` attribute, a dict:
+schema (``extra_keys=smartconfig.prototypes.schema({...})``). It may also be
+``extra_keys=smartconfig.prototypes.template(...)``, to make every extra key a
+template. The extra keys are kept, resolved, in the instance's ``extra_keys``
+attribute, a dict:
 
 .. testcode::
 
