@@ -10,7 +10,8 @@ This page is intended for AI agents. It summarizes the configuration language
 and schemas on one page, so that an agent can read all of it before editing a
 smartconfig configuration or writing code that calls smartconfig. One of the
 quickest ways to get started with smartconfig is to point your agent at this
-page (see "Telling an agent about smartconfig" at the end). Each section ends
+page (see `Telling an agent about smartconfig`_ at the end for a snippet that
+you can include in your ``AGENTS.md``). Each section ends
 with the name of the page that covers its topic in full. Those pages are in the
 same directory as this one (``smartconfig/docs/`` in the installed package) and
 at https://eldridgejm.github.io/smartconfig/.
