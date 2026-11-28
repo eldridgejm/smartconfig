@@ -761,3 +761,53 @@ def test_function_call_with_another_key_names_the_key():
 
     # then — the message says what's wrong, not just "Invalid function call"
     assert "'b'" in str(exc.value)
+
+
+# a schema passed to args.resolve =======================================================
+
+
+def _resolve_with(schema, value, relative_keypath=()):
+    """Resolve {"x": {"__f__": {}}}, where f resolves ``value`` with ``schema``."""
+
+    def f(args):
+        return args.resolve(value, schema=schema, relative_keypath=relative_keypath)
+
+    return resolve(
+        {"x": {"__f__": {}}},
+        {"type": "dict", "required_keys": {"x": {"type": "any"}}},
+        functions={"f": f},
+    )
+
+
+def test_an_invalid_schema_passed_to_args_resolve_is_an_invalid_schema_error():
+    # when — a list schema without its element_schema
+    with raises(exceptions.InvalidSchemaError) as exc:
+        _resolve_with({"type": "list"}, [1, 2])
+
+    # then — reported at the call's keypath, then inside the schema
+    assert exc.value.keypath == ("x", "element_schema")
+
+
+def test_an_invalid_template_schema_passed_to_args_resolve_is_an_invalid_schema_error():
+    # when — a template schema without its parameters
+    with raises(exceptions.InvalidSchemaError) as exc:
+        _resolve_with({"type": "template", "schema": {"type": "any"}}, "y")
+
+    # then
+    assert exc.value.keypath == ("x", "parameters")
+
+
+def test_an_invalid_schema_passed_to_args_resolve_is_reported_at_the_relative_keypath():
+    # when — the schema has no type, for a value under the call at "1"
+    with raises(exceptions.InvalidSchemaError) as exc:
+        _resolve_with({"nullable": True}, 1, relative_keypath=("1",))
+
+    # then
+    assert exc.value.keypath == ("x", "1", "type")
+
+
+def test_a_schema_with_a_default_can_be_passed_to_args_resolve():
+    # a function may pass on a schema with a default, as an optional key's is
+    result = _resolve_with({"type": "integer", "default": 0}, "3")
+
+    assert result == {"x": 3}

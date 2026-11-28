@@ -74,9 +74,10 @@ def test_instantiate_returns_the_prototype_type():
     assert_type(course, Course)
 
 
-def test_resolve_with_a_schema_still_returns_a_dict():
-    # when
-    result = smartconfig.resolve({"x": 1}, {"type": "any"})
+def test_resolve_with_a_schema_returns_any():
+    # a dict configuration may be a function call, whose result can be anything
+    # (here a list), so resolve() with a schema can't promise a dict
+    result = smartconfig.resolve({"__list.range__": {"stop": 2}}, {"type": "any"})
 
-    # then
-    assert_type(result, dict)
+    assert_type(result, Any)
+    assert result == [0, 1]

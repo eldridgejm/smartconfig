@@ -1,29 +1,44 @@
 """List-related functions: concatenate, zip, range, loop, and filter."""
 
 import itertools
-import typing
 
 from ..types import (
     Function,
     FunctionArgs,
     FunctionMapping,
+    ConfigurationDict,
     ConfigurationList,
     Configuration,
 )
 from ..exceptions import ResolutionError
 from .._utils import jinja_reserved_name_problem
-from ._integers import to_integer
+from ._args import list_of, to_integer
 
 
-# helpers ==============================================================================
+def _variable(input_: ConfigurationDict, function: str, args: FunctionArgs) -> str:
+    """The ``variable`` of ``list.loop`` or ``list.filter``: the name bound in its body.
 
+    Raises
+    ------
+    ResolutionError
+        If it is not a string, or is a name that Jinja reserves.
 
-def _all_elements_are_instances_of(container, type_):
-    """Check if all elements in the container are instances of the given type."""
-    return all(isinstance(element, type_) for element in container)
+    """
+    variable = input_["variable"]
+    # a bare assert would give no keypath
+    if not isinstance(variable, str):
+        raise ResolutionError(
+            f"The value of 'variable' in '{function}' must be a string.", args.keypath
+        )
 
-
-# functions ============================================================================
+    # a name like true or self could never be referred to: ${ true } would be
+    # Jinja's literal, silently, not the variable
+    problem = jinja_reserved_name_problem(variable)
+    if problem is not None:
+        raise ResolutionError(
+            f"Invalid 'variable' in '{function}': {problem}", args.keypath
+        )
+    return variable
 
 
 @Function.new(resolve_output=False)
@@ -33,23 +48,7 @@ def concatenate(args: FunctionArgs) -> ConfigurationList:
     ``args.input`` should be a list of lists.
 
     """
-    if not isinstance(args.input, list) or not _all_elements_are_instances_of(
-        args.input, list
-    ):
-        raise ResolutionError(
-            "Input to 'list.concatenate' must be a list of lists.", args.keypath
-        )
-
-    if len(args.input) == 0:
-        raise ResolutionError(
-            "Input to 'list.concatenate' must be a non-empty list of lists.",
-            args.keypath,
-        )
-
-    # true since we checked _all_elements_are_instances_of(args.input, list) above
-    input = typing.cast(list[list], args.input)
-
-    return list(itertools.chain(*input))
+    return list(itertools.chain(*list_of(list, "lists", "list.concatenate", args)))
 
 
 @Function.new(resolve_output=False)
@@ -59,19 +58,7 @@ def zip_(args: FunctionArgs) -> ConfigurationList:
     ``args.input`` should be a list of lists.
 
     """
-    if not isinstance(args.input, list) or not _all_elements_are_instances_of(
-        args.input, list
-    ):
-        raise ResolutionError(
-            "Input to 'list.zip' must be a list of lists.", args.keypath
-        )
-
-    if len(args.input) == 0:
-        raise ResolutionError(
-            "Input to 'list.zip' must be a non-empty list of lists.", args.keypath
-        )
-
-    return [list(entry) for entry in zip(*args.input)]
+    return [list(entry) for entry in zip(*list_of(list, "lists", "list.zip", args))]
 
 
 def range_(args: FunctionArgs) -> ConfigurationList:
@@ -95,10 +82,6 @@ def range_(args: FunctionArgs) -> ConfigurationList:
             args.keypath,
         )
 
-    start = args.input.get("start", 0)
-    stop = args.input["stop"]
-    step = args.input.get("step", 1)
-
     if set(args.input.keys()) - {"start", "stop", "step"}:
         raise ResolutionError(
             "Input to 'list.range' must be a dictionary with keys 'start', 'stop' and 'step'.",
@@ -107,9 +90,9 @@ def range_(args: FunctionArgs) -> ConfigurationList:
 
     # convert rather than check the type, so that a value written as "${ n }",
     # which interpolates to a string, is accepted
-    start = to_integer(start, "start", "list.range", args)
-    stop = to_integer(stop, "stop", "list.range", args)
-    step = to_integer(step, "step", "list.range", args)
+    start = to_integer(args.input.get("start", 0), "start", "list.range", args)
+    stop = to_integer(args.input["stop"], "stop", "list.range", args)
+    step = to_integer(args.input.get("step", 1), "step", "list.range", args)
 
     # range() raises a bare ValueError for a step of 0, with no keypath
     if step == 0:
@@ -156,23 +139,11 @@ def loop(args: FunctionArgs) -> Configuration:
 
     assert isinstance(over, list)
 
-    # the variable is a name, bound in the body; a bare assert would give no keypath
-    if not isinstance(args.input["variable"], str):
-        raise ResolutionError(
-            "The value of 'variable' in 'list.loop' must be a string.", args.keypath
-        )
-
-    # a name like true or self could never be referred to: ${ true } would be
-    # Jinja's literal, silently, not the variable
-    problem = jinja_reserved_name_problem(args.input["variable"])
-    if problem is not None:
-        raise ResolutionError(
-            f"Invalid 'variable' in 'list.loop': {problem}", args.keypath
-        )
+    variable = _variable(args.input, "list.loop", args)
 
     result = []
     for i, element in enumerate(over):
-        local_variables = {args.input["variable"]: element}
+        local_variables = {variable: element}
         result.append(
             args.resolve(
                 args.input["in"],
@@ -215,24 +186,11 @@ def filter_(args: FunctionArgs) -> ConfigurationList:
 
     assert isinstance(iterable, list)
 
-    # the variable is a name, bound in the condition; a bare assert would give no
-    # keypath, as in list.loop
-    if not isinstance(args.input["variable"], str):
-        raise ResolutionError(
-            "The value of 'variable' in 'list.filter' must be a string.", args.keypath
-        )
-
-    # a name like true or self could never be referred to: ${ true } would be
-    # Jinja's literal, silently, not the variable
-    problem = jinja_reserved_name_problem(args.input["variable"])
-    if problem is not None:
-        raise ResolutionError(
-            f"Invalid 'variable' in 'list.filter': {problem}", args.keypath
-        )
+    variable = _variable(args.input, "list.filter", args)
 
     result = []
     for i, element in enumerate(iterable):
-        local_variables = {args.input["variable"]: element}
+        local_variables = {variable: element}
         if args.resolve(
             args.input["condition"],
             local_variables=local_variables,

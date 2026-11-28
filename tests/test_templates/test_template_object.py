@@ -6,6 +6,7 @@ from typing import Any
 
 from pytest import raises
 
+from smartconfig.exceptions import InvalidSchemaError
 from smartconfig.types import Template
 
 
@@ -50,6 +51,21 @@ def test_a_parameter_reserved_by_jinja_is_an_error():
         'Invalid parameter: "true" is reserved by Jinja, which reads it as a '
         "literal, so ${ true } can't refer to it. Use another name."
     )
+
+
+def test_an_invalid_schema_is_an_error():
+    with raises(InvalidSchemaError) as exc:
+        Template("x", schema={"type": "integr"})
+
+    assert exc.value.keypath == ("type",)
+
+
+def test_a_global_variable_reserved_by_jinja_is_an_error():
+    # raised when the template is made, not first when it is evaluated
+    with raises(ValueError) as exc:
+        Template("x", global_variables={"true": 1})
+
+    assert str(exc.value).startswith('Invalid global variable: "true" is reserved')
 
 
 def test_source_is_a_deep_copy_of_what_was_passed():

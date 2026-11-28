@@ -9,7 +9,6 @@ type validators, ensuring that the resulting value is of the correct type.
 
 import datetime as datetimelib
 import math
-import re
 
 from . import exceptions
 
@@ -176,11 +175,6 @@ def boolean(value: bool | str) -> bool:
 # dates / datetimes ====================================================================
 
 
-def _contains_time_component(s: str) -> bool:
-    """Check if a string contains a time pattern (HH:MM)."""
-    return bool(re.search(r"\d{2}:\d{2}", s))
-
-
 def date(value: str | datetimelib.date | datetimelib.datetime) -> datetimelib.date:
     """Convert a value to a date object.
 
@@ -291,7 +285,7 @@ def datetime(
     if isinstance(value, str):
         # advise adding a time only if the string is a date; for anything else
         # (like "tomorrow"), adding a time wouldn't help
-        if not _contains_time_component(value) and _is_iso_date(value):
+        if _is_iso_date(value):
             raise exceptions.ConversionError(
                 f"Cannot implicitly convert date string '{value}' into datetime. "
                 "Please include a time component.",

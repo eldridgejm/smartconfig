@@ -274,7 +274,7 @@ class Resolver(Protocol):
 
 
 # According to the public interface, functions should return Configuration. However,
-# internal functions may return node types (defined in _resolve.py) instead of
+# internal functions may return node types (defined in _internals.py) instead of
 # Configuration, as this allows for more expressivity. At runtime, _FunctionResult
 # equals Configuration so that documentation generators display the public type. At
 # type-check time, we use the wider union to allow internal node types without requiring
@@ -352,8 +352,8 @@ class Function:
     def __call__(self, args: FunctionArgs) -> _FunctionResult:
         """Call the function.
 
-        If :attr:`resolve_input` is `True`, the input will be resolved before being
-        passed to the function. Otherwise, it will be passed as-is.
+        This does not resolve the input: when :attr:`resolve_input` is `True`, the
+        resolver does that before calling the function.
 
         """
         return self.fn(args)
@@ -552,9 +552,11 @@ class Template:
     TypeError
         If ``parameters`` is a string rather than a list of names.
     ValueError
-        If a parameter has a name that Jinja reserves, such as ``true`` or
-        ``self``, since ``${...}`` could never refer to it, or the name of an
-        outer parameter.
+        If a parameter, a global variable or ``inject_root_as`` has a name that
+        Jinja reserves, such as ``true`` or ``self``, since ``${...}`` could never
+        refer to it, or a parameter has the name of an outer parameter.
+    InvalidSchemaError
+        If ``schema`` is not valid with ``converters``.
 
     """
 
@@ -604,8 +606,12 @@ class Template:
                     f"${{ {name} }} would be ambiguous. Use another name."
                 )
 
-        # the options used by .evaluate(); shared (not copied) by __deepcopy__
-        self._options: dict[str, Any] = {
+        # imported here: these modules import this one
+        from ._resolve import _make_resolution_context
+        from ._schemas import validate_schema
+
+        # options left at _DEFAULT take resolve()'s defaults
+        options: dict[str, Any] = {
             "converters": converters,
             "functions": functions,
             "filters": filters,
@@ -613,6 +619,44 @@ class Template:
             "inject_root_as": inject_root_as,
             "check_for_function_call": check_for_function_call,
         }
+        given = {k: v for k, v in options.items() if v is not _DEFAULT}
+
+        # the context that .evaluate() resolves in, made once, here, so that a bad
+        # option is reported when the template is made. Shared (not copied) by
+        # __deepcopy__
+        self._context: ResolutionContext = _make_resolution_context(**given)
+
+        # checked as resolve() checks its schema, against the converters the
+        # template will use, so that a type only they define is valid
+        validate_schema(schema, converters=self._context.converters)
+
+    @classmethod
+    def _from_context(
+        cls,
+        source: Configuration,
+        schema: Schema | DynamicSchema,
+        parameters: tuple[str, ...],
+        keypath: KeyPath,
+        context: ResolutionContext,
+        outer_parameters: Mapping[str, Any],
+    ) -> Template:
+        """The Template of a template field, evaluated in the resolve()'s context.
+
+        Used by the resolver, which hands over its own context rather than taking
+        it apart into the constructor's options. That resolve() already checked the
+        context, the schema and the parameters (against the outer parameters too),
+        so they are not checked again. The context's own template parameters are
+        replaced by each evaluation.
+
+        """
+        template = object.__new__(cls)
+        template.source = copy.deepcopy(source)
+        template.schema = schema
+        template.parameters = parameters
+        template.keypath = keypath
+        template._context = context
+        template._outer_parameters = dict(outer_parameters)
+        return template
 
     @property
     def outer_parameters(self) -> Mapping[str, Any]:
@@ -656,7 +700,6 @@ class Template:
             make_node,
             reporting_recursion_errors,
         )
-        from ._resolve import _make_resolution_context
         from .exceptions import ResolutionError
 
         # named like the schema's "parameters" and Template.parameters (it was
@@ -679,16 +722,16 @@ class Template:
                 self.keypath,
             )
 
-        # options left at _DEFAULT take resolve()'s defaults
-        options = {k: v for k, v in self._options.items() if v is not _DEFAULT}
-
         # the parameters, with the outer ones, are kept apart from the globals and
         # win over them: whoever calls resolve() may pass globals that the
         # template's author never saw, and the template should not break because
         # one shares a parameter's name. Kept apart so that a template inside this
-        # one carries the parameters and not the globals
-        context = _make_resolution_context(**options)
-        context.template_parameters = {**self._outer_parameters, **parameters}
+        # one carries the parameters and not the globals. The parameters' names
+        # were checked when the template was made
+        context = dataclasses.replace(
+            self._context,
+            template_parameters={**self._outer_parameters, **parameters},
+        )
 
         # as in resolve(): a tree too deep to build or resolve is a ResolutionError
         with reporting_recursion_errors():
@@ -707,15 +750,12 @@ class Template:
     # copying, comparison, display -----------------------------------------------------
 
     def __deepcopy__(self, memo: dict[int, Any]) -> Template:
-        new = object.__new__(type(self))
+        # only the source is copied: the schema, parameters, keypath, context and
+        # outer parameters are shared (the outer parameters' values are the
+        # program's, like those given to evaluate())
+        new = copy.copy(self)
         memo[id(self)] = new
         new.source = copy.deepcopy(self.source, memo)
-        new.schema = self.schema
-        new.parameters = self.parameters
-        new.keypath = self.keypath
-        new._options = self._options
-        # the values are the program's, like those given to evaluate()
-        new._outer_parameters = self._outer_parameters
         return new
 
     def __eq__(self, other: object) -> bool:
