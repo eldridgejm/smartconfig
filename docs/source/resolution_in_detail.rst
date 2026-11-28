@@ -114,6 +114,8 @@ When a leaf (value) node is encountered, resolution happens in two phases:
 
 The following sections describe each phase in more detail.
 
+.. _variable_lookup:
+
 Interpolation and Variable Lookup
 ---------------------------------
 
@@ -132,13 +134,19 @@ follows a specific search order:
 2. **The configuration itself** is searched next. This is how cross-references
    between different parts of the configuration work. When you write
    ``${course_name}``, `smartconfig` looks for a key called ``course_name`` in the
-   configuration.
+   configuration's root. Inside a template, the root is the template itself.
 
-3. **Global variables** are searched last. These are variables passed to
+3. **Template parameters** are searched next, inside a template. These are the
+   values passed to :meth:`types.Template.evaluate`. A template parameter wins
+   over a global variable of the same name.
+
+4. **Global variables** are searched last. These are variables passed to
    :func:`resolve` via the ``global_variables`` parameter. Unlike configuration
    values, global variables are not interpolated or converted—they are used as-is.
    This makes them useful for injecting Python functions or constants that should
-   be available during interpolation.
+   be available during interpolation. The name given by ``inject_root_as`` lives
+   with the global variables, and it wins over a global variable of the same
+   name.
 
 A reference inserts a single value into the string: a string, a number, a date,
 and so on. **Inserting a whole dict or list is an error**, raising
