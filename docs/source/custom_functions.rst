@@ -37,9 +37,12 @@ than a mistake in the configuration.
       :type: Configuration
       :no-index:
 
-      The input to the function, as read from the configuration. For example,
-      if the configuration contains ``{"__my_func__": {"x": 1, "y": 2}}``, then
-      ``input`` will be ``{"x": 1, "y": 2}``.
+      The input to the function. For example, if the configuration contains
+      ``{"__my_func__": {"x": 1, "y": 2}}``, then ``input`` will be
+      ``{"x": 1, "y": 2}``. With the default ``resolve_input=True``, the input
+      has already been resolved with schema ``any``: strings are interpolated
+      and function calls evaluated, but nothing is converted. With
+      ``resolve_input=False``, it is the raw configuration, as written.
 
    .. attribute:: root
       :type: UnresolvedDict | UnresolvedList | UnresolvedFunctionCall
@@ -80,15 +83,58 @@ than a mistake in the configuration.
       options passed to :func:`smartconfig.resolve`. Rarely needed in practice.
 
 
-:data:`smartconfig.DEFAULT_FUNCTIONS` is a dictionary containing the default functions;
-to override, remove, or add new custom functions, copy this dictionary first, make
-modifications to the copy, and then pass the modified copy to :func:`smartconfig.resolve`
-via the ``functions`` keyword argument.
+Adding, overriding and removing functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:data:`smartconfig.DEFAULT_FUNCTIONS` is a dictionary containing the default
+functions, and it is what :func:`smartconfig.resolve` uses when no ``functions``
+argument is given. To add, override, or remove functions, make a deep copy of it,
+modify the copy, and pass the copy to :func:`smartconfig.resolve` via the
+``functions`` keyword argument:
+
+.. testsetup:: copying
+
+    import smartconfig
+
+    def repeat(args):
+        return args.input["string"] * args.input["repetitions"]
+
+    def my_loop(args):
+        return []
+
+.. testcode:: copying
+
+    import copy
+
+    functions = copy.deepcopy(smartconfig.DEFAULT_FUNCTIONS)
+    functions["repeat"] = repeat          # add
+    functions["list"]["loop"] = my_loop   # override a namespaced function
+    del functions["if"]                   # remove a core function
+    del functions["list"]["filter"]       # remove a namespaced function
+
+    config = {"message": {"__repeat__": {"string": "Hi", "repetitions": 2}}}
+    print(smartconfig.resolve(config, {"type": "any"}, functions=functions))
+
+    # the defaults are unchanged
+    print("filter" in smartconfig.DEFAULT_FUNCTIONS["list"])
+
+.. testoutput:: copying
+
+    {'message': 'HiHi'}
+    True
+
+A plain ``.copy()`` isn't enough: the namespaces (such as ``"list"``) are nested
+dictionaries, so a shallow copy shares them, and changing them would change the
+defaults too. If you only need to add top-level functions, a dictionary literal
+works: ``{**smartconfig.DEFAULT_FUNCTIONS, "repeat": repeat}``.
+
+For brevity, the examples on this page pass only the custom function, as in
+``functions={"repeat": repeat}``. This turns off the default functions.
 
 Approach #1: Simple Python Functions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There are two ways to define functions. First, you can create a simple Python function
+The first approach is to write a simple Python function
 that takes one argument (an instance of :class:`smartconfig.types.FunctionArgs`) and
 returns a :class:`smartconfig.types.Configuration` representing the result of the
 function call. For example, below is a simple function that takes a string and a number
@@ -318,8 +364,8 @@ Example 3: Checking the function's specification with schemas
 
 It's generally a good idea for custom functions to check that their input
 conforms to the expected format. One pattern that makes this easy is to define
-a schema for the function's input and use :func:`smartconfig.resolve` to validate
-it, using the power of `smartconfig` to implement the validation logic.
+a schema for the function's input and resolve the input against it with
+``args.resolve``, using the power of `smartconfig` to implement the validation logic.
 
 For example, let's revisit our ``repeat`` function from earlier and add input validation
 to it. We expect the input to be a dictionary with two keys: ``string`` (a string to repeat)
@@ -336,17 +382,20 @@ define the schema for the function's input:
         }
     }
 
-    def repeat(args: smartconfig.types.FunctionArgs):
-        validated_input = smartconfig.resolve(
-            args.input,
-            repeat_input_schema
-        )
+    @Function.new(resolve_input=False)
+    def repeat(args: FunctionArgs) -> Configuration:
+        validated_input = args.resolve(args.input, schema=repeat_input_schema)
         return validated_input['string'] * validated_input['repetitions']
 
+Unlike a nested call to :func:`smartconfig.resolve`, ``args.resolve`` keeps the
+keypath of the function call, so errors point to the right place, and it uses the
+caller's functions, converters and global variables. The function sets
+``resolve_input=False`` so that its input isn't resolved twice: once before the
+call, and again by ``args.resolve`` (see `How return values are resolved`_).
 
-Now, when we call ``repeat``, it will first validate its input against the schema,
-raising an error if the input is invalid. If the result is invalid, a
-:class:`smartconfig.exceptions.ResolutionError` will be raised:
+Now, when we call ``repeat``, it will first validate its input against the schema.
+If the input is invalid, a :class:`smartconfig.exceptions.ResolutionError` will be
+raised:
 
 .. testcode:: python
 
@@ -363,7 +412,7 @@ raising an error if the input is invalid. If the result is invalid, a
 
     result = smartconfig.resolve(dct, schema, functions={"repeat": repeat})
 
-This will raise an error indicating that the ``repetitions`` key
+This will raise an error indicating that the ``message.repetitions`` key
 could not be converted to an integer:
 
 .. testoutput:: python
@@ -371,7 +420,7 @@ could not be converted to an integer:
 
     Traceback (most recent call last):
         ...
-    smartconfig.exceptions.ResolutionError: Cannot resolve keypath "repetitions": Cannot convert to integer: 'three'.
+    smartconfig.exceptions.ResolutionError: Cannot resolve keypath "message.repetitions": Cannot convert to integer: 'three'.
 
 On the other hand, if the input is valid, it will proceed to
 perform the string repetition as before:
@@ -407,15 +456,17 @@ Customizing Function Call Syntax
 By default, :func:`smartconfig.resolve` looks for function calls that are
 dictionaries with a single key of the form ``__<function_name>__``. If you want
 to use a different syntax, you can provide a custom function call checker via
-the ``check_for_function_call`` keyword argument to :func:`resolve`. This
+the ``check_for_function_call`` keyword argument to :func:`~smartconfig.resolve`. This
 should be a callable matching the :data:`~smartconfig.types.FunctionCallChecker` signature.
 That is, the function should take two arguments: a
 :data:`~smartconfig.types.ConfigurationDict` that is possibly a function call and a mapping
-of function names to available functions. If the dictionary is a function call,
+of function names to available functions. The mapping is flat: namespaced functions
+appear under dotted names, such as ``"list.loop"``, and every value is a
+:class:`~smartconfig.types.Function` instance (plain Python functions are wrapped). If the dictionary is a function call,
 it should return a 2-tuple of the :class:`~smartconfig.types.Function` to call and the input
 to the function. If the dictionary is not a function call, it should return
 None. If the dictionary is an invalid function call, it should raise a
 :class:`ValueError`.
 
 Function calls can be disabled entirely by setting ``check_for_function_call`` to
-None in the call to :func:`resolve`.
+None in the call to :func:`~smartconfig.resolve`.
