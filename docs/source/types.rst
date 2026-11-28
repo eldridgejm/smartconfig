@@ -120,7 +120,7 @@ These classes and types are used to define and interact with custom functions.
    :class:`ConfigurationDict` representing a possible function call, and a mapping of function names to available functions as
    :class:`Function` instances. If the dictionary represents a valid function call,
    this should return the :class:`Function` and a :class:`Configuration` representing
-   its input. Otherwise, it should return None. If the function call is invalid and
+   its input. Otherwise, it should return None. If the function call is invalid or
    malformed, this should raise a :class:`ValueError`.
 
    Type alias for:
@@ -145,6 +145,9 @@ Types used to describe the expected structure of a configuration.
 
    Type alias for ``Callable[[Configuration, KeyPath], Schema]``. A function that
    returns a schema dictionary based on the configuration value and its keypath.
+   The value it receives is the raw one, before interpolation or function
+   evaluation, or ``None`` when an optional key is missing. See
+   :ref:`dynamic_schemas_example`.
 
 Miscellaneous
 -------------
