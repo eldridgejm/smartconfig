@@ -71,6 +71,12 @@ Table of Contents
 
 .. toctree::
    :maxdepth: 1
+   :caption: Reference (for agents and quick lookup)
+
+   reference
+
+.. toctree::
+   :maxdepth: 1
    :caption: Key Concepts
 
    configurations
