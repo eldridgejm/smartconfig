@@ -57,6 +57,12 @@ tests/
 ├── test_resolve/               # Resolution tests
 ├── test_stdlib/                # Stdlib function tests
 └── test_templates/             # Template field and Template class tests
+
+docs/source/
+├── *.rst                       # The documentation; shipped in the wheel at smartconfig/docs/
+├── agent_cheatsheet.rst        # The whole config language on one page (for agents)
+├── conf.py                     # Sphinx config (not shipped)
+└── _static/                    # Sphinx assets (not shipped)
 ```
 
 ## Architecture
@@ -72,6 +78,7 @@ tests/
 - **Private modules**: Implementation files prefixed with `_` (e.g., `_resolve.py`, `_internals.py`)
 - **Public API**: All exports defined in `__init__.py`
 - **Error context**: All errors include keypaths for debugging (e.g., `"foo.bar.baz"`)
+- **Bundled docs**: `pyproject.toml` ships `docs/source/*.rst` inside the package, and the package docstring points agents to `docs/agent_cheatsheet.rst`. When a function, its argument keys, a schema key or a converter changes, update `agent_cheatsheet.rst` too
 - **Pre-commit**: Uses ruff for linting/formatting via `.pre-commit-config.yaml`
 - **Docstrings**: NumPy style (Parameters, Returns, Raises sections)
 - **Type aliases**: Use PEP 695 `type` statements (e.g., `type Foo = int | str`)

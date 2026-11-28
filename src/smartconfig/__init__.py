@@ -1,3 +1,19 @@
+"""smartconfig: interpolation, functions and schemas for configurations.
+
+smartconfig resolves a configuration (dicts, lists and values, from any source:
+JSON, YAML, TOML, Python, ...) against a schema: it interpolates ``${...}``
+references with Jinja2, evaluates function calls written as one-key dicts like
+``{"__list.loop__": {...}}``, and converts values to their types. The entry
+point is ``resolve()``.
+
+An agent cheat sheet covering the whole configuration language is
+``docs/agent_cheatsheet.rst``, in the directory next to this file. The full
+documentation is in that same ``docs/`` directory and at
+https://eldridgejm.github.io/smartconfig/. (In a source checkout, such as an
+editable install, the pages are in the repository's ``docs/source/`` instead.)
+
+"""
+
 from . import exceptions
 from . import stdlib
 from . import converters

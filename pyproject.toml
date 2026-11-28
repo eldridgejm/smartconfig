@@ -1,6 +1,6 @@
 [project]
 name = "smartconfig"
-version = "0.8.0"
+version = "0.8.1"
 description = "Add smart functionality to configuration files."
 readme = "README.md"
 authors = [
@@ -31,3 +31,14 @@ dev = [
     "mypy>=1.18.2",
     "sphinx-autobuild>=2025.8.25",
 ]
+
+# Ship the documentation's .rst pages inside the package, at smartconfig/docs,
+# so that tools (and AI agents) reading the installed package can find them.
+# `sources` rewrites docs/source/ to smartconfig/docs/ in the wheel; the
+# exclude patterns drop everything in docs/source except the .rst pages
+# (conf.py, _static/). force-include can't be used here: hatchling doesn't
+# apply exclude patterns to force-included paths.
+[tool.hatch.build.targets.wheel]
+only-include = ["src/smartconfig", "docs/source"]
+exclude = ["/docs/source/*", "!/docs/source/*.rst"]
+sources = { "src" = "", "docs/source" = "smartconfig/docs" }

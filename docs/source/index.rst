@@ -44,6 +44,9 @@ This results in:
      'welcome': 'Welcome to DSC 10!'}
 
 For a more detailed introduction, see :doc:`Features and Quick Start <quick_start>`.
+For the whole configuration language on one page, see the :doc:`agent_cheatsheet`, which
+is also installed with the package for AI agents to read (it includes a snippet
+to paste into a project's ``CLAUDE.md`` or ``AGENTS.md``).
 
 Installation
 ------------
@@ -68,6 +71,7 @@ Table of Contents
    :caption: Getting Started
 
    quick_start
+   agent_cheatsheet
 
 .. toctree::
    :maxdepth: 1
@@ -99,7 +103,7 @@ Table of Contents
 
 .. toctree::
    :maxdepth: 1
-   :caption: Reference
+   :caption: API Reference
 
    api
    types
