@@ -10,7 +10,17 @@ class Error(Exception):
 
 
 class InvalidSchemaError(Error):
-    """An error while validating a smartconfig schema."""
+    """An error while validating a smartconfig schema.
+
+    Attributes
+    ----------
+    reason : str
+        Why the schema is invalid, without the keypath.
+    keypath : KeyPath
+        The keypath, within the schema, of the part that is invalid (for example,
+        ``("required_keys", "x", "type")``).
+
+    """
 
     def __init__(self, reason: str, keypath: _types.KeyPath):
         self.reason = reason
@@ -22,7 +32,17 @@ class InvalidSchemaError(Error):
 
 
 class ResolutionError(Error):
-    """An error while resolving a configuration."""
+    """An error while resolving a configuration.
+
+    Attributes
+    ----------
+    reason : str
+        Why the configuration can't be resolved, without the keypath.
+    keypath : KeyPath
+        The keypath, within the configuration, of the value that can't be
+        resolved.
+
+    """
 
     def __init__(self, reason: str, keypath: _types.KeyPath):
         self.reason = reason
@@ -102,7 +122,13 @@ class UndefinedNameError(ResolutionError):
 
 
 class ConversionError(Error):
-    """Could not convert the configuration value."""
+    """Could not convert the configuration value.
+
+    Converters raise this when a value can't be converted to their type.
+    :func:`smartconfig.resolve` reports it as a :class:`ResolutionError` whose
+    ``reason`` is this error's message and whose ``keypath`` is that of the value.
+
+    """
 
 
 # helpers ==============================================================================
