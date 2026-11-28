@@ -179,6 +179,28 @@ A field with an explicit schema keeps its resolved value as is: here,
 ``calendar`` is a dict, and it would be one even if its schema were a
 prototype's.
 
+An explicit schema isn't validated when the class is defined, because the
+converters, and so the valid types, aren't known until
+:func:`smartconfig.resolve` is called. A mistake in it is found by ``resolve``
+(or by :func:`smartconfig.validate_schema` on the class's
+:func:`~smartconfig.prototypes.schema_of`), as an
+:class:`~smartconfig.exceptions.InvalidSchemaError` whose keypath points into
+the class's schema:
+
+.. testcode::
+
+    class Typo(Prototype):
+        count: Annotated[int, smartconfig.prototypes.schema({"type": "intger"})]
+
+    try:
+        smartconfig.resolve({"count": 3}, Typo)
+    except smartconfig.exceptions.InvalidSchemaError as exc:
+        print(exc.keypath)
+
+.. testoutput::
+
+    ('required_keys', 'count', 'type')
+
 A schema that has a default of its own also makes its field optional. This is
 how a template field gets a default, since a template's default is the
 template as written, which isn't a value of the field's type (see the example
