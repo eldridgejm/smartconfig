@@ -6,12 +6,10 @@ Reference
     import smartconfig
     from pprint import pprint
 
-A compact reference to the smartconfig configuration language: everything a
-configuration file can contain, and how a schema reads it. It is meant to be
-read in full before editing a smartconfig configuration, and it assumes you know
-what smartconfig is. Each section points to the page with the full details. The
-pages are .rst files next to this one: in the installed package they are in
-``smartconfig/docs/``, and online at https://eldridgejm.github.io/smartconfig/.
+This page summarizes the configuration language and schemas. Each section ends
+with the name of the page that covers its topic in full. Those pages are in the
+same directory as this one (``smartconfig/docs/`` in the installed package) and
+at https://eldridgejm.github.io/smartconfig/.
 
 The examples are Python dicts; JSON, YAML and TOML files load to the same thing.
 They are resolved with ``smartconfig.resolve(config, schema)``, and most use
