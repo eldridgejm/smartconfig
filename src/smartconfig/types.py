@@ -172,10 +172,11 @@ class UnresolvedFunctionCall(abc.ABC):
     :class:`UnresolvedList`, and accessing the function call through those containers
     will trigger its evaluation into a value or another unresolved container.
 
-    Because of this, :class:`UnresolvedFunctionCall` does not provide a :meth:`resolve`
-    method. There is never a need to resolve an unresolved function call explicitly --
-    it will always be resolved implicitly when it is indexed into, accessed as a child
-    of another container, or when its :meth:`get_keypath` method is called.
+    Because of this, :class:`UnresolvedFunctionCall` does not provide a ``resolve``
+    method like :meth:`UnresolvedDict.resolve`. There is never a need to resolve an
+    unresolved function call explicitly -- it will always be resolved implicitly when
+    it is indexed into, accessed as a child of another container, or when its
+    :meth:`get_keypath` method is called.
 
     Furthermore, resolving an :class:`UnresolvedFunctionCall` would always be a circular
     reference. The only way to obtain a reference to one is during the evaluation of that
@@ -352,8 +353,8 @@ class Function:
     def __call__(self, args: FunctionArgs) -> _FunctionResult:
         """Call the function.
 
-        This does not resolve the input: when :attr:`resolve_input` is `True`, the
-        resolver does that before calling the function.
+        This does not resolve the input: when the function was made with
+        ``resolve_input=True``, the resolver does that before calling the function.
 
         """
         return self.fn(args)
@@ -499,9 +500,9 @@ class Template:
 
     Parameters
     ----------
-    source : :class:`types.Configuration`
+    source : :class:`~smartconfig.types.Configuration`
         The value as written. It is deep-copied.
-    schema : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
+    schema : Union[:class:`~smartconfig.types.Schema`, :class:`~smartconfig.types.DynamicSchema`]
         The schema that the evaluated value must match. Defaults to
         ``{"type": "any"}``.
     parameters : Iterable[str]
@@ -513,7 +514,7 @@ class Template:
     converters : Mapping[str, Callable]
         Converters used when evaluating. Defaults to those of
         :func:`smartconfig.resolve`.
-    functions : :class:`types.FunctionMapping` | None
+    functions : :class:`~smartconfig.types.FunctionMapping` | None
         Functions available when evaluating. Defaults to those of
         :func:`smartconfig.resolve`.
     filters : Mapping[str, Callable] | None
@@ -523,7 +524,7 @@ class Template:
         parameter of the same name shadows one. Defaults to ``None``.
     inject_root_as : str | None
         As in :func:`smartconfig.resolve`. Defaults to ``None``.
-    check_for_function_call : :class:`types.FunctionCallChecker` | None
+    check_for_function_call : :class:`~smartconfig.types.FunctionCallChecker` | None
         As in :func:`smartconfig.resolve`. Defaults to that of
         :func:`smartconfig.resolve`.
     outer_parameters : Mapping[str, Any] | None
@@ -534,13 +535,13 @@ class Template:
 
     Attributes
     ----------
-    source : :class:`types.Configuration`
+    source : :class:`~smartconfig.types.Configuration`
         The value as written.
-    schema : Union[:class:`types.Schema`, :class:`types.DynamicSchema`]
+    schema : Union[:class:`~smartconfig.types.Schema`, :class:`~smartconfig.types.DynamicSchema`]
         The schema of the evaluated value.
     parameters : tuple[str, ...]
         The names that must be given, no more and no fewer, when evaluating.
-    keypath : :class:`types.KeyPath`
+    keypath : :class:`~smartconfig.types.KeyPath`
         Where the template was written.
     outer_parameters : Mapping[str, Any]
         Read-only. The values of the parameters of the templates around this one,
@@ -682,7 +683,7 @@ class Template:
         Returns
         -------
         Any
-            The value: a :class:`types.Configuration`. Typed as ``Any`` so
+            The value: a :class:`~smartconfig.types.Configuration`. Typed as ``Any`` so
             that callers can index into it, as with :func:`smartconfig.resolve`.
 
         Raises

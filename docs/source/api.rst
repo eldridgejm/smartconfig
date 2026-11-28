@@ -163,5 +163,5 @@ Constants
 .. data:: python
 
     The function that runs Python code written in the configuration. It is not
-    on by default; add it to the ``functions`` passed to :func:`resolve` to use
-    it. See :doc:`inline_python`.
+    on by default; add it to the ``functions`` passed to
+    :func:`~smartconfig.resolve` to use it. See :doc:`inline_python`.

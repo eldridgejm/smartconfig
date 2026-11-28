@@ -115,9 +115,9 @@ These classes and types are used to define and interact with custom functions.
 
 .. class:: FunctionCallChecker
 
-   This is the signature of the function that :func:`resolve` uses to check for function
-   calls. This should accept two arguments: the :class:`ConfigurationDict` representing
-   a possible function call, and a mapping of function names to available functions as
+   This is the signature of the function that :func:`~smartconfig.resolve` uses to
+   check for function calls. This should accept two arguments: the
+   :class:`ConfigurationDict` representing a possible function call, and a mapping of function names to available functions as
    :class:`Function` instances. If the dictionary represents a valid function call,
    this should return the :class:`Function` and a :class:`Configuration` representing
    its input. Otherwise, it should return None. If the function call is invalid and
