@@ -99,7 +99,8 @@ an explicit schema (see `Explicit schemas`_).
 
 A field is **optional** exactly when it has a default (``= value``, or
 ``field(default_factory=...)``), and its schema then gets that default. A field
-is **nullable** exactly when its type includes ``None``. The two are
+is **nullable** exactly when its type includes ``None`` (or is ``Any``, which
+accepts anything, ``None`` included). The two are
 independent: ``x: str | None`` is required but may be null, and ``x: str =
 "a"`` is optional but may not be null.
 
@@ -159,12 +160,23 @@ the way to describe a complex or deeply nested value, or one whose schema is
     Config(title='DSC 40B', calendar={'exams': [datetime.date(2026, 10, 20)]})
 
 The type inside ``Annotated`` is what type checkers see; the schema is what
-`smartconfig` uses. Two things connect them. If the field has a default and the
-schema doesn't, the field's default is added to the schema (as with
-``calendar`` above). And the type's ``None`` must agree with the schema's
-``nullable``: a field typed ``str | None`` with a schema that isn't nullable is
-a ``TypeError``. A field with an explicit schema keeps its resolved value as
-is: here, ``calendar`` is a dict, and it would be one even if its schema were a
+`smartconfig` uses. Two checks connect them, both made when the class is
+defined:
+
+- **Defaults.** If the field has a default and the schema doesn't, the field's
+  default is copied into the schema (as with ``calendar`` above). If both have
+  one, they must be equal, or it is a ``TypeError``.
+- **Nullability.** The type includes ``None`` exactly when the schema is
+  nullable, and a mismatch either way is a ``TypeError``: a field typed
+  ``str | None`` with a schema that isn't nullable, or a field typed ``str``
+  with a nullable schema.
+
+Both checks are skipped for a dynamic schema, whose default and nullability
+aren't known until it is called. The nullability check is also skipped for a
+field typed ``Any``.
+
+A field with an explicit schema keeps its resolved value as is: here,
+``calendar`` is a dict, and it would be one even if its schema were a
 prototype's.
 
 A schema that has a default of its own also makes its field optional. This is

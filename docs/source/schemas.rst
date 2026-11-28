@@ -184,6 +184,8 @@ Example 3: Allowing nullable values
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Mark a field as nullable when ``None`` is an allowed value in the configuration.
+``nullable`` defaults to ``False``, except for the ``any`` type, which accepts
+``None`` unless it is given ``"nullable": False``.
 
 Input:
 
