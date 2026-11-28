@@ -37,9 +37,12 @@ than a mistake in the configuration.
       :type: Configuration
       :no-index:
 
-      The input to the function, as read from the configuration. For example,
-      if the configuration contains ``{"__my_func__": {"x": 1, "y": 2}}``, then
-      ``input`` will be ``{"x": 1, "y": 2}``.
+      The input to the function. For example, if the configuration contains
+      ``{"__my_func__": {"x": 1, "y": 2}}``, then ``input`` will be
+      ``{"x": 1, "y": 2}``. With the default ``resolve_input=True``, the input
+      has already been resolved with schema ``any``: strings are interpolated
+      and function calls evaluated, but nothing is converted. With
+      ``resolve_input=False``, it is the raw configuration, as written.
 
    .. attribute:: root
       :type: UnresolvedDict | UnresolvedList | UnresolvedFunctionCall
@@ -453,15 +456,17 @@ Customizing Function Call Syntax
 By default, :func:`smartconfig.resolve` looks for function calls that are
 dictionaries with a single key of the form ``__<function_name>__``. If you want
 to use a different syntax, you can provide a custom function call checker via
-the ``check_for_function_call`` keyword argument to :func:`resolve`. This
+the ``check_for_function_call`` keyword argument to :func:`~smartconfig.resolve`. This
 should be a callable matching the :data:`~smartconfig.types.FunctionCallChecker` signature.
 That is, the function should take two arguments: a
 :data:`~smartconfig.types.ConfigurationDict` that is possibly a function call and a mapping
-of function names to available functions. If the dictionary is a function call,
+of function names to available functions. The mapping is flat: namespaced functions
+appear under dotted names, such as ``"list.loop"``, and every value is a
+:class:`~smartconfig.types.Function` instance (plain Python functions are wrapped). If the dictionary is a function call,
 it should return a 2-tuple of the :class:`~smartconfig.types.Function` to call and the input
 to the function. If the dictionary is not a function call, it should return
 None. If the dictionary is an invalid function call, it should raise a
 :class:`ValueError`.
 
 Function calls can be disabled entirely by setting ``check_for_function_call`` to
-None in the call to :func:`resolve`.
+None in the call to :func:`~smartconfig.resolve`.
