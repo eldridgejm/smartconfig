@@ -1691,7 +1691,25 @@ class _FunctionCallNode(_Node):
         This enables advanced use cases like using a function to implement for-loops.
         It satisfies the _types.Resolver protocol.
 
+        Raises
+        ------
+        InvalidSchemaError
+            If ``schema`` is given and isn't valid. The keypath is where the
+            configuration is (the call's, followed by ``relative_keypath``) and then
+            the path inside the schema, as for a dynamic schema's result.
+
         """
+        # a schema from the function is checked as resolve() checks its own, so that
+        # a bad one is reported as such and not as a bare KeyError from building the
+        # node. It may have a default, as the call's own schema may: a function can
+        # pass args.schema on, and a default at the top is unused here
+        if schema is not None:
+            _validate_schema(
+                schema,
+                self.keypath + tuple(relative_keypath),
+                allow_default=True,
+                converters=self.resolution_context.converters,
+            )
         node = self.node_in_place(
             configuration, self.mode, schema, local_variables, relative_keypath
         )
@@ -2021,8 +2039,8 @@ class _TemplateNode(_Node):
         super().__init__(keypath, resolution_context, parent, local_variables)
         self.value = value
         self.outer_parameters = dict(outer_parameters or {})
-        # every template schema was validated (by resolve(), Template, or when a
-        # dynamic schema returned it), so it has both keys
+        # every template schema was validated (by resolve(), Template, args.resolve,
+        # or when a dynamic schema returned it), so it has both keys
         self.inner_schema = template_schema["schema"]
         self.parameters = tuple(template_schema["parameters"])
 
