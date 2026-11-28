@@ -922,9 +922,10 @@ This produces:
 list.zip
 ~~~~~~~~
 
-Zips lists together, producing a list of lists.
+Zips lists together, producing a list of lists. Like Python's ``zip``, the result
+is as long as the shortest list.
 
-**Input**: A list of lists.
+**Input**: A non-empty list of lists. An empty list (``[]``) is an error.
 
 **Example**:
 
@@ -952,7 +953,7 @@ list.concatenate
 
 Concatenates multiple lists into one.
 
-**Input**: A list of lists.
+**Input**: A non-empty list of lists. An empty list (``[]``) is an error.
 
 **Example**:
 
@@ -987,7 +988,7 @@ dict.update
 Deep merges dictionaries, with later dictionaries taking precedence. Nested
 dictionaries are merged recursively.
 
-**Input**: A list of dictionaries.
+**Input**: A non-empty list of dictionaries. An empty list (``[]``) is an error.
 
 **Example**:
 
@@ -1031,7 +1032,7 @@ dict.update_shallow
 Shallow merges dictionaries, with later dictionaries taking precedence. Unlike
 ``dict.update``, nested dictionaries are not merged recursively.
 
-**Input**: A list of dictionaries.
+**Input**: A non-empty list of dictionaries. An empty list (``[]``) is an error.
 
 **Example**:
 
