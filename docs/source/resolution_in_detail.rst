@@ -117,7 +117,7 @@ The following sections describe each phase in more detail.
 Interpolation and Variable Lookup
 ---------------------------------
 
-.. module:: smartconfig
+.. currentmodule:: smartconfig
 
 During interpolation, references like ``${foo.bar.baz}`` are resolved by looking
 up variables. Jinja2 traverses the dotted path by first looking up ``foo``, then
