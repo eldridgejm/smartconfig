@@ -15,8 +15,10 @@ interpolation of placeholders, conversion of values to their appropriate types,
 and evaluation of any function calls.
 
 :func:`smartconfig.resolve` is the main function that performs resolution. It
-takes two arguments: the raw configuration (a Python dictionary) and the schema
-specifying its expected structure. The behavior of
+takes two arguments: the raw configuration (usually a dictionary, but a list or
+a single value also works) and either a schema describing its expected
+structure or a Prototype class (see :doc:`prototypes`), in which case the
+result is an instance of that class. The behavior of
 :func:`smartconfig.resolve` can be customized using various optional
 parameters; see the function documentation as well as the pages in the
 "Customizing Behavior" section for more details.

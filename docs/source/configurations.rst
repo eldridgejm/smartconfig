@@ -5,12 +5,12 @@ In the next few sections, we will introduce the main concepts of `smartconfig`.
 
 Using `smartconfig` involves three steps:
 
-1. Specify the expected structure and types of the configuration using a **schema**.
+1. Specify the expected structure and types of the configuration using a **schema**, or a **Prototype** class whose type hints give the schema.
 2. Read a **"raw" configuration** (usually from JSON, YAML, or TOML) into a Python dictionary.
 3. Call :func:`smartconfig.resolve()` to produce a **"resolved" configuration** where all dynamic values have been computed.
 
 This section introduces the main concept: the **configuration**. For the
-others, see :doc:`schemas` and :doc:`resolution`.
+others, see :doc:`schemas`, :doc:`prototypes` and :doc:`resolution`.
 
 
 Structure of a Configuration

@@ -264,6 +264,45 @@ values of 10 and 30, respectively:
     import smartconfig
 
 
+Typed Configurations with Prototypes
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Instead of a schema dictionary, the structure can be written as a class: a
+subclass of ``smartconfig.Prototype``. It is a dataclass whose fields' schemas
+come from their type hints, and a field with a default is optional. Here is the
+schema from above as a Prototype. Passing the class to ``smartconfig.resolve()``
+in place of a schema gives back an instance of it, whose attributes type
+checkers know:
+
+.. testcode:: prototypes
+
+    import datetime
+
+    class Course(smartconfig.Prototype):
+        start_date: datetime.date
+        weeks: int = 10
+        lectures: int = 30
+
+    course = smartconfig.resolve(
+        {"start_date": "2025-09-01", "lectures": "${weeks * 3}"}, Course
+    )
+    print(course)
+    print(course.lectures)
+
+**Output**
+
+.. testoutput:: prototypes
+
+    Course(start_date=datetime.date(2025, 9, 1), weeks=10, lectures=30)
+    30
+
+See :doc:`prototypes` for more.
+
+.. testsetup:: prototypes
+
+    import smartconfig
+
+
 Advanced Features
 -----------------
 
